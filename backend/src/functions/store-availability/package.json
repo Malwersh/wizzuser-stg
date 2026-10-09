@@ -1,0 +1,11 @@
+{
+  "name": "store-availability",
+  "version": "1.0.0",
+  "description": "Store availability engine",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "uuid": "^10.0.0"
+  }
+}

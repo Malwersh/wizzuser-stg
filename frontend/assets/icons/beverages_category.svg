@@ -1,0 +1,100 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#2196f3;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1565c0;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="glass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e3f2fd;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#bbdefb;stop-opacity:0.7" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Elegant cocktail glass -->
+  <polygon points="60,120 60,160 80,160 80,120 75,100 65,100" fill="url(#glass)"/>
+  <polygon points="62,122 62,158 78,158 78,122 73,102 67,102" fill="#fff" opacity="0.8"/>
+  
+  <!-- Tropical drink content -->
+  <polygon points="63,125 63,155 77,155 77,125 72,105 68,105" fill="#ff9800"/>
+  <ellipse cx="70" cy="125" rx="7" ry="3" fill="#ffb74d"/>
+  
+  <!-- Drink layers -->
+  <polygon points="63,140 77,140 77,155 63,155" fill="#f44336"/>
+  <polygon points="63,125 77,125 77,140 63,140" fill="#ff9800"/>
+  
+  <!-- Garnish -->
+  <circle cx="72" cy="110" r="3" fill="#4caf50"/>
+  <rect x="71" y="105" width="2" height="8" fill="#8bc34a"/>
+  <circle cx="68" cy="108" r="2" fill="#f44336"/>
+  
+  <!-- Fancy straw -->
+  <rect x="73" y="95" width="3" height="35" fill="#e91e63"/>
+  <rect x="73" y="92" width="3" height="6" fill="#f06292" rx="1"/>
+  
+  <!-- Coffee cup with latte art -->
+  <ellipse cx="120" cy="125" rx="20" ry="25" fill="#fff"/>
+  <ellipse cx="120" cy="123" rx="18" ry="23" fill="#8d6e63"/>
+  <ellipse cx="120" cy="110" rx="16" ry="4" fill="#6d4c41"/>
+  
+  <!-- Latte art (heart) -->
+  <path d="M 115 108 Q 120 103 125 108 Q 120 113 115 108" fill="#fff" opacity="0.9"/>
+  
+  <!-- Coffee cup handle -->
+  <path d="M 140 125 Q 148 125 148 135 Q 148 145 140 145" stroke="#e0e0e0" stroke-width="4" fill="none"/>
+  
+  <!-- Soda bottle -->
+  <rect x="150" y="100" width="15" height="50" rx="7" fill="#43a047"/>
+  <rect x="152" y="102" width="11" height="40" fill="#66bb6a"/>
+  <rect x="150" y="95" width="15" height="8" fill="#2e7d32"/>
+  <ellipse cx="157.5" cy="95" rx="7.5" ry="3" fill="#81c784"/>
+  
+  <!-- Soda bubbles -->
+  <circle cx="155" cy="115" r="1" fill="#e8f5e8"/>
+  <circle cx="160" cy="125" r="1.5" fill="#e8f5e8"/>
+  <circle cx="157" cy="135" r="1" fill="#e8f5e8"/>
+  
+  <!-- Wine glass -->
+  <polygon points="35,130 35,160 50,160 50,130 47,115 38,115" fill="url(#glass)"/>
+  <polygon points="37,132 37,158 48,158 48,132 45,117 40,117" fill="#e91e63"/>
+  <ellipse cx="42.5" cy="132" rx="5.5" ry="2" fill="#f06292"/>
+  
+  <!-- Champagne bubbles rising -->
+  <circle cx="42" cy="145" r="1" fill="#ffcdd2" opacity="0.8"/>
+  <circle cx="44" cy="140" r="0.8" fill="#ffcdd2" opacity="0.8"/>
+  <circle cx="41" cy="135" r="1.2" fill="#ffcdd2" opacity="0.8"/>
+  
+  <!-- Fresh juice glass -->
+  <rect x="85" y="140" width="20" height="30" rx="3" fill="url(#glass)"/>
+  <rect x="87" y="142" width="16" height="25" fill="#ff9800"/>
+  <ellipse cx="95" cy="142" rx="8" ry="2" fill="#ffb74d"/>
+  
+  <!-- Orange slice garnish -->
+  <circle cx="95" cy="135" r="8" fill="#ff9800"/>
+  <circle cx="95" cy="135" r="6" fill="#ffb74d"/>
+  <rect x="95" y="127" width="1" height="16" fill="#fff"/>
+  <rect x="89" y="135" width="12" height="1" fill="#fff"/>
+  <rect x="91" y="132" width="8" height="1" fill="#fff" transform="rotate(45 95 135)"/>
+  <rect x="91" y="137" width="8" height="1" fill="#fff" transform="rotate(-45 95 135)"/>
+  
+  <!-- Ice cubes -->
+  <rect x="90" y="150" width="4" height="4" fill="#e3f2fd" opacity="0.8"/>
+  <rect x="96" y="155" width="3" height="3" fill="#e3f2fd" opacity="0.8"/>
+  <rect x="92" y="160" width="3" height="3" fill="#e3f2fd" opacity="0.8"/>
+  
+  <!-- Steam from coffee -->
+  <path d="M 115 95 Q 117 85 115 80" stroke="#fff" stroke-width="2" fill="none" opacity="0.7"/>
+  <path d="M 120 95 Q 122 85 120 80" stroke="#fff" stroke-width="2" fill="none" opacity="0.7"/>
+  <path d="M 125 95 Q 127 85 125 80" stroke="#fff" stroke-width="2" fill="none" opacity="0.7"/>
+  
+  <!-- Refreshing water droplets -->
+  <circle cx="50" cy="70" r="2" fill="#e3f2fd" opacity="0.8"/>
+  <circle cx="150" cy="60" r="1.5" fill="#e3f2fd" opacity="0.8"/>
+  <circle cx="30" cy="100" r="1" fill="#e3f2fd" opacity="0.8"/>
+  <circle cx="170" cy="140" r="2" fill="#e3f2fd" opacity="0.8"/>
+</svg>

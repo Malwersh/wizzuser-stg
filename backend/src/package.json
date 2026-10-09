@@ -1,0 +1,10 @@
+{
+  "name": "wizzuser-backend-functions",
+  "version": "1.0.0",
+  "description": "Lambda functions for WizzUser backend",
+  "dependencies": {
+    "aws-sdk": "^2.1692.0",
+    "h3-js": "^4.3.0",
+    "uuid": "^10.0.0"
+  }
+}

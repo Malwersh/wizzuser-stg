@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "1007878389815",
+    "project_id": "wizz-business-app",
+    "storage_bucket": "wizz-business-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1007878389815:android:69d8b890794bb723187fb2",
+        "android_client_info": {
+          "package_name": "com.whizz.merchant"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBegPAJWvgfyno_6sEUQBanB1qJt0LKOlc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1007878389815:android:71594cebe2d22d9f187fb2",
+        "android_client_info": {
+          "package_name": "com.wiz.userapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBegPAJWvgfyno_6sEUQBanB1qJt0LKOlc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1007878389815:android:a4e1d433047f0a68187fb2",
+        "android_client_info": {
+          "package_name": "com.wiz.wizdriverapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBegPAJWvgfyno_6sEUQBanB1qJt0LKOlc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

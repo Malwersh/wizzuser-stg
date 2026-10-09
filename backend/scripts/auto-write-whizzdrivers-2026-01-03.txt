@@ -1,0 +1,19 @@
+DynamoDB auto copy plan:
+- Region: us-east-1
+- Source profile: Wizz_dev_UserApp (tables=79, selected=1)
+- Target profile: Wizz_stg_UserApp (tables=36)
+- Mode: WRITE
+- Schema check: PRIMARY_KEY_ONLY
+- Exclusions (default): /password_reset_tokens/i /temp_users/i /^websocket[-_]/i /websocket_connections/i /websocket_subscriptions/i /^Chat(Sessions|Messages)$/i /^chat-(sessions|messages)-/i /IdempotencyKeys/i /AuditLog/i /Ledger/i /Topup/i /Holds/i /Wallet/i
+- Include: /^WhizzDrivers_dev$/
+
+Mapped tables (1):
+- WhizzDrivers_dev -> WhizzDrivers_staging
+
+Table: WhizzDrivers_dev -> WhizzDrivers_staging
+- srcItemCount~14 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WhizzDrivers_dev)...
+Scan complete: 14 items
+Writing to target (WhizzDrivers_staging)...
+Write complete: 14 items

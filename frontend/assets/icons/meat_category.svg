@@ -1,0 +1,70 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#d32f2f;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b71c1c;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="board" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8d6e63;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#5d4037;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Wooden cutting board -->
+  <rect x="45" y="70" width="110" height="75" rx="12" fill="url(#board)"/>
+  <rect x="50" y="75" width="100" height="65" rx="10" fill="#a1887f"/>
+  
+  <!-- Wood grain lines -->
+  <rect x="55" y="85" width="90" height="1" fill="#6d4c41" opacity="0.5"/>
+  <rect x="55" y="100" width="90" height="1" fill="#6d4c41" opacity="0.3"/>
+  <rect x="55" y="115" width="90" height="1" fill="#6d4c41" opacity="0.4"/>
+  <rect x="55" y="130" width="90" height="1" fill="#6d4c41" opacity="0.3"/>
+  
+  <!-- Premium steak -->
+  <ellipse cx="100" cy="110" rx="32" ry="22" fill="#8b0000"/>
+  <ellipse cx="100" cy="108" rx="29" ry="20" fill="#a0522d"/>
+  
+  <!-- Meat marbling -->
+  <ellipse cx="92" cy="105" rx="6" ry="4" fill="#ffb6c1"/>
+  <ellipse cx="108" cy="112" rx="5" ry="3" fill="#ffb6c1"/>
+  <ellipse cx="95" cy="115" rx="4" ry="2" fill="#ffb6c1"/>
+  <ellipse cx="105" cy="105" rx="3" ry="2" fill="#ffb6c1"/>
+  
+  <!-- Grill marks -->
+  <rect x="75" y="102" width="50" height="3" fill="#654321" rx="1"/>
+  <rect x="75" y="110" width="50" height="3" fill="#654321" rx="1"/>
+  <rect x="75" y="118" width="50" height="3" fill="#654321" rx="1"/>
+  
+  <!-- Professional knife -->
+  <rect x="145" y="55" width="5" height="45" fill="#c0c0c0"/>
+  <rect x="147" y="100" width="1" height="15" fill="#e0e0e0"/>
+  <rect x="143" y="100" width="9" height="18" fill="#8d6e63"/>
+  <rect x="144" y="102" width="7" height="14" fill="#6d4c41"/>
+  
+  <!-- Meat thermometer -->
+  <circle cx="70" cy="90" r="8" fill="#fff"/>
+  <circle cx="70" cy="90" r="6" fill="#f5f5f5"/>
+  <rect x="69" y="82" width="2" height="16" fill="#666"/>
+  <rect x="67" y="88" width="6" height="1" fill="#d32f2f"/>
+  
+  <!-- Fresh herbs -->
+  <ellipse cx="120" cy="85" rx="6" ry="10" fill="#4caf50" transform="rotate(15 120 85)"/>
+  <ellipse cx="125" cy="88" rx="4" ry="8" fill="#66bb6a" transform="rotate(-10 125 88)"/>
+  
+  <!-- Salt crystals -->
+  <rect x="85" y="85" width="2" height="2" fill="#fff" transform="rotate(45 86 86)"/>
+  <rect x="110" y="87" width="1" height="1" fill="#fff" transform="rotate(45 110 87)"/>
+  <rect x="90" y="125" width="1" height="1" fill="#fff"/>
+  <rect x="115" y="123" width="2" height="2" fill="#fff" transform="rotate(45 116 124)"/>
+  
+  <!-- Quality grade stamp -->
+  <circle cx="60" cy="130" r="12" fill="#ffeb3b" opacity="0.9"/>
+  <circle cx="60" cy="130" r="10" fill="#ffc107"/>
+  <text x="60" y="134" text-anchor="middle" fill="#f57c00" font-family="Arial" font-size="8" font-weight="bold">A+</text>
+</svg>

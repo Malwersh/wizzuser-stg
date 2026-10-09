@@ -1,0 +1,44 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#607d8b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#cfd8dc;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="20" fill="url(#bg)"/>
+  
+  <!-- Question mark circle -->
+  <circle cx="100" cy="100" r="60" fill="#fff"/>
+  <circle cx="100" cy="100" r="55" fill="#37474f"/>
+  
+  <!-- Question mark -->
+  <path d="M 80 70 Q 80 60 90 60 Q 110 60 110 75 Q 110 85 100 90 L 100 105" stroke="#fff" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="100" cy="125" r="6" fill="#fff"/>
+  
+  <!-- Decorative dots -->
+  <circle cx="50" cy="50" r="8" fill="#ff5722"/>
+  <circle cx="150" cy="50" r="8" fill="#4caf50"/>
+  <circle cx="50" cy="150" r="8" fill="#2196f3"/>
+  <circle cx="150" cy="150" r="8" fill="#ff9800"/>
+  
+  <!-- Small icons around -->
+  <!-- Fork -->
+  <rect x="45" y="40" width="2" height="20" fill="#ff5722"/>
+  <rect x="43" y="42" width="6" height="2" fill="#ff5722"/>
+  <rect x="43" y="46" width="6" height="2" fill="#ff5722"/>
+  
+  <!-- Spoon -->
+  <ellipse cx="152" cy="45" rx="3" ry="6" fill="#4caf50"/>
+  <rect x="151" y="51" width="2" height="15" fill="#4caf50"/>
+  
+  <!-- Shopping bag -->
+  <rect x="45" y="145" width="10" height="12" fill="#2196f3"/>
+  <path d="M 47 145 Q 47 142 50 142 Q 53 142 53 145" stroke="#2196f3" stroke-width="2" fill="none"/>
+  
+  <!-- Gift box -->
+  <rect x="145" y="145" width="10" height="10" fill="#ff9800"/>
+  <rect x="149" y="145" width="2" height="10" fill="#fff"/>
+  <rect x="145" y="149" width="10" height="2" fill="#fff"/>
+</svg>

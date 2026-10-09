@@ -1,0 +1,7 @@
+{
+  "name": "update-contact-info-function",
+  "version": "1.0.0",
+  "description": "Update contact info function",
+  "main": "index.js",
+  "dependencies": {}
+}

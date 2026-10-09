@@ -1,0 +1,119 @@
+DynamoDB auto copy plan:
+- Region: us-east-1
+- Source profile: Wizz_dev_UserApp (tables=79, selected=32)
+- Target profile: Wizz_stg_UserApp (tables=36)
+- Mode: DRY-RUN
+- Schema check: PRIMARY_KEY_ONLY
+- Exclusions (default): /password_reset_tokens/i /temp_users/i /^websocket[-_]/i /websocket_connections/i /websocket_subscriptions/i /^Chat(Sessions|Messages)$/i /^chat-(sessions|messages)-/i /IdempotencyKeys/i /AuditLog/i /Ledger/i /Topup/i /Holds/i /Wallet/i
+- Include: /^(WhizzMerchants_|WizzCentral_Regions$|WizzCentral_Region.*_dev$|WizzUser_.*_dev$|WizzDispatchJobs_dev$|WizzDriverLiveState$|WizzDriverPerformanceMetrics$|WaveOffers$|WhizzDrivers_dev$|order-receiver-.*-dev$|dev-(AuditLog|Holds|IdempotencyKeys|LedgerEntries|TopupRequests|Wallets)$|WizzOrders$)/
+
+Mapped tables (18):
+- order-receiver-availability-subscriptions-dev -> order-receiver-availability-subscriptions-staging
+- order-receiver-merchant-endpoints-dev -> order-receiver-merchant-endpoints-staging
+- order-receiver-timeout-logs-dev -> order-receiver-timeout-logs-staging
+- WhizzDrivers_dev -> WhizzDrivers_staging
+- WhizzMerchants_Businesses -> WhizzMerchants_Businesses
+- WhizzMerchants_BusinessWorkingHours -> WhizzMerchants_BusinessWorkingHours
+- WhizzMerchants_DeviceTokens -> WhizzMerchants_DeviceTokens
+- WizzCentral_RegionAudit_dev -> WizzCentral_RegionAudit_staging
+- WizzCentral_RegionIndex_dev -> WizzCentral_RegionIndex_staging
+- WizzCentral_RegionNeighbors_dev -> WizzCentral_RegionNeighbors_staging
+- WizzCentral_Regions -> WizzCentral_Regions
+- WizzCentral_RegionsDerived_dev -> WizzCentral_RegionsDerived_staging
+- WizzDispatchJobs_dev -> WizzDispatchJobs_staging
+- WizzOrders -> WizzOrders
+- WizzUser_addresses_dev -> WizzUser_addresses_staging
+- WizzUser_favorites_dev -> WizzUser_favorites_staging
+- WizzUser_transactions_dev -> WizzUser_transactions_staging
+- WizzUser_users_dev -> WizzUser_users_staging
+
+Unmapped source tables (14) (need explicit mapping or create target tables):
+- WaveOffers (guessed WaveOffers)
+- WhizzMerchants_BusinessSubcategories (guessed WhizzMerchants_BusinessSubcategories)
+- WhizzMerchants_Categories (guessed WhizzMerchants_Categories)
+- WhizzMerchants_Discounts (guessed WhizzMerchants_Discounts)
+- WhizzMerchants_GlobalProducts (guessed WhizzMerchants_GlobalProducts)
+- WhizzMerchants_Products (guessed WhizzMerchants_Products)
+- WhizzMerchants_RegionListings (guessed WhizzMerchants_RegionListings)
+- WhizzMerchants_Users (guessed WhizzMerchants_Users)
+- WizzDriverLiveState (guessed WizzDriverLiveState)
+- WizzDriverPerformanceMetrics (guessed WizzDriverPerformanceMetrics)
+- WizzUser_customer_points_dev (guessed WizzUser_customer_points_staging)
+- WizzUser_driver_assignments_dev (guessed WizzUser_driver_assignments_staging)
+- WizzUser_offers_dev (guessed WizzUser_offers_staging)
+- WizzUser_points_transactions_dev (guessed WizzUser_points_transactions_staging)
+
+Table: order-receiver-availability-subscriptions-dev -> order-receiver-availability-subscriptions-staging
+- srcItemCount~0 dstItemCount~0
+- schemaMatch: YES
+
+Table: order-receiver-merchant-endpoints-dev -> order-receiver-merchant-endpoints-staging
+- srcItemCount~0 dstItemCount~0
+- schemaMatch: YES
+
+Table: order-receiver-timeout-logs-dev -> order-receiver-timeout-logs-staging
+- srcItemCount~0 dstItemCount~0
+- schemaMatch: YES
+
+Table: WhizzDrivers_dev -> WhizzDrivers_staging
+- srcItemCount~14 dstItemCount~0
+- schemaMatch: YES
+
+Table: WhizzMerchants_Businesses -> WhizzMerchants_Businesses
+- srcItemCount~4 dstItemCount~0
+- schemaMatch: YES
+
+Table: WhizzMerchants_BusinessWorkingHours -> WhizzMerchants_BusinessWorkingHours
+- srcItemCount~25 dstItemCount~0
+- schemaMatch: YES
+
+Table: WhizzMerchants_DeviceTokens -> WhizzMerchants_DeviceTokens
+- srcItemCount~3 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzCentral_RegionAudit_dev -> WizzCentral_RegionAudit_staging
+- srcItemCount~22 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzCentral_RegionIndex_dev -> WizzCentral_RegionIndex_staging
+- srcItemCount~50907 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzCentral_RegionNeighbors_dev -> WizzCentral_RegionNeighbors_staging
+- srcItemCount~26 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzCentral_Regions -> WizzCentral_Regions
+- srcItemCount~15 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzCentral_RegionsDerived_dev -> WizzCentral_RegionsDerived_staging
+- srcItemCount~15 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzDispatchJobs_dev -> WizzDispatchJobs_staging
+- srcItemCount~392 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzOrders -> WizzOrders
+- srcItemCount~37 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzUser_addresses_dev -> WizzUser_addresses_staging
+- srcItemCount~4 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzUser_favorites_dev -> WizzUser_favorites_staging
+- srcItemCount~10 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzUser_transactions_dev -> WizzUser_transactions_staging
+- srcItemCount~3 dstItemCount~0
+- schemaMatch: YES
+
+Table: WizzUser_users_dev -> WizzUser_users_staging
+- srcItemCount~3 dstItemCount~0
+- schemaMatch: YES
+
+Dry-run complete. Re-run with --write to copy items.
+Tip: start with a narrow include, e.g. --include '^(WhizzMerchants_|WizzCentral_Regions$|WizzCentral_Region.*_dev$)' and then expand.

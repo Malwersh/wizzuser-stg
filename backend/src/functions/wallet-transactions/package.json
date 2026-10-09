@@ -1,0 +1,17 @@
+{
+  "name": "wallet-transactions",
+  "version": "1.0.0",
+  "description": "Get wallet transaction history in Iraqi Dinar",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["wallet", "transactions", "history", "iraqi-dinar", "iqd", "aws", "lambda"],
+  "author": "Food App Team",
+  "license": "MIT"
+}

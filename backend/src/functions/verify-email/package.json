@@ -1,0 +1,7 @@
+{
+  "name": "verify-email-function",
+  "version": "1.0.0",
+  "description": "Email verification function",
+  "main": "index.js",
+  "dependencies": {}
+}

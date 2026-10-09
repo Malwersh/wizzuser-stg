@@ -1,0 +1,15 @@
+{
+  "name": "websocket-connect",
+  "version": "1.0.0",
+  "description": "WebSocket connect handler",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "aws-jwt-verify": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
+    "typescript": "^4.9.0"
+  }
+}

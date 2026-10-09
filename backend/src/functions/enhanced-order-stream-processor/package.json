@@ -1,0 +1,12 @@
+{
+  "name": "enhanced-order-stream-processor",
+  "version": "1.0.0",
+  "description": "Enhanced Order Stream Processor for real-time notifications",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.400.0",
+    "@aws-sdk/lib-dynamodb": "^3.400.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.400.0",
+    "@aws-sdk/client-lambda": "^3.400.0"
+  }
+}

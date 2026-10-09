@@ -1,0 +1,1059 @@
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { v4: uuidv4 } = require('uuid');
+const https = require('https');
+
+const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_BASE_URL || '').trim();
+const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
+
+const client = new DynamoDBClient({});
+const dynamoDb = DynamoDBDocumentClient.from(client, {
+    marshallOptions: {
+        removeUndefinedValues: true
+    }
+});
+
+function requireEnv(name) {
+    const value = process.env[name];
+    if (!value) {
+        throw new Error(`Missing required environment variable: ${name}`);
+    }
+    return value;
+}
+
+// Use new WizzOrders table
+const TABLE_NAME = process.env.WIZZORDERS_TABLE || 'WizzOrders';
+// Businesses table (used as fallback to fetch store address when frontend doesn't provide one)
+const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
+const MERCHANT_WEBHOOK_URL = process.env.MERCHANT_WEBHOOK_URL;
+
+function postJson(urlString, headers, body, timeoutMs = 6000) {
+    return new Promise((resolve, reject) => {
+        const url = new URL(urlString);
+        const req = https.request(
+            {
+                protocol: url.protocol,
+                hostname: url.hostname,
+                port: url.port || (url.protocol === 'https:' ? 443 : 80),
+                path: url.pathname + url.search,
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    ...headers
+                },
+                timeout: timeoutMs
+            },
+            (res) => {
+                let data = '';
+                res.setEncoding('utf8');
+                res.on('data', (chunk) => (data += chunk));
+                res.on('end', () => resolve({ statusCode: res.statusCode || 0, body: data }));
+            }
+        );
+
+        req.on('timeout', () => {
+            req.destroy(new Error('Request timed out'));
+        });
+        req.on('error', reject);
+        req.write(JSON.stringify(body));
+        req.end();
+    });
+}
+
+async function sendMerchantOrderPush(payload) {
+    if (!CENTRAL_NOTIFICATIONS_BASE_URL || !CENTRAL_NOTIFICATIONS_INTERNAL_KEY) {
+        console.log('ℹ️ Central Notifications merchant push not configured; skipping', {
+            hasBaseUrl: Boolean(CENTRAL_NOTIFICATIONS_BASE_URL),
+            hasInternalKey: Boolean(CENTRAL_NOTIFICATIONS_INTERNAL_KEY)
+        });
+        return;
+    }
+
+    const url = `${CENTRAL_NOTIFICATIONS_BASE_URL.replace(/\/$/, '')}/push/send/merchant-order`;
+    try {
+        const resp = await postJson(
+            url,
+            { 'x-internal-key': CENTRAL_NOTIFICATIONS_INTERNAL_KEY },
+            payload,
+            6000
+        );
+
+        if (resp.statusCode < 200 || resp.statusCode >= 300) {
+            console.error('❌ Central Notifications merchant push failed', { status: resp.statusCode, body: String(resp.body || '').slice(0, 500) });
+            return;
+        }
+        console.log('✅ Central Notifications merchant push sent', String(resp.body || '').slice(0, 500));
+    } catch (e) {
+        console.error('❌ Central Notifications merchant push error', e?.message || String(e));
+    }
+}
+
+/**
+ * Format delivery address based on user type (registered vs guest)
+ * @param {Object} addressData - The address data from request
+ * @param {boolean} isGuestOrder - Whether this is a guest order
+ * @returns {Object} Formatted address object
+ */
+function formatDeliveryAddress(addressData, isGuestOrder = false) {
+    console.log('🏠 formatDeliveryAddress: Input data:', JSON.stringify(addressData, null, 2));
+    console.log('🏠 formatDeliveryAddress: isGuestOrder:', isGuestOrder);
+    
+    // Base address structure
+    const formattedAddress = {
+        // Common fields for both registered and guest users
+        lat: addressData.latitude || addressData.lat || null,
+        lng: addressData.longitude || addressData.lng || null,
+        countryCode: addressData.countryCode || 'IQ',
+    };
+    
+    if (isGuestOrder) {
+        // Guest user format - use fullAddress directly if provided
+        console.log('🏠 formatDeliveryAddress: Processing guest user address');
+        
+        // For guests, prioritize fullAddress from the input
+        if (addressData.fullAddress && addressData.fullAddress.trim() !== '') {
+            let finalAddress = addressData.fullAddress.trim();
+            
+            // Add landmark if provided separately
+            if (addressData.landmark && addressData.landmark.trim() !== '') {
+                finalAddress += '، قرب ' + addressData.landmark.trim();
+            }
+            
+            formattedAddress.fullAddress = finalAddress;
+            console.log('🏠 formatDeliveryAddress: Using provided fullAddress for guest:', formattedAddress.fullAddress);
+        } else {
+            // Fallback: try to build address from components
+            const addressParts = [];
+            if (addressData.province && addressData.province.trim() !== '') addressParts.push(addressData.province.trim());
+            if (addressData.district && addressData.district.trim() !== '') addressParts.push(addressData.district.trim());
+            if (addressData.neighborhood && addressData.neighborhood.trim() !== '') addressParts.push(addressData.neighborhood.trim());
+            if (addressData.landmark && addressData.landmark.trim() !== '') addressParts.push('قرب ' + addressData.landmark.trim());
+            if (addressData.street && addressData.street.trim() !== '') addressParts.push(addressData.street.trim());
+            
+            formattedAddress.fullAddress = addressParts.length > 0 ? addressParts.join('، ') : 'عنوان غير محدد';
+            console.log('🏠 formatDeliveryAddress: Built fullAddress from parts for guest:', formattedAddress.fullAddress);
+        }
+        
+        // Set simple fields for compatibility
+        formattedAddress.addressLine1 = addressData.street || addressData.addressLine1 || '';
+        formattedAddress.addressLine2 = addressData.addressLine2 || null;
+        formattedAddress.city = addressData.district || addressData.city || '';
+        formattedAddress.area = addressData.neighborhood || addressData.area || null;
+        formattedAddress.postalCode = addressData.postalCode || addressData.zipCode || null;
+        
+        // أضافة حقل landmark للضيوف أيضاً
+        formattedAddress.landmark = addressData.landmark || '';
+        formattedAddress.name = addressData.name || '';
+        formattedAddress.province = addressData.province || '';
+        formattedAddress.district = addressData.district || '';
+        formattedAddress.neighborhood = addressData.neighborhood || '';
+        formattedAddress.phoneNumber = addressData.phoneNumber || null;
+        
+    } else {
+        // Registered user format - detailed address fields
+        console.log('🏠 formatDeliveryAddress: Processing registered user address');
+        formattedAddress.name = addressData.name || 'عنوان غير محدد';
+        formattedAddress.province = addressData.province || '';
+        formattedAddress.district = addressData.district || '';
+        formattedAddress.neighborhood = addressData.neighborhood || '';
+        formattedAddress.landmark = addressData.landmark || '';
+        formattedAddress.detailedAddress = addressData.detailedAddress || addressData.detailed_address || null;
+        formattedAddress.buildingNumber = addressData.buildingNumber || addressData.building_number || null;
+        formattedAddress.floorNumber = addressData.floorNumber || addressData.floor_number || null;
+        formattedAddress.apartmentNumber = addressData.apartmentNumber || addressData.apartment_number || null;
+        formattedAddress.phoneNumber = addressData.phoneNumber || addressData.phone_number || null;
+        
+        // Build full address for registered users
+        const detailedParts = [];
+        if (formattedAddress.detailedAddress) detailedParts.push(formattedAddress.detailedAddress);
+        if (formattedAddress.neighborhood && formattedAddress.neighborhood !== 'غير محدد') detailedParts.push(formattedAddress.neighborhood);
+        if (formattedAddress.district && formattedAddress.district !== 'غير محدد') detailedParts.push(formattedAddress.district);
+        if (formattedAddress.province && formattedAddress.province !== 'غير محدد') detailedParts.push(formattedAddress.province);
+        if (formattedAddress.landmark && formattedAddress.landmark !== 'غير محدد') detailedParts.push('قرب ' + formattedAddress.landmark);
+        
+        formattedAddress.fullAddress = addressData.fullAddress || detailedParts.join('، ') || formattedAddress.name;
+        
+        // Also include simple fields for backward compatibility
+        formattedAddress.addressLine1 = formattedAddress.detailedAddress || '';
+        formattedAddress.city = formattedAddress.district || '';
+        formattedAddress.area = formattedAddress.neighborhood || null;
+    }
+    
+    console.log('🏠 formatDeliveryAddress: Final formatted address:', JSON.stringify(formattedAddress, null, 2));
+    return formattedAddress;
+}
+
+/**
+ * Send order to merchant backend webhook
+ * @param {Object} order - The order object
+ * @returns {Promise} - Promise that resolves with webhook response
+ */
+function sendOrderToMerchant(order) {
+    if (!MERCHANT_WEBHOOK_URL) {
+        console.log('ℹ️ MERCHANT_WEBHOOK_URL not configured; skipping merchant webhook');
+        return Promise.resolve({ skipped: true });
+    }
+    return new Promise((resolve, reject) => {
+        console.log('📨 Sending order to merchant webhook:', order.orderId);
+        
+        // Send complete WizzOrders schema to merchant
+        const webhookPayload = {
+            orderId: order.orderId,
+            orderNumber: order.orderNumber_gsi,
+            storeId: order.storeId,
+            userId: order.userId,
+            isGuestOrder: order.isGuestOrder,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            deliveryAddress: order.deliveryAddress,
+            items: order.items,
+            pricing: order.pricing,
+            notes: order.notes,
+            deliveryType: order.deliveryType,
+            paymentMethod: order.paymentMethod,
+            paymentChannel: order.paymentChannel,
+            createdAt: order.createdAt,
+            status: order.status,
+            // Additional context
+            channel: order.channel,
+            currency: order.currency,
+            deliveryInstructions: order.deliveryInstructions
+        };
+
+        const postData = JSON.stringify(webhookPayload);
+        console.log('📨 Webhook payload (WizzOrders Schema):', JSON.stringify(webhookPayload, null, 2));
+
+        const url = new URL(MERCHANT_WEBHOOK_URL);
+        const options = {
+            hostname: url.hostname,
+            port: 443,
+            path: url.pathname,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'User-Agent': 'WizzUser-Backend/1.0'
+            },
+            timeout: 10000 // 10 second timeout
+        };
+
+        const req = https.request(options, (res) => {
+            let responseBody = '';
+            
+            res.on('data', (chunk) => {
+                responseBody += chunk;
+            });
+            
+            res.on('end', () => {
+                console.log('📨 Webhook response status:', res.statusCode);
+                console.log('📨 Webhook response body:', responseBody);
+                
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        const response = JSON.parse(responseBody);
+                        resolve(response);
+                    } catch (parseError) {
+                        console.warn('📨 Webhook response not JSON:', responseBody);
+                        resolve({ success: true, message: responseBody });
+                    }
+                } else {
+                    console.error('📨 Webhook failed with status:', res.statusCode);
+                    reject(new Error(`Webhook failed with status ${res.statusCode}: ${responseBody}`));
+                }
+            });
+        });
+
+        req.on('error', (error) => {
+            console.error('📨 Webhook request error:', error);
+            reject(error);
+        });
+
+        req.on('timeout', () => {
+            console.error('📨 Webhook request timeout');
+            req.destroy();
+            reject(new Error('Webhook request timeout'));
+        });
+
+        req.write(postData);
+        req.end();
+    });
+}
+
+/**
+ * Lambda handler for creating a new order
+ */
+exports.handler = async (event) => {
+    console.log('Event received:', JSON.stringify(event, null, 2));
+    console.log('TABLE_NAME:', TABLE_NAME);
+    console.log('Environment variables:', {
+        WIZZORDERS_TABLE: process.env.WIZZORDERS_TABLE,
+        NODE_ENV: process.env.NODE_ENV
+    });
+    
+    const headers = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+    };
+    
+    try {
+        // Early validation of environment variables
+        if (!TABLE_NAME) {
+            console.error('TABLE_NAME is not set!');
+            return {
+                statusCode: 500,
+                headers: headers,
+                body: JSON.stringify({
+                    error: 'Configuration error: TABLE_NAME is not set',
+                    success: false
+                })
+            };
+        }
+        
+        // Handle preflight requests
+        if (event.httpMethod === 'OPTIONS') {
+            return {
+                statusCode: 200,
+                headers: headers,
+                body: ''
+            };
+        }
+
+        // Parse request body
+        let body;
+        if (typeof event.body === 'string') {
+            body = JSON.parse(event.body);
+        } else {
+            body = event.body;
+        }
+
+        // Support both 'items' and 'cartItems' for backward compatibility
+        if (body.cartItems && !body.items) {
+            body.items = body.cartItems;
+        }
+
+        // Validate required fields (userId can be null for guest users)
+        const requiredFields = ['storeId', 'storeName', 'storeAddress', 'deliveryAddress', 'paymentMethod'];
+        for (const field of requiredFields) {
+            if (!body[field]) {
+                return {
+                    statusCode: 400,
+                    headers: headers,
+                    body: JSON.stringify({
+                        error: `Missing required field: ${field}`,
+                        success: false
+                    })
+                };
+            }
+        }
+        
+        // userId validation - can be null for guest users but must be present in the request
+        if (body.userId === undefined) {
+            return {
+                statusCode: 400,
+                headers: headers,
+                body: JSON.stringify({
+                    error: 'Missing required field: userId (can be null for guest users)',
+                    success: false
+                })
+            };
+        }
+
+        // If an auth token exists, extract the Cognito subject (sub) as a stable identifier for push.
+        // Keep body.userId semantics unchanged for existing APIs.
+        const authHeader = (event.headers && (event.headers.Authorization || event.headers.authorization)) || '';
+        const bearer = String(authHeader).replace(/^Bearer\s+/i, '').trim();
+        let userSub = null;
+        if (bearer) {
+            try {
+                const parts = bearer.split('.');
+                if (parts.length >= 2) {
+                    const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+                    const json = Buffer.from(payloadB64, 'base64').toString('utf8');
+                    const payload = JSON.parse(json);
+                    if (payload && typeof payload.sub === 'string' && payload.sub.trim()) {
+                        userSub = payload.sub.trim();
+                        console.log('🔐 Resolved userSub from JWT sub:', userSub);
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ Failed to decode JWT for userSub');
+            }
+        }
+
+        // Validate items array
+        if (!Array.isArray(body.items) || body.items.length === 0) {
+            return {
+                statusCode: 400,
+                headers: headers,
+                body: JSON.stringify({
+                    error: 'Items array is required and must not be empty',
+                    success: false
+                })
+            };
+        }
+
+        // CRITICAL BUSINESS RULE: Check for active orders
+        // Don't allow creating a new order if user has an active (incomplete) order
+        if (body.userId && body.userId !== null && body.userId !== 'guest') {
+            console.log('🔍 Checking for active orders for user:', body.userId);
+            
+            try {
+                const { QueryCommand } = require('@aws-sdk/lib-dynamodb');
+                
+                // Define active order statuses
+                const activeStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'on_the_way', 'in_kitchen', 'out_for_delivery'];
+                
+                // Query user's orders using GSI_User
+                const queryCommand = {
+                    TableName: TABLE_NAME,
+                    IndexName: 'GSI_User',
+                    KeyConditionExpression: 'userId_gsi = :userId',
+                    ExpressionAttributeValues: {
+                        ':userId': body.userId
+                    },
+                    ScanIndexForward: false, // Latest orders first
+                    Limit: 10 // Check last 10 orders should be enough
+                };
+
+                const result = await dynamoDb.send(new QueryCommand(queryCommand));
+                
+                if (result.Items && result.Items.length > 0) {
+                    // Check if any order is active (not completed)
+                    const activeOrder = result.Items.find(order => 
+                        activeStatuses.includes(order.status)
+                    );
+                    
+                    if (activeOrder) {
+                        console.log('❌ Active order found:', activeOrder.orderId, 'Status:', activeOrder.status);
+                        
+                        return {
+                            statusCode: 409, // Conflict
+                            headers: headers,
+                            body: JSON.stringify({
+                                error: 'لديك طلب نشط بالفعل. يجب انتظار إتمام الطلب الحالي قبل إنشاء طلب جديد.',
+                                success: false,
+                                activeOrder: {
+                                    orderId: activeOrder.orderId,
+                                    orderNumber: activeOrder.orderNumber_gsi || activeOrder.orderNumber,
+                                    status: activeOrder.status,
+                                    createdAt: activeOrder.createdAt,
+                                    storeName: activeOrder.storeName
+                                }
+                            })
+                        };
+                    }
+                }
+                
+                console.log('✅ No active orders found. User can create new order.');
+                
+            } catch (error) {
+                console.error('⚠️ Error checking active orders:', error);
+                // In case of error checking active orders, we should still allow order creation
+                // but log the error for monitoring
+                console.warn('Proceeding with order creation despite active order check error');
+            }
+        }
+
+        // Generate order ID and order number
+        const orderId = uuidv4();
+        const timestamp = Date.now();
+        const orderNumber = `ORD${timestamp}`;
+        const tripNumber = `TRP${timestamp}`;
+        const createdAt = new Date().toISOString();
+
+        // Helper function to generate bucket (b0-b9) from orderId hash for GSI distribution
+        const generateBucket = (id) => {
+            let hash = 0;
+            for (let i = 0; i < id.length; i++) {
+                hash = ((hash << 5) - hash) + id.charCodeAt(i);
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return `b${Math.abs(hash) % 10}`;
+        };
+
+        const bucket = generateBucket(orderId);
+
+        // Process items with complete WizzOrders schema - INCLUDING IMAGES
+        const processedItems = body.items.map((item, index) => {
+            const lineId = item.lineId || `line_${index + 1}`;
+            const unitPrice = Math.round((item.price || item.base_price || 0) * 1000); // Convert to IQD fils
+            const quantity = item.quantity || 1;
+            
+            return {
+                lineId: lineId,
+                skuId: item.id || item.skuId || item.productId,
+                itemId: item.id || item.itemId || item.productId,
+                name: item.name || item.dishName || 'عنصر غير محدد',
+                quantity: quantity,
+                unitPrice: unitPrice,
+                // ✅ إضافة صورة الطبق من تطبيق المستخدم
+                imageUrl: item.image || item.imageUrl || null,
+                modifiers: (item.modifiers || []).map(mod => ({
+                    id: mod.id || uuidv4(),
+                    name: mod.name || '',
+                    price: Math.round((mod.price || 0) * 1000) // Convert to IQD fils
+                })),
+                notes: item.notes || item.specialInstructions || null
+            };
+        });
+
+        // Calculate pricing in IQD fils according to schema
+        const goodsSubtotal = processedItems.reduce((sum, item) => {
+            const itemTotal = item.unitPrice * item.quantity;
+            const modifiersTotal = (item.modifiers || []).reduce((modSum, mod) => 
+                modSum + (mod.price * item.quantity), 0);
+            return sum + itemTotal + modifiersTotal;
+        }, 0);
+        
+        const serviceFee = Math.round((body.serviceFee || 0) * 1000);
+        const packagingFee = Math.round((body.packagingFee || 0) * 1000);
+        const deliveryFee = Math.round((body.deliveryFee || 10) * 1000); // Default 10 IQD
+        const tax = Math.round((body.tax || 0) * 1000);
+        const tip = Math.round((body.tip || 0) * 1000);
+        const rounding = Math.round((body.rounding || 0) * 1000);
+        
+        // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding
+        const total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding;
+
+        // Determine user fields and generate guestToken for guest orders
+        const isGuestOrder = body.userId === null || body.userId === 'guest' || !body.userId;
+        let userIdForGSI;
+        let guestToken = null;
+        
+        if (isGuestOrder) {
+            // Generate unique guestToken for guest users
+            guestToken = `GUEST_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+            userIdForGSI = guestToken; // Use guestToken in GSI for efficient querying
+        } else {
+            userIdForGSI = body.userId;
+        }
+        
+        // Format customer phone to E.164 format
+        const formatPhoneToE164 = (phone) => {
+            if (!phone) return null;
+            
+            // Remove all non-digit characters
+            const digits = phone.replace(/\D/g, '');
+            
+            // If starts with 964, assume it's already international
+            if (digits.startsWith('964')) {
+                return `+${digits}`;
+            }
+            
+            // If starts with 0, assume it's Iraq national format
+            if (digits.startsWith('0')) {
+                return `+964${digits.substring(1)}`;
+            }
+            
+            // If 10 digits, assume Iraq national without leading 0
+            if (digits.length === 10) {
+                return `+964${digits}`;
+            }
+            
+            // Otherwise, return as is with +
+            return `+${digits}`;
+        };
+
+        const customerPhone = formatPhoneToE164(body.customerPhone);
+
+        // Validate coordinates are within Iraq and not (0,0)
+        const deliveryAddress = body.deliveryAddress ? formatDeliveryAddress(body.deliveryAddress, isGuestOrder) : null;
+        if (deliveryAddress && deliveryAddress.lat && deliveryAddress.lng) {
+            if (deliveryAddress.lat === 0 && deliveryAddress.lng === 0) {
+                return {
+                    statusCode: 400,
+                    headers: headers,
+                    body: JSON.stringify({
+                        error: 'Invalid coordinates: (0,0) is not allowed',
+                        success: false
+                    })
+                };
+            }
+            
+            // Basic Iraq boundaries check (approximate)
+            if (deliveryAddress.lat < 29 || deliveryAddress.lat > 38 || 
+                deliveryAddress.lng < 38 || deliveryAddress.lng > 49) {
+                console.warn('🚨 Coordinates might be outside Iraq boundaries:', {
+                    lat: deliveryAddress.lat,
+                    lng: deliveryAddress.lng
+                });
+            }
+        }
+
+        // Create complete WizzOrders schema compliant order
+        // Ensure we have a real store address - enhanced fallback system
+        let storeAddressToUse = body.storeAddress || '';
+        let pickupRegionId = null; // 🆕 سيتم جلبه من جدول المطاعم
+        let restaurantLat = null; // 🆕 إحداثيات المطعم
+        let restaurantLng = null; // 🆕 إحداثيات المطعم
+        let merchantPushSubjectId = null; // 🆕 Cognito sub used for merchant push notifications
+        const placeholderValues = new Set(['العنوان غير محدد', 'عنوان غير محدد', '', null, undefined]);
+        
+        console.log('🏪 STORE INFO DEBUG:');
+        console.log('Original storeAddress from frontend:', body.storeAddress);
+        console.log('storeId:', body.storeId);
+        console.log('storeName:', body.storeName);
+        
+        // 🆕 جلب معلومات المطعم من جدول المطاعم (للحصول على regionId والعنوان والإحداثيات)
+        try {
+            console.log('📍 Fetching restaurant details from Businesses table for storeId:', body.storeId);
+            const getCmd = new GetCommand({
+                TableName: BUSINESSES_TABLE,
+                Key: { businessId: body.storeId }
+            });
+            const businessResult = await dynamoDb.send(getCmd);
+            
+            if (businessResult && businessResult.Item) {
+                const business = businessResult.Item;
+
+                // 🆕 Merchant push targeting
+                // Central Notifications stores device tokens keyed by a separate `subjectId`.
+                // Prefer an explicit mapping on the business record to avoid misrouting (e.g., to driver/user apps).
+                const explicitPushSubjectId =
+                    (typeof business.merchantPushSubjectId === 'string' && business.merchantPushSubjectId.trim())
+                        ? business.merchantPushSubjectId.trim()
+                        : (typeof business.pushSubjectId === 'string' && business.pushSubjectId.trim())
+                            ? business.pushSubjectId.trim()
+                            : null;
+
+                if (explicitPushSubjectId) {
+                    merchantPushSubjectId = explicitPushSubjectId;
+                    console.log('✅ Found merchantPushSubjectId (explicit):', merchantPushSubjectId);
+                } else if (typeof business.cognitoUserId === 'string' && business.cognitoUserId.trim()) {
+                    merchantPushSubjectId = business.cognitoUserId.trim();
+                    console.log('⚠️ Using merchantPushSubjectId fallback (cognitoUserId):', merchantPushSubjectId);
+                } else if (typeof business.ownerId === 'string' && business.ownerId.trim()) {
+                    merchantPushSubjectId = business.ownerId.trim();
+                    console.log('⚠️ Using merchantPushSubjectId fallback (ownerId):', merchantPushSubjectId);
+                } else {
+                    console.warn('⚠️ Business record missing merchantPushSubjectId/pushSubjectId/cognitoUserId/ownerId; merchant push may be skipped');
+                }
+                
+                // 🆕 جلب regionId من المطعم
+                if (business.regionId) {
+                    pickupRegionId = business.regionId;
+                    console.log('✅ Found pickupRegionId from restaurant:', pickupRegionId);
+                } else {
+                    console.warn('⚠️ Restaurant does not have regionId field');
+                }
+                
+                // 🆕 جلب إحداثيات المطعم من latitude, longitude
+                if (business.latitude && business.longitude) {
+                    restaurantLat = business.latitude;
+                    restaurantLng = business.longitude;
+                    console.log('✅ Found restaurant coordinates from Businesses table:', {
+                        lat: restaurantLat,
+                        lng: restaurantLng
+                    });
+                } else {
+                    console.warn('⚠️ Restaurant does not have latitude/longitude fields');
+                }
+                
+                // جلب العنوان إذا كان مفقوداً
+                if (business.address && (!storeAddressToUse || placeholderValues.has(storeAddressToUse) || (typeof storeAddressToUse === 'string' && storeAddressToUse.trim() === ''))) {
+                    storeAddressToUse = business.address;
+                    console.log('✅ Found business address from Businesses table:', storeAddressToUse);
+                }
+            } else {
+                console.warn('⚠️ No restaurant found in Businesses table for storeId:', body.storeId);
+            }
+        } catch (err) {
+            console.error('❌ Error fetching restaurant details:', err);
+        }
+        
+        // Fallback للعنوان إذا لم يتم العثور عليه
+        if (!storeAddressToUse || placeholderValues.has(storeAddressToUse) || (typeof storeAddressToUse === 'string' && storeAddressToUse.trim() === '')) {
+            const storeName = body.storeName || 'مطعم غير محدد';
+            const fallbackAddresses = [
+                `${storeName} - شارع الكرادة، بغداد، العراق`,
+                `${storeName} - منطقة الجادرية، بغداد، العراق`,
+                `${storeName} - شارع فلسطين، بغداد، العراق`,
+                `${storeName} - منطقة الحارثية، بغداد، العراق`,
+                `${storeName} - شارع الرشيد، بغداد المركز، العراق`,
+                `${storeName} - منطقة المنصور، بغداد، العراق`
+            ];
+            const addressIndex = (body.storeId || 'default').length % fallbackAddresses.length;
+            storeAddressToUse = fallbackAddresses[addressIndex];
+            console.log('🔄 Using enhanced fallback address:', storeAddressToUse);
+        }
+        const order = {
+            // Primary Keys - WizzOrders Schema
+            PK: `ORDER#${orderId}`,
+            SK: 'META',
+            
+            // Identity and Source (أ)
+            orderId: orderId,
+            orderNumber: orderNumber,
+            tripNumber: tripNumber,
+            currency: 'IQD',
+            channel: body.channel || 'android', // ios | android | web | call_center | webhook | pos
+            sourceSystem: body.sourceSystem || 'wizzuser', // When channel=webhook
+            externalOrderId: body.externalOrderId || null,
+            idempotencyKey: body.idempotencyKey || orderId,
+            createdBy: 'wizzuser_app',
+            updatedBy: 'wizzuser_app',
+            rev: 1, // Version for optimistic locking
+            
+            // Customer and Merchant (ب)
+            userId: isGuestOrder ? null : body.userId, // Keep legacy user id value
+            userSub: userSub, // Cognito subject (sub) used for push token targeting
+            guestToken: guestToken, // Token for guest order tracking
+            isGuestOrder: isGuestOrder,
+            customerName: body.customerName || (isGuestOrder ? 'ضيف' : null),
+            customerPhone: customerPhone,
+            storeId: body.storeId,
+            storeName: body.storeName,
+            storeAddress: storeAddressToUse, // عنوان المطعم للسائقين (مع fallback)
+            // ✅ إضافة صورة المطعم من تطبيق المستخدم
+            storeImage: body.storeImage || null,
+            // 🆕 إضافة pickupRegionId للمطعم (حيوي لنظام توزيع الطلبات على السائقين)
+            pickupRegionId: pickupRegionId,
+            // 🆕 إضافة إحداثيات المطعم (لنظام Wave System)
+            restaurantLat: restaurantLat,
+            restaurantLng: restaurantLng,
+            
+            // Status and Timestamps (ج)
+            status: 'pending',
+            createdAt: createdAt,
+            confirmedAt: null,
+            inKitchenAt: null,
+            readyAt: null,
+            pickupAt: null,
+            // deliveredAt: null, // ❌ REMOVED: Cannot be NULL because of GSI driverId-deliveredAt-index (sort key)
+            // Note: deliveredAt will be added when order is delivered, not on order creation
+            canceledAt: null,
+            cancelReason: null,
+            canceledBy: null,
+            updatedAt: createdAt,
+            
+            // Delivery Type and Address (د)
+            deliveryType: body.deliveryType || 'delivery', // delivery | pickup
+            deliveryAddress: deliveryAddress,
+            deliveryInstructions: body.deliveryInstructions || null,
+            deliveryProvider: body.deliveryProvider || 'platform',
+            
+            // Cart Snapshot (ه)
+            items: processedItems,
+            
+            // Pricing - Complete Schema (و)
+            pricing: {
+                goodsSubtotal: goodsSubtotal,
+                serviceFee: serviceFee,
+                packagingFee: packagingFee,
+                deliveryFee: deliveryFee,
+                tax: tax,
+                tip: tip,
+                rounding: rounding,
+                total: total
+            },
+            
+            // Payment (ز)
+            paymentMethod: body.paymentMethod || 'cod',
+            paymentChannel: body.paymentChannel || 'cod',
+            paymentStatus: 'pending',
+            paymentIntentId: null,
+            authorizedAt: null,
+            capturedAt: null,
+            voidedAt: null,
+            
+            // COD specific fields
+            codCollectedAt: null,
+            collectorId: null,
+            cashReceived: null,
+            changeGiven: null,
+            
+            // Driver/Delivery Fields (ح) - Only populated when driver is assigned
+            // driverId: null, // ❌ REMOVED: Cannot be NULL because of GSI driverId-deliveredAt-index
+            // Note: driverId will be added when driver is assigned, not on order creation
+            deliveryJobId: null,
+            eta: null,
+            distanceMeters: body.distanceMeters || null,
+            assignedAt: null,
+            pickupAt: null, // Duplicate for driver tracking
+            deliveryOTPUsed: false,
+            recipientSignature: null,
+            podPhotos: null,
+            driverPayoutIQD: null,
+            dispatchCostIQD: null,
+            
+            // Scheduling (ط)
+            scheduled: body.scheduled || false,
+            scheduledDate: body.scheduledDate || null,
+            
+            // GSI Helper Fields (ي)
+            userId_gsi: userIdForGSI, // For GSI_User - use guestToken for guests, userId for registered users
+            storeStatus: `${body.storeId}#pending#${bucket}`, // For GSI_StoreStatus
+            paymentStatus_gsi: `pending#${bucket}`, // For GSI_Payment
+            orderNumber_gsi: orderNumber, // For GSI_OrderNumber
+            
+            // Additional Fields
+            metadata: body.metadata || null,
+            notes: body.notes || body.specialInstructions || null,
+            ttlEpoch: isGuestOrder ? (Math.floor(Date.now() / 1000) + (90 * 24 * 3600)) : (body.ttlEpoch || null), // Auto-delete guest orders after 90 days
+            
+            // Legacy Compatibility (keep for backward compatibility)
+            total: Math.round(total / 1000), // Convert fils back to IQD for compatibility
+            subtotal: Math.round(goodsSubtotal / 1000),
+            deliveryFee_legacy: Math.round(deliveryFee / 1000),
+            tax_legacy: Math.round(tax / 1000)
+        };
+
+        // Add scheduledDate_gsi and scheduledAt only for scheduled orders (sparse index)
+        if (body.scheduledDate && body.scheduledDate.trim() !== '') {
+            order.scheduledDate_gsi = body.scheduledDate;
+            console.log('✅ Added scheduledDate_gsi for scheduled order:', body.scheduledDate);
+        } else {
+            console.log('✅ Omitting scheduledDate_gsi for non-scheduled order (sparse index)');
+        }
+
+        if (body.scheduledAt && body.scheduledAt.trim() !== '') {
+            order.scheduledAt = body.scheduledAt;
+            console.log('✅ Added scheduledAt for scheduled order:', body.scheduledAt);
+        } else {
+            console.log('✅ Omitting scheduledAt for non-scheduled order (sparse index)');
+        }
+
+        console.log('Order to be created:', JSON.stringify(order, null, 2));
+
+        // Save order to DynamoDB
+        const putCommand = new PutCommand({
+            TableName: TABLE_NAME,
+            Item: order
+        });
+
+        await dynamoDb.send(putCommand);
+
+        console.log('Order created successfully:', orderId);
+
+        // Send order to merchant backend webhook (non-blocking)
+        try {
+            console.log('📨 Sending order to merchant backend...');
+            const webhookResponse = await sendOrderToMerchant(order);
+            console.log('📨 Merchant webhook response:', webhookResponse);
+        } catch (webhookError) {
+            // Don't fail the order creation if webhook fails
+            console.error('📨 Merchant webhook failed (non-blocking):', webhookError.message);
+            console.error('📨 Order creation will continue despite webhook failure');
+        }
+
+        // Send real-time notification to merchant's WebSocket (non-blocking)
+        try {
+            console.log('📡 Sending real-time notification to merchant...');
+            await sendMerchantNotification(order);
+            console.log('📡 Merchant notification sent successfully');
+        } catch (notificationError) {
+            // Don't fail the order creation if notification fails
+            console.error('📡 Merchant notification failed (non-blocking):', notificationError.message);
+        }
+
+        // Send push notification to merchant (works when app is terminated) (non-blocking)
+        // Prefer businessId targeting (storeId) to avoid cross-system subjectId mismatches.
+        try {
+            const businessId = order.storeId || '';
+            if (!businessId) {
+                console.log('ℹ️ Merchant push skipped (no businessId/storeId on order)');
+            } else {
+                const payload = {
+                    action: 'new_order',
+                    orderId: order.orderId,
+                    orderNumber: order.orderNumber_gsi || order.orderNumber || '',
+                    businessId,
+                    businessName: order.storeName || '',
+                    customerName: order.customerName || '',
+                    totalAmount: order?.pricing?.total ? Math.round(order.pricing.total / 1000) : undefined,
+                    updatedAt: new Date().toISOString()
+                };
+
+                if (merchantPushSubjectId) {
+                    payload.subjectId = merchantPushSubjectId;
+                }
+
+                console.log('📲 Sending merchant push...', {
+                    businessId,
+                    subjectId: merchantPushSubjectId || null,
+                    orderId: order.orderId
+                });
+
+                await sendMerchantOrderPush(payload);
+            }
+        } catch (pushError) {
+            console.error('📲 Merchant push failed (non-blocking):', pushError?.message || String(pushError));
+        }
+
+        const response = {
+            success: true,
+            message: 'Order created successfully',
+            orderId: orderId,
+            orderNumber: orderNumber,
+            order: order
+        };
+
+        // Add guestToken to response for guest orders
+        if (isGuestOrder && guestToken) {
+            response.guestToken = guestToken;
+            console.log('🎫 Guest token generated for order:', guestToken);
+        }
+
+        return {
+            statusCode: 201,
+            headers: headers,
+            body: JSON.stringify(response)
+        };
+
+    } catch (error) {
+        console.error('Error creating order:', error);
+        console.error('Error stack:', error.stack);
+        console.error('Error name:', error.name);
+        
+        return {
+            statusCode: 500,
+            headers: headers,
+            body: JSON.stringify({
+                error: 'Failed to create order',
+                message: error.message,
+                errorName: error.name,
+                success: false
+            })
+        };
+    }
+};
+
+/**
+ * Send real-time notification to merchant's WebSocket connection
+ * @param {Object} order - The order object
+ * @returns {Promise} - Promise that resolves when notification is sent
+ */
+async function sendMerchantNotification(order) {
+    console.log('📡 Preparing merchant notification for order:', order.orderId);
+    
+    // Use shared WizzUser WebSocket infrastructure for merchant notifications
+    // This is the correct endpoint from WizzBusiness app_config.dart
+    const WEBSOCKET_ENDPOINT = process.env.WEBSOCKET_ENDPOINT;
+    const CONNECTIONS_TABLE = process.env.WEBSOCKET_CONNECTIONS_TABLE || process.env.CONNECTIONS_TABLE;
+
+    if (!WEBSOCKET_ENDPOINT || !CONNECTIONS_TABLE) {
+        console.warn('⚠️ Merchant WebSocket notification skipped (missing WEBSOCKET_ENDPOINT or WEBSOCKET_CONNECTIONS_TABLE/CONNECTIONS_TABLE env vars)');
+        return;
+    }
+    
+    try {
+        const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+        const { DynamoDBDocumentClient, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+        const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+        
+        const dynamoClient = new DynamoDBClient({});
+        const docClient = DynamoDBDocumentClient.from(dynamoClient);
+        
+        // Find active WebSocket connections for this merchant/business
+        // We need to scan with FilterExpression because businessId is not in any GSI key
+        // Alternative: query by userId if we can get it, but businessId is more reliable
+        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+        
+        const scanParams = {
+            TableName: CONNECTIONS_TABLE,
+            FilterExpression: 'businessId = :businessId AND isActive = :active',
+            ExpressionAttributeValues: {
+                ':businessId': order.storeId,
+                ':active': true
+            }
+        };
+        
+        console.log('📡 Scanning for merchant WebSocket connections:', JSON.stringify(scanParams, null, 2));
+        
+        const scanResult = await docClient.send(new ScanCommand(scanParams));
+        let connections = scanResult.Items || [];
+        
+        // Filter out expired connections based on TTL
+        const currentTime = Math.floor(Date.now() / 1000);
+        connections = connections.filter(conn => !conn.ttl || conn.ttl > currentTime);
+        
+        console.log(`📡 Found ${connections.length} active WebSocket connections for merchant ${order.storeId}`);
+        
+        if (connections.length === 0) {
+            console.log('📡 No active WebSocket connections found for merchant, skipping notification');
+            return;
+        }
+        
+        // Initialize WebSocket API client with correct endpoint
+        const apiGwClient = new ApiGatewayManagementApiClient({
+            endpoint: WEBSOCKET_ENDPOINT.replace('wss://', 'https://'),
+            region: process.env.AWS_REGION || 'us-east-1'
+        });
+        
+        // Prepare notification message matching the format expected by RealtimeOrderService
+        const notification = {
+            type: 'NEW_ORDER',
+            action: 'new_order', // For compatibility
+            data: {
+                orderId: order.orderId,
+                orderNumber: order.orderNumber_gsi,
+                storeId: order.storeId,
+                storeName: order.storeName,
+                customerName: order.customerName,
+                customerPhone: order.customerPhone,
+                items: order.items,
+                pricing: order.pricing,
+                total: order.pricing.total / 1000, // Convert fils to IQD for display
+                deliveryAddress: order.deliveryAddress,
+                deliveryType: order.deliveryType,
+                paymentMethod: order.paymentMethod,
+                notes: order.notes,
+                createdAt: order.createdAt,
+                status: order.status,
+                isGuestOrder: order.isGuestOrder,
+                channel: order.channel,
+                currency: order.currency
+            },
+            timestamp: new Date().toISOString(),
+            priority: 'HIGH' // Mark as high priority for immediate processing
+        };
+        
+        const messageData = JSON.stringify(notification);
+        console.log('📡 Prepared notification message:', messageData.substring(0, 300) + '...');
+        
+        // Send notification to all active connections
+        const sendPromises = connections.map(async (connection) => {
+            try {
+                const command = new PostToConnectionCommand({
+                    ConnectionId: connection.connectionId,
+                    Data: messageData
+                });
+                
+                await apiGwClient.send(command);
+                console.log(`📡 ✅ Notification sent successfully to merchant connection: ${connection.connectionId}`);
+                
+            } catch (error) {
+                console.error(`📡 ❌ Failed to send notification to connection ${connection.connectionId}:`, error);
+                
+                // If connection is stale (410 Gone error), mark it as inactive
+                if (error.statusCode === 410 || error.$metadata?.httpStatusCode === 410) {
+                    console.log(`📡 Marking stale connection as inactive: ${connection.connectionId}`);
+                    try {
+                        await docClient.send(new UpdateCommand({
+                            TableName: CONNECTIONS_TABLE,
+                            Key: {
+                                connectionId: connection.connectionId
+                            },
+                            UpdateExpression: 'SET isActive = :active',
+                            ExpressionAttributeValues: {
+                                ':active': false
+                            }
+                        }));
+                        console.log(`📡 Marked connection ${connection.connectionId} as inactive`);
+                    } catch (updateError) {
+                        console.error('📡 Failed to mark connection as inactive:', updateError);
+                    }
+                }
+            }
+        });
+        
+        await Promise.allSettled(sendPromises);
+        console.log(`📡 Merchant notification completed for ${connections.length} connections`);
+        
+    } catch (error) {
+        console.error('📡 Error sending merchant notification:', error);
+        throw error;
+    }
+}

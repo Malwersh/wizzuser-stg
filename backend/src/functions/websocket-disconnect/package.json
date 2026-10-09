@@ -1,0 +1,14 @@
+{
+  "name": "websocket-disconnect",
+  "version": "1.0.0",
+  "description": "WebSocket disconnect handler",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
+    "typescript": "^4.9.0"
+  }
+}

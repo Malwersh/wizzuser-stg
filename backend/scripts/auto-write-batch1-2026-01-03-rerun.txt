@@ -1,0 +1,37 @@
+DynamoDB auto copy plan:
+- Region: us-east-1
+- Source profile: Wizz_dev_UserApp (tables=79, selected=3)
+- Target profile: Wizz_stg_UserApp (tables=36)
+- Mode: WRITE
+- Schema check: PRIMARY_KEY_ONLY
+- Exclusions (default): /password_reset_tokens/i /temp_users/i /^websocket[-_]/i /websocket_connections/i /websocket_subscriptions/i /^Chat(Sessions|Messages)$/i /^chat-(sessions|messages)-/i /IdempotencyKeys/i /AuditLog/i /Ledger/i /Topup/i /Holds/i /Wallet/i
+- Include: /^(WizzCentral_Regions$|WizzCentral_Region(Audit|Neighbors|Derived)_dev$)/
+
+Mapped tables (3):
+- WizzCentral_RegionAudit_dev -> WizzCentral_RegionAudit_staging
+- WizzCentral_RegionNeighbors_dev -> WizzCentral_RegionNeighbors_staging
+- WizzCentral_Regions -> WizzCentral_Regions
+
+Table: WizzCentral_RegionAudit_dev -> WizzCentral_RegionAudit_staging
+- srcItemCount~22 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WizzCentral_RegionAudit_dev)...
+Scan complete: 22 items
+Writing to target (WizzCentral_RegionAudit_staging)...
+Write complete: 22 items
+
+Table: WizzCentral_RegionNeighbors_dev -> WizzCentral_RegionNeighbors_staging
+- srcItemCount~26 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WizzCentral_RegionNeighbors_dev)...
+Scan complete: 26 items
+Writing to target (WizzCentral_RegionNeighbors_staging)...
+Write complete: 26 items
+
+Table: WizzCentral_Regions -> WizzCentral_Regions
+- srcItemCount~15 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WizzCentral_Regions)...
+Scan complete: 15 items
+Writing to target (WizzCentral_Regions)...
+Write complete: 15 items

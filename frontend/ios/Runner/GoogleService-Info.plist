@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyAmbjg_YkzfL0BddGL1y-H4yrcnu1taVA0</string>
+	<key>GCM_SENDER_ID</key>
+	<string>1007878389815</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.wiz.wizuserapp</string>
+	<key>PROJECT_ID</key>
+	<string>wizz-business-app</string>
+	<key>STORAGE_BUCKET</key>
+	<string>wizz-business-app.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:1007878389815:ios:1b7c1cff2fb00193187fb2</string>
+</dict>
+</plist>

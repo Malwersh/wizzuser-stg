@@ -1,0 +1,41 @@
+{
+  "name": "foodapp-backend",
+  "version": "1.0.0",
+  "description": "Food delivery app backend API",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "deploy": "sam build && sam deploy",
+    "local": "sam local start-api"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.600.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0",
+    "@aws-sdk/client-dynamodb": "^3.899.0",
+    "@aws-sdk/client-lambda": "^3.600.0",
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/client-ses": "^3.600.0",
+    "@aws-sdk/client-sns": "^3.600.0",
+    "@aws-sdk/credential-providers": "^3.933.0",
+    "@aws-sdk/lib-dynamodb": "^3.899.0",
+    "aws-sdk": "^2.1692.0",
+    "axios": "^1.12.2",
+    "bcryptjs": "^2.4.3",
+    "h3-js": "^4.3.0",
+    "uuid": "^10.0.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.140",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.14.0",
+    "@types/uuid": "^10.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

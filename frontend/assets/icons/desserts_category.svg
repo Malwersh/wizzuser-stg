@@ -1,0 +1,98 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#e91e63;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ad1457;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="cake" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fff8e1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5f5dc;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Elegant cake stand -->
+  <ellipse cx="100" cy="155" rx="50" ry="15" fill="#e0e0e0"/>
+  <rect x="85" y="140" width="30" height="15" fill="#bdbdbd"/>
+  <ellipse cx="100" cy="140" rx="15" ry="8" fill="#e0e0e0"/>
+  
+  <!-- Cake base layer -->
+  <ellipse cx="100" cy="140" rx="55" ry="18" fill="url(#cake)"/>
+  <rect x="45" y="122" width="110" height="18" fill="#f8f8f8"/>
+  <ellipse cx="100" cy="122" rx="55" ry="18" fill="#fff"/>
+  
+  <!-- Strawberry layer -->
+  <rect x="50" y="108" width="100" height="14" fill="#ffb3ba"/>
+  <ellipse cx="100" cy="108" rx="50" ry="14" fill="#ffcccb"/>
+  
+  <!-- Chocolate layer -->
+  <rect x="55" y="94" width="90" height="14" fill="#d2691e"/>
+  <ellipse cx="100" cy="94" rx="45" ry="14" fill="#cd853f"/>
+  
+  <!-- Top layer -->
+  <rect x="60" y="80" width="80" height="14" fill="#fff8dc"/>
+  <ellipse cx="100" cy="80" rx="40" ry="14" fill="#fffacd"/>
+  
+  <!-- Beautiful frosting swirls -->
+  <path d="M 75 75 Q 85 70 95 75 Q 105 70 115 75 Q 125 70 130 75" stroke="#ff69b4" stroke-width="3" fill="none"/>
+  <path d="M 70 70 Q 80 65 90 70 Q 100 65 110 70" stroke="#ff1493" stroke-width="2" fill="none"/>
+  
+  <!-- Cherry on top -->
+  <circle cx="100" cy="70" r="6" fill="#dc143c"/>
+  <circle cx="100" cy="68" r="4" fill="#ff1493"/>
+  <ellipse cx="98" cy="66" rx="2" ry="3" fill="#ff69b4"/>
+  <rect x="99" y="64" width="2" height="8" fill="#228b22"/>
+  <ellipse cx="101" cy="64" rx="3" ry="2" fill="#32cd32"/>
+  
+  <!-- Decorative roses -->
+  <circle cx="80" cy="85" r="4" fill="#ff69b4"/>
+  <circle cx="80" cy="85" r="3" fill="#ffb6c1"/>
+  <circle cx="80" cy="85" r="1" fill="#ff1493"/>
+  
+  <circle cx="120" cy="85" r="4" fill="#ff69b4"/>
+  <circle cx="120" cy="85" r="3" fill="#ffb6c1"/>
+  <circle cx="120" cy="85" r="1" fill="#ff1493"/>
+  
+  <!-- Pearl decorations -->
+  <circle cx="75" cy="100" r="2" fill="#fff"/>
+  <circle cx="125" cy="100" r="2" fill="#fff"/>
+  <circle cx="70" cy="115" r="1.5" fill="#fff"/>
+  <circle cx="130" cy="115" r="1.5" fill="#fff"/>
+  
+  <!-- Birthday candles -->
+  <rect x="90" y="55" width="3" height="20" fill="#ffeb3b"/>
+  <rect x="107" y="55" width="3" height="20" fill="#ff5722"/>
+  
+  <!-- Candle flames -->
+  <ellipse cx="91.5" cy="53" rx="2" ry="4" fill="#ff4500"/>
+  <ellipse cx="108.5" cy="53" rx="2" ry="4" fill="#ff4500"/>
+  <ellipse cx="91.5" cy="52" rx="1" ry="2" fill="#ffd700"/>
+  <ellipse cx="108.5" cy="52" rx="1" ry="2" fill="#ffd700"/>
+  
+  <!-- Ice cream cone -->
+  <polygon points="160,120 170,120 165,150" fill="#daa520"/>
+  <polygon points="162,122 168,122 165,145" fill="#f4a460"/>
+  <!-- Waffle pattern -->
+  <rect x="162" y="125" width="6" height="1" fill="#b8860b"/>
+  <rect x="162" y="130" width="6" height="1" fill="#b8860b"/>
+  <rect x="162" y="135" width="6" height="1" fill="#b8860b"/>
+  <rect x="162" y="140" width="6" height="1" fill="#b8860b"/>
+  <rect x="164" y="123" width="1" height="22" fill="#b8860b"/>
+  <rect x="166" y="123" width="1" height="22" fill="#b8860b"/>
+  
+  <!-- Ice cream scoops -->
+  <circle cx="165" cy="115" r="8" fill="#ffb3e6"/>
+  <circle cx="165" cy="105" r="7" fill="#ff6666"/>
+  <circle cx="165" cy="96" r="6" fill="#87ceeb"/>
+  
+  <!-- Sparkle effects -->
+  <circle cx="50" cy="60" r="2" fill="#fff" opacity="0.8"/>
+  <circle cx="150" cy="50" r="1.5" fill="#fff" opacity="0.8"/>
+  <circle cx="40" cy="140" r="1" fill="#fff" opacity="0.8"/>
+  <circle cx="30" cy="100" r="2" fill="#ffeb3b" opacity="0.8"/>
+</svg>

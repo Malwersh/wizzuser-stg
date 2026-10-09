@@ -1,0 +1,51 @@
+=== HEALTH ===
+HTTP/2 200 
+content-type: application/json
+content-length: 95
+date: Sun, 04 Jan 2026 08:16:03 GMT
+x-amzn-trace-id: Root=1-695a21c3-12ec3a4d3ee13d310674433e;Parent=1cb508a39db67d4e;Sampled=0;Lineage=1:ce5f2f38:0
+x-amzn-requestid: fb3b0380-2be0-4a3f-81ac-49c25f5358ed
+access-control-allow-origin: *
+access-control-allow-headers: Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token
+x-amz-apigw-id: Wpo2qGyWoAMER-g=
+access-control-allow-methods: DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT
+x-cache: Miss from cloudfront
+via: 1.1 37681d28dcd9b0d88c4e41e6ad027f20.cloudfront.net (CloudFront)
+x-amz-cf-pop: DFW57-P8
+x-amz-cf-id: UIpcob5IbDjFFMj-DzOqovu8TP34z0UeDV17LyPn9Y9K-S5CQRtOoQ==
+
+{"ok":true,"service":"WizzUser","environment":"staging","timestamp":"2026-01-04T08:16:03.921Z"}
+=== VERIFY_EMAIL dummy ===
+HTTP/2 400 
+content-type: application/json
+content-length: 62
+date: Sun, 04 Jan 2026 08:16:04 GMT
+x-amzn-trace-id: Root=1-695a21c4-78cb2a69331328a25ed6d16c;Parent=02c68771317b0127;Sampled=0;Lineage=1:76f42bbc:0
+x-amzn-requestid: 4cdc34a4-40c5-4919-9db2-f1b0d26fb4c7
+access-control-allow-origin: *
+access-control-allow-headers: Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token
+x-amz-apigw-id: Wpo2tEx1IAMEYJw=
+access-control-allow-methods: DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT
+x-cache: Error from cloudfront
+via: 1.1 ce669c569961f9f227a2c9200543658a.cloudfront.net (CloudFront)
+x-amz-cf-pop: DFW57-P8
+x-amz-cf-id: hBL0PuxzQsOTTe6MjO7LYaMHmp94JEWKaa7WWJRAYw5LwoSezUf8oQ==
+
+{"success":false,"error":"المستخدم غير موجود"}
+=== VERIFY_PHONE dummy ===
+HTTP/2 404 
+content-type: application/json
+content-length: 106
+date: Sun, 04 Jan 2026 08:16:05 GMT
+x-amzn-trace-id: Root=1-695a21c4-2117c3e0694769614511b8c9;Parent=4662eab7efb450d0;Sampled=0;Lineage=1:ea6416dd:0
+x-amzn-requestid: 21f02303-2814-45dc-a17b-67aba6fd923a
+access-control-allow-origin: *
+access-control-allow-headers: Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token
+x-amz-apigw-id: Wpo2xG4xoAMETiQ=
+access-control-allow-methods: DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT
+x-cache: Error from cloudfront
+via: 1.1 b3ade12e18edc772bb28fbdf299906c6.cloudfront.net (CloudFront)
+x-amz-cf-pop: DFW57-P8
+x-amz-cf-id: p7wc9ba9yg4YOqtMY0r6vEYbdq4UwoOLSb0OafMCL6NznlTwnszdiA==
+
+{"success":false,"error":"المستخدم المؤقت غير موجود أو انتهت صلاحيته"}

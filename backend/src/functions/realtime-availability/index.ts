@@ -1,0 +1,445 @@
+// Real-time Availability Updates via WebSocket
+import { APIGatewayProxyResult } from 'aws-lambda';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, DeleteCommand, UpdateCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
+
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+const WEBSOCKET_CONNECTIONS_TABLE = requireEnv('WEBSOCKET_CONNECTIONS_TABLE');
+const AVAILABILITY_SUBSCRIPTIONS_TABLE = requireEnv('AVAILABILITY_SUBSCRIPTIONS_TABLE');
+const WEBSOCKET_ENDPOINT = requireEnv('WEBSOCKET_ENDPOINT');
+
+// Create API Gateway Management API client
+const apiGatewayClient = new ApiGatewayManagementApiClient({
+  endpoint: WEBSOCKET_ENDPOINT.replace('wss://', 'https://')
+});
+
+interface WebSocketEvent {
+  requestContext: {
+    connectionId: string;
+    routeKey: string;
+    accountId: string;
+    apiId: string;
+    stage: string;
+    requestId: string;
+    requestTime: string;
+    requestTimeEpoch: number;
+    eventType: string;
+    protocol: string;
+    routeSelection: string;
+    connectedAt?: number;
+    disconnectedAt?: number;
+  };
+  body?: string | null;
+  headers?: { [key: string]: string };
+  multiValueHeaders?: { [key: string]: string[] };
+  queryStringParameters?: { [key: string]: string } | null;
+  multiValueQueryStringParameters?: { [key: string]: string[] } | null;
+  pathParameters?: { [key: string]: string } | null;
+  stageVariables?: { [key: string]: string } | null;
+  isBase64Encoded: boolean;
+}
+
+interface SubscriptionRequest {
+  action: 'subscribe' | 'unsubscribe';
+  businessIds?: string[];
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
+  filters?: {
+    deliveryOnly?: boolean;
+    pickupOnly?: boolean;
+    openOnly?: boolean;
+  };
+}
+
+interface AvailabilityUpdate {
+  businessId: string;
+  storeName: string;
+  status: string;
+  canOrderNow: boolean;
+  allowDelivery: boolean;
+  allowPickup: boolean;
+  leadTimeMins: number;
+  nextOpenAt?: string;
+  reasonCodes: string[];
+  timestamp: string;
+}
+
+export const handler = async (event: WebSocketEvent): Promise<APIGatewayProxyResult> => {
+  console.log('WebSocket event:', JSON.stringify(event, null, 2));
+
+  const { connectionId, routeKey } = event.requestContext;
+
+  try {
+    switch (routeKey) {
+      case '$connect':
+        return await handleConnect(connectionId);
+      
+      case '$disconnect':
+        return await handleDisconnect(connectionId);
+      
+      case 'subscribe':
+        return await handleSubscribe(connectionId, event.body || null);
+      
+      case 'unsubscribe':
+        return await handleUnsubscribe(connectionId, event.body || null);
+      
+      case 'ping':
+        return await handlePing(connectionId);
+      
+      default:
+        console.log(`Unknown route: ${routeKey}`);
+        return { statusCode: 400, body: 'Unknown route' };
+    }
+
+  } catch (error) {
+    console.error('WebSocket handler error:', error);
+    return { statusCode: 500, body: 'Internal server error' };
+  }
+};
+
+async function handleConnect(connectionId: string): Promise<APIGatewayProxyResult> {
+  try {
+    const timestamp = new Date().toISOString();
+    
+    // Store connection info
+    const connectionData = {
+      connectionId,
+      connectedAt: timestamp,
+      lastActivity: timestamp,
+      ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours TTL
+    };
+
+    const command = new PutCommand({
+      TableName: WEBSOCKET_CONNECTIONS_TABLE,
+      Item: connectionData
+    });
+
+    await docClient.send(command);
+    console.log(`Connection ${connectionId} established`);
+
+    return { statusCode: 200, body: 'Connected' };
+
+  } catch (error: any) {
+    console.error('Error handling connect:', error);
+    return { statusCode: 500, body: 'Failed to connect' };
+  }
+}
+
+async function handleDisconnect(connectionId: string): Promise<APIGatewayProxyResult> {
+  try {
+    // Remove connection
+    const deleteConnectionCommand = new DeleteCommand({
+      TableName: WEBSOCKET_CONNECTIONS_TABLE,
+      Key: { connectionId }
+    });
+
+    // Remove all subscriptions for this connection
+    const deleteSubscriptionsCommand = new ScanCommand({
+      TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+      FilterExpression: 'connectionId = :connectionId',
+      ExpressionAttributeValues: {
+        ':connectionId': connectionId
+      }
+    });
+
+    const subscriptions = await docClient.send(deleteSubscriptionsCommand);
+    
+    // Delete each subscription
+    if (subscriptions.Items) {
+      for (const subscription of subscriptions.Items) {
+        await docClient.send(new DeleteCommand({
+          TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+          Key: { subscriptionId: subscription.subscriptionId }
+        }));
+      }
+    }
+
+    await docClient.send(deleteConnectionCommand);
+    console.log(`Connection ${connectionId} disconnected and cleaned up`);
+
+    return { statusCode: 200, body: 'Disconnected' };
+
+  } catch (error: any) {
+    console.error('Error handling disconnect:', error);
+    return { statusCode: 500, body: 'Failed to disconnect' };
+  }
+}
+
+async function handleSubscribe(connectionId: string, body: string | null): Promise<APIGatewayProxyResult> {
+  try {
+    if (!body) {
+      return await sendErrorToConnection(connectionId, 'Subscription request body is required');
+    }
+
+    const request: SubscriptionRequest = JSON.parse(body);
+    
+    if (request.action !== 'subscribe') {
+      return await sendErrorToConnection(connectionId, 'Invalid action');
+    }
+
+    // Create subscription
+    const subscriptionId = `${connectionId}-${Date.now()}`;
+    const subscription = {
+      subscriptionId,
+      connectionId,
+      businessIds: request.businessIds || [],
+      location: request.location,
+      filters: request.filters || {},
+      createdAt: new Date().toISOString(),
+      ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours TTL
+    };
+
+    const command = new PutCommand({
+      TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+      Item: subscription
+    });
+
+    await docClient.send(command);
+
+    // Update connection activity
+    await updateConnectionActivity(connectionId);
+
+    // Send confirmation
+    await sendMessageToConnection(connectionId, {
+      type: 'subscription_confirmed',
+      subscriptionId,
+      businessIds: request.businessIds,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log(`Subscription ${subscriptionId} created for connection ${connectionId}`);
+    return { statusCode: 200, body: 'Subscribed' };
+
+  } catch (error: any) {
+    console.error('Error handling subscribe:', error);
+    await sendErrorToConnection(connectionId, 'Failed to subscribe');
+    return { statusCode: 500, body: 'Failed to subscribe' };
+  }
+}
+
+async function handleUnsubscribe(connectionId: string, body: string | null): Promise<APIGatewayProxyResult> {
+  try {
+    if (!body) {
+      return await sendErrorToConnection(connectionId, 'Unsubscribe request body is required');
+    }
+
+    const request: SubscriptionRequest = JSON.parse(body);
+    
+    if (request.action !== 'unsubscribe') {
+      return await sendErrorToConnection(connectionId, 'Invalid action');
+    }
+
+    // Remove specific subscriptions or all for this connection
+    const scanCommand = new ScanCommand({
+      TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+      FilterExpression: 'connectionId = :connectionId',
+      ExpressionAttributeValues: {
+        ':connectionId': connectionId
+      }
+    });
+
+    const result = await docClient.send(scanCommand);
+    
+    if (result.Items) {
+      for (const subscription of result.Items) {
+        await docClient.send(new DeleteCommand({
+          TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+          Key: { subscriptionId: subscription.subscriptionId }
+        }));
+      }
+    }
+
+    // Update connection activity
+    await updateConnectionActivity(connectionId);
+
+    // Send confirmation
+    await sendMessageToConnection(connectionId, {
+      type: 'unsubscribe_confirmed',
+      timestamp: new Date().toISOString()
+    });
+
+    console.log(`Unsubscribed connection ${connectionId}`);
+    return { statusCode: 200, body: 'Unsubscribed' };
+
+  } catch (error: any) {
+    console.error('Error handling unsubscribe:', error);
+    await sendErrorToConnection(connectionId, 'Failed to unsubscribe');
+    return { statusCode: 500, body: 'Failed to unsubscribe' };
+  }
+}
+
+async function handlePing(connectionId: string): Promise<APIGatewayProxyResult> {
+  try {
+    await updateConnectionActivity(connectionId);
+    
+    await sendMessageToConnection(connectionId, {
+      type: 'pong',
+      timestamp: new Date().toISOString()
+    });
+
+    return { statusCode: 200, body: 'Pong' };
+
+  } catch (error: any) {
+    console.error('Error handling ping:', error);
+    return { statusCode: 500, body: 'Failed to ping' };
+  }
+}
+
+async function sendMessageToConnection(connectionId: string, message: any): Promise<void> {
+  try {
+    const command = new PostToConnectionCommand({
+      ConnectionId: connectionId,
+      Data: Buffer.from(JSON.stringify(message))
+    });
+
+    await apiGatewayClient.send(command);
+
+  } catch (error: any) {
+    console.error(`Failed to send message to connection ${connectionId}:`, error);
+    
+    // If connection is gone, clean it up
+    if (error.name === 'GoneException') {
+      await cleanupConnection(connectionId);
+    }
+    
+    throw error;
+  }
+}
+
+async function sendErrorToConnection(connectionId: string, errorMessage: string): Promise<APIGatewayProxyResult> {
+  try {
+    await sendMessageToConnection(connectionId, {
+      type: 'error',
+      message: errorMessage,
+      timestamp: new Date().toISOString()
+    });
+
+    return { statusCode: 400, body: errorMessage };
+
+  } catch (error: any) {
+    console.error('Failed to send error to connection:', error);
+    return { statusCode: 500, body: 'Failed to send error' };
+  }
+}
+
+async function updateConnectionActivity(connectionId: string): Promise<void> {
+  try {
+    const command = new UpdateCommand({
+      TableName: WEBSOCKET_CONNECTIONS_TABLE,
+      Key: { connectionId },
+      UpdateExpression: 'SET lastActivity = :timestamp, #ttl = :ttl',
+      ExpressionAttributeNames: {
+        '#ttl': 'ttl'
+      },
+      ExpressionAttributeValues: {
+        ':timestamp': new Date().toISOString(),
+        ':ttl': Math.floor(Date.now() / 1000) + (24 * 60 * 60)
+      }
+    });
+
+    await docClient.send(command);
+
+  } catch (error: any) {
+    console.error('Error updating connection activity:', error);
+  }
+}
+
+async function cleanupConnection(connectionId: string): Promise<void> {
+  try {
+    // Remove connection
+    await docClient.send(new DeleteCommand({
+      TableName: WEBSOCKET_CONNECTIONS_TABLE,
+      Key: { connectionId }
+    }));
+
+    // Remove all subscriptions
+    const subscriptionsResult = await docClient.send(new ScanCommand({
+      TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+      FilterExpression: 'connectionId = :connectionId',
+      ExpressionAttributeValues: {
+        ':connectionId': connectionId
+      }
+    }));
+
+    if (subscriptionsResult.Items) {
+      for (const subscription of subscriptionsResult.Items) {
+        await docClient.send(new DeleteCommand({
+          TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+          Key: { subscriptionId: subscription.subscriptionId }
+        }));
+      }
+    }
+
+    console.log(`Cleaned up connection ${connectionId}`);
+
+  } catch (error: any) {
+    console.error('Error cleaning up connection:', error);
+  }
+}
+
+// Export function for broadcasting availability updates to subscribers
+export const broadcastAvailabilityUpdate = async (update: AvailabilityUpdate): Promise<void> => {
+  try {
+    // Get all subscriptions that should receive this update
+    const subscriptions = await getRelevantSubscriptions(update.businessId);
+    
+    if (subscriptions.length === 0) {
+      console.log(`No subscriptions found for business ${update.businessId}`);
+      return;
+    }
+
+    // Send update to each subscription
+    const message = {
+      type: 'availability_update',
+      update,
+      timestamp: new Date().toISOString()
+    };
+
+    const sendPromises = subscriptions.map(subscription => 
+      sendMessageToConnection(subscription.connectionId, message)
+        .catch((error: any) => {
+          console.error(`Failed to send to ${subscription.connectionId}:`, error);
+          // Error handling is done in sendMessageToConnection
+        })
+    );
+
+    await Promise.allSettled(sendPromises);
+    console.log(`Broadcast sent to ${subscriptions.length} subscribers for business ${update.businessId}`);
+
+  } catch (error: any) {
+    console.error('Error broadcasting availability update:', error);
+  }
+};
+
+async function getRelevantSubscriptions(businessId: string): Promise<any[]> {
+  try {
+    const command = new ScanCommand({
+      TableName: AVAILABILITY_SUBSCRIPTIONS_TABLE,
+      FilterExpression: 'contains(businessIds, :businessId) OR size(businessIds) = :zero',
+      ExpressionAttributeValues: {
+        ':businessId': businessId,
+        ':zero': 0
+      }
+    });
+
+    const result = await docClient.send(command);
+    return result.Items || [];
+
+  } catch (error: any) {
+    console.error('Error getting relevant subscriptions:', error);
+    return [];
+  }
+}

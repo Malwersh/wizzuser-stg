@@ -1,0 +1,17 @@
+{
+  "name": "websocket-default-handler",
+  "version": "1.0.0",
+  "description": "WebSocket default handler for WizzUser real-time messaging",
+  "main": "index.js",
+  "scripts": {
+    "build": "npm install --production"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.470.0",
+    "@aws-sdk/client-dynamodb": "^3.470.0",
+    "@aws-sdk/lib-dynamodb": "^3.470.0"
+  },
+  "keywords": ["websocket", "aws", "lambda"],
+  "author": "WizzUser Team",
+  "license": "ISC"
+}

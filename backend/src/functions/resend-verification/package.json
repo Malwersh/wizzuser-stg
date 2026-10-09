@@ -1,0 +1,7 @@
+{
+  "name": "resend-verification-function",
+  "version": "1.0.0",
+  "description": "Resend verification function",
+  "main": "index.js",
+  "dependencies": {}
+}

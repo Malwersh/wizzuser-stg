@@ -1,0 +1,69 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#ff9800;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f57c00;stop-opacity:1" />
+    </linearGradient>
+    <radialGradient id="coffee" cx="30%" cy="30%" r="50%">
+      <stop offset="0%" style="stop-color:#8d6e63;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#5d4037;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Elegant plate -->
+  <ellipse cx="100" cy="130" rx="70" ry="55" fill="#fff"/>
+  <ellipse cx="100" cy="128" rx="65" ry="50" fill="#f8f9fa"/>
+  
+  <!-- Beautiful pancakes stack -->
+  <ellipse cx="85" cy="115" rx="28" ry="8" fill="#daa520"/>
+  <ellipse cx="85" cy="110" rx="28" ry="8" fill="#f4a261"/>
+  <ellipse cx="85" cy="105" rx="28" ry="8" fill="#daa520"/>
+  <ellipse cx="85" cy="100" rx="28" ry="8" fill="#f4a261"/>
+  
+  <!-- Butter pat -->
+  <rect x="78" y="95" width="14" height="8" rx="2" fill="#fff8dc"/>
+  <rect x="80" y="97" width="10" height="4" rx="1" fill="#ffeb3b"/>
+  
+  <!-- Syrup dripping -->
+  <path d="M 70 95 Q 75 90 80 95 Q 85 90 90 95 Q 95 90 100 95" stroke="#8b4513" stroke-width="3" fill="none" opacity="0.8"/>
+  <path d="M 75 100 Q 78 105 82 100 Q 88 105 92 100" stroke="#8b4513" stroke-width="2" fill="none" opacity="0.6"/>
+  
+  <!-- Coffee cup with steam -->
+  <ellipse cx="135" cy="125" rx="22" ry="30" fill="url(#coffee)"/>
+  <ellipse cx="135" cy="120" rx="20" ry="28" fill="#6d4c41"/>
+  <ellipse cx="135" cy="105" rx="18" ry="5" fill="#3e2723"/>
+  
+  <!-- Coffee handle -->
+  <path d="M 157 125 Q 165 125 165 135 Q 165 145 157 145" stroke="#8d6e63" stroke-width="4" fill="none"/>
+  
+  <!-- Steam -->
+  <path d="M 130 95 Q 132 85 130 80" stroke="#fff" stroke-width="2" fill="none" opacity="0.7"/>
+  <path d="M 135 95 Q 137 85 135 80" stroke="#fff" stroke-width="2" fill="none" opacity="0.7"/>
+  <path d="M 140 95 Q 142 85 140 80" stroke="#fff" stroke-width="2" fill="none" opacity="0.7"/>
+  
+  <!-- Fresh orange slices -->
+  <circle cx="125" cy="150" r="12" fill="#ff8c00"/>
+  <circle cx="125" cy="150" r="10" fill="#ffa500"/>
+  <rect x="125" y="140" width="1" height="20" fill="#fff"/>
+  <rect x="120" y="150" width="10" height="1" fill="#fff"/>
+  <rect x="123" y="147" width="4" height="1" fill="#fff" transform="rotate(45 125 150)"/>
+  <rect x="123" y="152" width="4" height="1" fill="#fff" transform="rotate(-45 125 150)"/>
+  
+  <!-- Blueberries -->
+  <circle cx="110" cy="140" r="4" fill="#4169e1"/>
+  <circle cx="105" cy="145" r="3" fill="#6495ed"/>
+  <circle cx="115" cy="145" r="3" fill="#4169e1"/>
+  
+  <!-- Sun rays for morning feeling -->
+  <circle cx="50" cy="50" r="15" fill="#ffeb3b" opacity="0.8"/>
+  <rect x="48" y="25" width="4" height="15" fill="#ffeb3b" opacity="0.6"/>
+  <rect x="65" y="48" width="15" height="4" fill="#ffeb3b" opacity="0.6"/>
+  <rect x="60" y="35" width="10" height="3" fill="#ffeb3b" opacity="0.6" transform="rotate(45 65 37)"/>
+  <rect x="35" y="60" width="10" height="3" fill="#ffeb3b" opacity="0.6" transform="rotate(45 40 62)"/>
+</svg>

@@ -1,0 +1,28 @@
+DynamoDB auto copy plan:
+- Region: us-east-1
+- Source profile: Wizz_dev_UserApp (tables=79, selected=2)
+- Target profile: Wizz_stg_UserApp (tables=36)
+- Mode: WRITE
+- Schema check: PRIMARY_KEY_ONLY
+- Exclusions (default): /password_reset_tokens/i /temp_users/i /^websocket[-_]/i /websocket_connections/i /websocket_subscriptions/i /^Chat(Sessions|Messages)$/i /^chat-(sessions|messages)-/i /IdempotencyKeys/i /AuditLog/i /Ledger/i /Topup/i /Holds/i /Wallet/i
+- Include: /^(WhizzMerchants_BusinessWorkingHours|WhizzMerchants_DeviceTokens)$/
+
+Mapped tables (2):
+- WhizzMerchants_BusinessWorkingHours -> WhizzMerchants_BusinessWorkingHours
+- WhizzMerchants_DeviceTokens -> WhizzMerchants_DeviceTokens
+
+Table: WhizzMerchants_BusinessWorkingHours -> WhizzMerchants_BusinessWorkingHours
+- srcItemCount~25 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WhizzMerchants_BusinessWorkingHours)...
+Scan complete: 25 items
+Writing to target (WhizzMerchants_BusinessWorkingHours)...
+Write complete: 25 items
+
+Table: WhizzMerchants_DeviceTokens -> WhizzMerchants_DeviceTokens
+- srcItemCount~3 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WhizzMerchants_DeviceTokens)...
+Scan complete: 3 items
+Writing to target (WhizzMerchants_DeviceTokens)...
+Write complete: 3 items

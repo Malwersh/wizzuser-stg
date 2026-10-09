@@ -1,0 +1,7 @@
+{
+  "name": "user-login-function",
+  "version": "1.0.0",
+  "description": "User login function",
+  "main": "index.js",
+  "dependencies": {}
+}

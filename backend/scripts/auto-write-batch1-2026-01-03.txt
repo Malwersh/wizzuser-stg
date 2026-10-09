@@ -1,0 +1,59 @@
+DynamoDB auto copy plan:
+- Region: us-east-1
+- Source profile: Wizz_dev_UserApp (tables=79, selected=3)
+- Target profile: Wizz_stg_UserApp (tables=36)
+- Mode: WRITE
+- Schema check: PRIMARY_KEY_ONLY
+- Exclusions (default): /password_reset_tokens/i /temp_users/i /^websocket[-_]/i /websocket_connections/i /websocket_subscriptions/i /^Chat(Sessions|Messages)$/i /^chat-(sessions|messages)-/i /IdempotencyKeys/i /AuditLog/i /Ledger/i /Topup/i /Holds/i /Wallet/i
+- Include: /^(WizzCentral_Regions$|WizzCentral_Region(Audit|Neighbors|Derived)_dev$)/
+
+Mapped tables (3):
+- WizzCentral_RegionAudit_dev -> WizzCentral_RegionAudit_staging
+- WizzCentral_RegionNeighbors_dev -> WizzCentral_RegionNeighbors_staging
+- WizzCentral_Regions -> WizzCentral_Regions
+
+Table: WizzCentral_RegionAudit_dev -> WizzCentral_RegionAudit_staging
+- srcItemCount~22 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WizzCentral_RegionAudit_dev)...
+Scan complete: 22 items
+Writing to target (WizzCentral_RegionAudit_staging)...
+Write complete: 22 items
+
+Table: WizzCentral_RegionNeighbors_dev -> WizzCentral_RegionNeighbors_staging
+- srcItemCount~26 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WizzCentral_RegionNeighbors_dev)...
+Scan complete: 26 items
+Writing to target (WizzCentral_RegionNeighbors_staging)...
+Write complete: 26 items
+
+Table: WizzCentral_Regions -> WizzCentral_Regions
+- srcItemCount~15 dstItemCount~0
+- schemaMatch: YES
+Scanning source (WizzCentral_Regions)...
+Scan complete: 15 items
+Writing to target (WizzCentral_Regions)...
+ValidationException: One or more parameter values were invalid: Type mismatch for Index Key parent_id Expected: S Actual: NULL IndexName: parent-level-index
+    at ProtocolLib.getErrorSchemaOrThrowBaseException (/Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@aws-sdk/core/dist-cjs/submodules/protocols/index.js:69:67)
+    at AwsJson1_0Protocol.handleError (/Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@aws-sdk/core/dist-cjs/submodules/protocols/index.js:774:65)
+    at AwsJson1_0Protocol.deserializeResponse (/Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@smithy/core/dist-cjs/submodules/protocols/index.js:473:24)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async /Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@smithy/core/dist-cjs/submodules/schema/index.js:26:24
+    at async /Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@aws-sdk/lib-dynamodb/dist-cjs/index.js:107:34
+    at async /Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@smithy/core/dist-cjs/index.js:121:20
+    at async /Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@smithy/middleware-retry/dist-cjs/index.js:254:46
+    at async /Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/node_modules/@aws-sdk/middleware-logger/dist-cjs/index.js:5:26
+    at async batchWriteAll (/Volumes/LaCie/اخر نسخة قبل الرفع على staging/VSCodeWorkspaces/wizzuser-stg/backend/scripts/copy-dynamodb-auto.js:158:20) {
+  '$fault': 'client',
+  '$retryable': undefined,
+  '$metadata': {
+    httpStatusCode: 400,
+    requestId: 'A7L2UU04TLKPVIQ2O5S8KCH4RJVV4KQNSO5AEMVJF66Q9ASUAAJG',
+    extendedRequestId: undefined,
+    cfId: undefined,
+    attempts: 1,
+    totalRetryDelay: 0
+  },
+  __type: 'com.amazon.coral.validate#ValidationException'
+}

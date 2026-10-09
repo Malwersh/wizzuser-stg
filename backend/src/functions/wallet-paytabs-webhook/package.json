@@ -1,0 +1,17 @@
+{
+  "name": "wallet-paytabs-webhook",
+  "version": "1.0.0",
+  "description": "PayTabs webhook handler for wallet top-up confirmations",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["wallet", "webhook", "paytabs", "iraqi-dinar", "iqd", "payment", "aws", "lambda"],
+  "author": "Food App Team",
+  "license": "MIT"
+}

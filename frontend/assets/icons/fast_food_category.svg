@@ -1,0 +1,69 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#ffc107;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff8f00;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="burger" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#daa520;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b8860b;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Delicious burger -->
+  <!-- Top bun -->
+  <ellipse cx="100" cy="75" rx="45" ry="18" fill="url(#burger)"/>
+  <ellipse cx="100" cy="73" rx="42" ry="16" fill="#f4a261"/>
+  
+  <!-- Sesame seeds -->
+  <circle cx="85" cy="70" r="2" fill="#8b4513"/>
+  <circle cx="100" cy="68" r="2" fill="#8b4513"/>
+  <circle cx="115" cy="72" r="2" fill="#8b4513"/>
+  
+  <!-- Lettuce -->
+  <ellipse cx="100" cy="85" rx="40" ry="8" fill="#228b22"/>
+  <path d="M 60 85 Q 70 80 80 85 Q 90 80 100 85 Q 110 80 120 85 Q 130 80 140 85" stroke="#32cd32" stroke-width="3" fill="none"/>
+  
+  <!-- Tomato -->
+  <ellipse cx="100" cy="95" rx="38" ry="6" fill="#ff6347"/>
+  
+  <!-- Cheese -->
+  <polygon points="62,100 138,100 135,108 65,108" fill="#ffd700"/>
+  
+  <!-- Meat patty -->
+  <ellipse cx="100" cy="115" rx="42" ry="12" fill="#8b4513"/>
+  <ellipse cx="100" cy="113" rx="39" ry="10" fill="#a0522d"/>
+  
+  <!-- Bottom bun -->
+  <ellipse cx="100" cy="125" rx="45" ry="15" fill="#daa520"/>
+  
+  <!-- French fries container -->
+  <polygon points="140,110 160,110 155,160 145,160" fill="#dc143c"/>
+  <rect x="142" y="112" width="16" height="3" fill="#fff"/>
+  
+  <!-- Fries -->
+  <rect x="145" y="100" width="3" height="20" fill="#ffd700" rx="1"/>
+  <rect x="149" y="95" width="3" height="25" fill="#ffd700" rx="1"/>
+  <rect x="153" y="98" width="3" height="22" fill="#ffd700" rx="1"/>
+  <rect x="157" y="92" width="3" height="28" fill="#ffd700" rx="1"/>
+  
+  <!-- Drink cup -->
+  <rect x="35" y="120" width="20" height="35" rx="3" fill="#1e90ff"/>
+  <rect x="37" y="122" width="16" height="25" fill="#4169e1"/>
+  <rect x="35" y="115" width="20" height="8" rx="3" fill="#fff"/>
+  
+  <!-- Straw -->
+  <rect x="42" y="110" width="2" height="20" fill="#ff1493"/>
+  <rect x="40" y="108" width="6" height="4" fill="#ff1493" rx="2"/>
+  
+  <!-- Sparkle effects -->
+  <circle cx="70" cy="50" r="2" fill="#fff" opacity="0.9"/>
+  <circle cx="130" cy="45" r="1.5" fill="#fff" opacity="0.9"/>
+  <circle cx="180" cy="80" r="1" fill="#fff" opacity="0.9"/>
+</svg>

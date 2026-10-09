@@ -1,0 +1,648 @@
+# Advanced Restaurant Availability System - Serverless Configuration
+service: restaurant-availability-system
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  
+  environment:
+    STAGE: ${self:provider.stage}
+    WIZZSTORES_TABLE: order-receiver-businesses-${self:provider.stage}
+    WORKING_HOURS_TABLE: order-receiver-business-working-hours-${self:provider.stage}
+    ORDERS_TABLE: WizzOrders
+    DELIVERY_ZONES_TABLE: order-receiver-delivery-zones-${self:provider.stage}
+    DRIVER_LOCATIONS_TABLE: order-receiver-driver-locations-${self:provider.stage}
+    AVAILABILITY_CACHE_TABLE: order-receiver-availability-cache-${self:provider.stage}
+    SCHEDULE_SLOTS_TABLE: order-receiver-schedule-slots-${self:provider.stage}
+    SCHEDULED_ORDERS_TABLE: order-receiver-scheduled-orders-${self:provider.stage}
+    WEBSOCKET_CONNECTIONS_TABLE: order-receiver-websocket-connections-${self:provider.stage}
+    AVAILABILITY_SUBSCRIPTIONS_TABLE: order-receiver-availability-subscriptions-${self:provider.stage}
+    
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:BatchGetItem
+            - dynamodb:BatchWriteItem
+            - dynamodb:TransactWriteItems
+            - dynamodb:TransactGetItems
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.WIZZSTORES_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.WORKING_HOURS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ORDERS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DELIVERY_ZONES_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DRIVER_LOCATIONS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.AVAILABILITY_CACHE_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.SCHEDULE_SLOTS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.SCHEDULED_ORDERS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.WEBSOCKET_CONNECTIONS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.AVAILABILITY_SUBSCRIPTIONS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/*/index/*"
+        - Effect: Allow
+          Action:
+            - execute-api:ManageConnections
+          Resource:
+            - "arn:aws:execute-api:${self:provider.region}:*:*"
+
+plugins:
+  - serverless-esbuild
+  - serverless-offline
+
+custom:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude:
+      - aws-sdk
+    target: node18
+    define:
+      require.resolve: undefined
+    platform: node
+    concurrency: 10
+
+functions:
+  # Core Store Availability Engine
+  storeAvailability:
+    handler: src/functions/store-availability/index.handler
+    events:
+      - http:
+          path: /availability/{storeId}
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                storeId: true
+              querystrings:
+                lat: false
+                lng: false
+                includeScheduling: false
+                includePricing: false
+    environment:
+      WIZZSTORES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+      WORKING_HOURS_TABLE: ${self:provider.environment.WORKING_HOURS_TABLE}
+      ORDERS_TABLE: ${self:provider.environment.ORDERS_TABLE}
+      DELIVERY_ZONES_TABLE: ${self:provider.environment.DELIVERY_ZONES_TABLE}
+
+  # Quick Store Availability Check (for businesses list)
+  checkStoreAvailability:
+    handler: src/functions/check-store-availability/index.handler
+    events:
+      - http:
+          path: /stores/{storeId}/availability
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                storeId: true
+              querystrings:
+                lat: false
+                lng: false
+                detailed: false
+                includeScheduling: false
+                includePricing: false
+    environment:
+      WIZZSTORES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+      WORKING_HOURS_TABLE: ${self:provider.environment.WORKING_HOURS_TABLE}
+      ORDERS_TABLE: ${self:provider.environment.ORDERS_TABLE}
+
+  # Enhanced Business Listing with Availability
+  getBusinessesWithAvailability:
+    handler: src/functions/get-businesses/index.handler
+    events:
+      - http:
+          path: /businesses
+          method: get
+          cors: true
+          request:
+            parameters:
+              querystrings:
+                limit: false
+                page: false
+                category: false
+                new: false
+                available: false
+                lat: false
+                lng: false
+    environment:
+      BUSINESSES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+      WIZZSTORES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+      WORKING_HOURS_TABLE: ${self:provider.environment.WORKING_HOURS_TABLE}
+      ORDERS_TABLE: ${self:provider.environment.ORDERS_TABLE}
+
+  # Smart Caching System
+  availabilityCache:
+    handler: src/functions/availability-cache/index.handler
+    events:
+      - http:
+          path: /cache/availability/{action}
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                action: true
+      - schedule:
+          rate: rate(5 minutes)
+          input:
+            action: cleanup
+    environment:
+      AVAILABILITY_CACHE_TABLE: ${self:provider.environment.AVAILABILITY_CACHE_TABLE}
+      WIZZSTORES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+
+  # Advanced Delivery Zone Management
+  deliveryZones:
+    handler: src/functions/delivery-zones/index.handler
+    events:
+      - http:
+          path: /delivery/zones/{action}
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                action: true
+      - http:
+          path: /delivery/zones/{storeId}
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                storeId: true
+              querystrings:
+                lat: false
+                lng: false
+    environment:
+      DELIVERY_ZONES_TABLE: ${self:provider.environment.DELIVERY_ZONES_TABLE}
+      DRIVER_LOCATIONS_TABLE: ${self:provider.environment.DRIVER_LOCATIONS_TABLE}
+
+  # Order Scheduling System
+  orderScheduling:
+    handler: src/functions/order-scheduling/index.handler
+    events:
+      - http:
+          path: /scheduling/{action}
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                action: true
+      - http:
+          path: /scheduling/{storeId}/slots
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                storeId: true
+              querystrings:
+                date: false
+                days: false
+    environment:
+      SCHEDULE_SLOTS_TABLE: ${self:provider.environment.SCHEDULE_SLOTS_TABLE}
+      SCHEDULED_ORDERS_TABLE: ${self:provider.environment.SCHEDULED_ORDERS_TABLE}
+      WIZZSTORES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+      WORKING_HOURS_TABLE: ${self:provider.environment.WORKING_HOURS_TABLE}
+
+  # Real-time Availability Updates
+  realtimeAvailability:
+    handler: src/functions/realtime-availability/index.handler
+    events:
+      - websocket:
+          route: availability_connect
+      - websocket:
+          route: availability_disconnect
+      - websocket:
+          route: availability_subscribe
+      - websocket:
+          route: availability_unsubscribe
+    environment:
+      WEBSOCKET_CONNECTIONS_TABLE: ${self:provider.environment.WEBSOCKET_CONNECTIONS_TABLE}
+      AVAILABILITY_SUBSCRIPTIONS_TABLE: ${self:provider.environment.AVAILABILITY_SUBSCRIPTIONS_TABLE}
+
+  # Availability Broadcast System
+  availabilityBroadcast:
+    handler: src/functions/availability-broadcast/index.handler
+    events:
+      - http:
+          path: /broadcast/{action}
+          method: post
+          cors: true
+          request:
+            parameters:
+              paths:
+                action: true
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [WizzStoresTable, StreamArn]
+          startingPosition: LATEST
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [WorkingHoursTable, StreamArn]
+          startingPosition: LATEST
+    environment:
+      WEBSOCKET_CONNECTIONS_TABLE: ${self:provider.environment.WEBSOCKET_CONNECTIONS_TABLE}
+      AVAILABILITY_SUBSCRIPTIONS_TABLE: ${self:provider.environment.AVAILABILITY_SUBSCRIPTIONS_TABLE}
+      WEBSOCKET_ENDPOINT: 
+        Fn::Sub: 'https://${WebsocketsApi}.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}'
+
+  # AI-Powered Availability Monitoring
+  availabilityMonitor:
+    handler: src/functions/availability-monitor/index.handler
+    events:
+      - http:
+          path: /monitoring/{action}
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                action: true
+              querystrings:
+                storeId: false
+                timeframe: false
+      - schedule:
+          rate: rate(15 minutes)
+          input:
+            action: collect_metrics
+      - schedule:
+          rate: rate(1 hour)
+          input:
+            action: generate_recommendations
+    environment:
+      WIZZSTORES_TABLE: ${self:provider.environment.WIZZSTORES_TABLE}
+      ORDERS_TABLE: ${self:provider.environment.ORDERS_TABLE}
+      AVAILABILITY_CACHE_TABLE: ${self:provider.environment.AVAILABILITY_CACHE_TABLE}
+  # Core Availability Engine
+  storeAvailability:
+    handler: src/functions/store-availability/index.handler
+    timeout: 30
+    memorySize: 256
+    events:
+      - http:
+          path: /availability/{storeId}
+          method: get
+          cors: true
+          request:
+            parameters:
+              paths:
+                storeId: true
+              querystrings:
+                location: false
+                refresh: false
+      - http:
+          path: /availability/{storeId}/check
+          method: post
+          cors: true
+
+  # Availability Cache Management
+  availabilityCache:
+    handler: src/functions/availability-cache/index.handler
+    timeout: 30
+    memorySize: 256
+    events:
+      - http:
+          path: /cache/availability/{storeId}
+          method: get
+          cors: true
+      - http:
+          path: /cache/invalidate
+          method: post
+          cors: true
+      - http:
+          path: /cache/warm
+          method: put
+          cors: true
+      - http:
+          path: /cache/stats
+          method: get
+          cors: true
+
+  # Delivery Zone Management
+  deliveryZones:
+    handler: src/functions/delivery-zones/index.handler
+    timeout: 30
+    memorySize: 256
+    events:
+      - http:
+          path: /delivery/check
+          method: post
+          cors: true
+      - http:
+          path: /delivery/zones/{businessId}
+          method: get
+          cors: true
+      - http:
+          path: /delivery/zones
+          method: post
+          cors: true
+      - http:
+          path: /delivery/zones/{zoneId}
+          method: put
+          cors: true
+      - http:
+          path: /delivery/zones/{zoneId}
+          method: delete
+          cors: true
+      - http:
+          path: /delivery/drivers/location
+          method: post
+          cors: true
+      - http:
+          path: /delivery/drivers/{businessId}/available
+          method: get
+          cors: true
+
+  # Order Scheduling System
+  orderScheduling:
+    handler: src/functions/order-scheduling/index.handler
+    timeout: 30
+    memorySize: 512
+    events:
+      - http:
+          path: /schedule/slots/availability
+          method: post
+          cors: true
+      - http:
+          path: /schedule/slots/reserve
+          method: post
+          cors: true
+      - http:
+          path: /schedule/orders/{userId}
+          method: get
+          cors: true
+      - http:
+          path: /schedule/orders/{scheduledOrderId}/confirm
+          method: put
+          cors: true
+      - http:
+          path: /schedule/orders/{scheduledOrderId}
+          method: delete
+          cors: true
+      - http:
+          path: /schedule/slots/generate/{businessId}
+          method: post
+          cors: true
+      - http:
+          path: /schedule/business/{businessId}/scheduled-orders
+          method: get
+          cors: true
+
+  # Real-time Updates via WebSocket
+  realtimeAvailability:
+    handler: src/functions/realtime-availability/index.handler
+    timeout: 30
+    memorySize: 256
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect
+      - websocket:
+          route: subscribe
+      - websocket:
+          route: unsubscribe
+      - websocket:
+          route: ping
+
+  # Cache Warming Scheduler
+  cacheWarmer:
+    handler: src/functions/cache-warmer/index.handler
+    timeout: 300
+    memorySize: 512
+    events:
+      - schedule:
+          rate: rate(5 minutes)
+          enabled: true
+      - schedule:
+          rate: rate(1 hour)
+          enabled: true
+          input:
+            warmType: 'full'
+
+  # Availability Monitor (Health Checks)
+  availabilityMonitor:
+    handler: src/functions/availability-monitor/index.handler
+    timeout: 60
+    memorySize: 256
+    events:
+      - schedule:
+          rate: rate(2 minutes)
+          enabled: true
+      - http:
+          path: /monitor/availability/health
+          method: get
+          cors: true
+      - http:
+          path: /monitor/availability/metrics
+          method: get
+          cors: true
+
+resources:
+  Resources:
+    # Delivery Zones Table
+    DeliveryZonesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DELIVERY_ZONES_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: zoneId
+            AttributeType: S
+          - AttributeName: businessId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: zoneId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: BusinessIdIndex
+            KeySchema:
+              - AttributeName: businessId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    # Driver Locations Table
+    DriverLocationsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DRIVER_LOCATIONS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: driverId
+            AttributeType: S
+          - AttributeName: businessId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: driverId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: BusinessIdIndex
+            KeySchema:
+              - AttributeName: businessId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    # Availability Cache Table
+    AvailabilityCacheTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.AVAILABILITY_CACHE_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: cacheKey
+            AttributeType: S
+          - AttributeName: storeId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: cacheKey
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: StoreIdIndex
+            KeySchema:
+              - AttributeName: storeId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    # Schedule Slots Table
+    ScheduleSlotsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.SCHEDULE_SLOTS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: slotId
+            AttributeType: S
+          - AttributeName: businessId
+            AttributeType: S
+          - AttributeName: date
+            AttributeType: S
+        KeySchema:
+          - AttributeName: slotId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: BusinessIdDateIndex
+            KeySchema:
+              - AttributeName: businessId
+                KeyType: HASH
+              - AttributeName: date
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    # Scheduled Orders Table
+    ScheduledOrdersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.SCHEDULED_ORDERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: scheduledOrderId
+            AttributeType: S
+          - AttributeName: businessId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: scheduledOrderId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: BusinessIdIndex
+            KeySchema:
+              - AttributeName: businessId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+          - IndexName: UserIdIndex
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    # WebSocket Connections Table
+    WebSocketConnectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.WEBSOCKET_CONNECTIONS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+    # Availability Subscriptions Table
+    AvailabilitySubscriptionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.AVAILABILITY_SUBSCRIPTIONS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: subscriptionId
+            AttributeType: S
+          - AttributeName: connectionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: subscriptionId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: ConnectionIdIndex
+            KeySchema:
+              - AttributeName: connectionId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+outputs:
+  RestApiId:
+    Description: REST API ID
+    Value:
+      Ref: RestApiApigEvent
+  WebSocketApiId:
+    Description: WebSocket API ID
+    Value:
+      Ref: WebsocketsApi
+  AvailabilityApiEndpoint:
+    Description: Availability API Endpoint
+    Value:
+      Fn::Sub: "https://${RestApiApigEvent}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}"
+  WebSocketEndpoint:
+    Description: WebSocket API Endpoint
+    Value:
+      Fn::Sub: "wss://${WebsocketsApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}"

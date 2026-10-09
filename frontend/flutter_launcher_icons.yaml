@@ -1,0 +1,23 @@
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/user_w_blue_on_yellow_1024.png"
+  
+  # Android adaptive icon configuration
+  adaptive_icon_foreground: "assets/images/user_w_blue_fg_1024.png"
+  adaptive_icon_background: "#FDC500"  # Primary Yellow background
+  
+  # iOS configuration
+  remove_alpha_ios: true
+  
+  # Web configuration (optional)
+  web:
+    generate: false
+  
+  # Windows configuration (optional)
+  windows:
+    generate: false
+  
+  # macOS configuration (optional)
+  macos:
+    generate: false

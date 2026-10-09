@@ -1,0 +1,56 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#ff6b35;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b1538;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="plate" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background with elegant gradient -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Main plate -->
+  <ellipse cx="100" cy="120" rx="65" ry="55" fill="url(#plate)"/>
+  <ellipse cx="100" cy="118" rx="60" ry="50" fill="#fff" opacity="0.9"/>
+  
+  <!-- Elegant steak -->
+  <ellipse cx="100" cy="110" rx="35" ry="22" fill="#8b4513"/>
+  <ellipse cx="100" cy="108" rx="32" ry="20" fill="#a0522d"/>
+  <ellipse cx="95" cy="105" rx="8" ry="5" fill="#cd853f"/>
+  <ellipse cx="110" cy="112" rx="6" ry="4" fill="#cd853f"/>
+  
+  <!-- Grill marks -->
+  <rect x="75" y="105" width="50" height="2" fill="#654321" rx="1"/>
+  <rect x="75" y="112" width="50" height="2" fill="#654321" rx="1"/>
+  
+  <!-- Side vegetables -->
+  <circle cx="75" cy="125" r="8" fill="#ff6347"/>
+  <circle cx="125" cy="125" r="8" fill="#32cd32"/>
+  <circle cx="85" cy="135" r="6" fill="#ffb347"/>
+  
+  <!-- Fork and knife -->
+  <rect x="40" y="90" width="3" height="35" fill="#c0c0c0"/>
+  <rect x="37" y="90" width="9" height="3" fill="#c0c0c0"/>
+  <rect x="37" y="95" width="9" height="2" fill="#c0c0c0"/>
+  
+  <rect x="157" y="90" width="3" height="35" fill="#c0c0c0"/>
+  <path d="M 155 90 L 162 90 L 160 95 Z" fill="#c0c0c0"/>
+  
+  <!-- Chef hat icon -->
+  <ellipse cx="100" cy="45" rx="20" ry="15" fill="#fff"/>
+  <rect x="85" y="45" width="30" height="20" fill="#fff"/>
+  <ellipse cx="100" cy="45" rx="18" ry="12" fill="#f8f9fa"/>
+  
+  <!-- Sparkle effects -->
+  <circle cx="60" cy="60" r="2" fill="#fff" opacity="0.8"/>
+  <circle cx="140" cy="70" r="1.5" fill="#fff" opacity="0.8"/>
+  <circle cx="50" cy="140" r="1" fill="#fff" opacity="0.8"/>
+  <circle cx="150" cy="150" r="2" fill="#fff" opacity="0.8"/>
+</svg>

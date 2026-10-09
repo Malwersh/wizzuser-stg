@@ -1,0 +1,7 @@
+{
+  "name": "verify-phone-function",
+  "version": "1.0.0",
+  "description": "Phone verification function",
+  "main": "index.js",
+  "dependencies": {}
+}

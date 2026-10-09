@@ -1,0 +1,17 @@
+{
+  "name": "business-status-stream-handler",
+  "version": "1.0.0",
+  "description": "Lambda function to handle DynamoDB Streams from Business table and broadcast updates via WebSocket",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.0.0"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": ["dynamodb", "streams", "websocket", "lambda"],
+  "author": "Wizz Team",
+  "license": "MIT"
+}

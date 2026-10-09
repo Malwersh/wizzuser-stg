@@ -1,0 +1,97 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" style="stop-color:#4caf50;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2e7d32;stop-opacity:1" />
+    </linearGradient>
+    <radialGradient id="basket" cx="30%" cy="30%" r="50%">
+      <stop offset="0%" style="stop-color:#8d6e63;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#5d4037;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" rx="25" fill="url(#bg)"/>
+  
+  <!-- Decorative border -->
+  <rect x="10" y="10" width="180" height="180" rx="20" fill="none" stroke="#fff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Wicker basket -->
+  <ellipse cx="100" cy="155" rx="65" ry="20" fill="url(#basket)"/>
+  <rect x="35" y="120" width="130" height="35" fill="#a1887f"/>
+  <ellipse cx="100" cy="120" rx="65" ry="20" fill="#8d6e63"/>
+  
+  <!-- Basket weave pattern -->
+  <rect x="40" y="125" width="120" height="2" fill="#6d4c41"/>
+  <rect x="40" y="135" width="120" height="2" fill="#6d4c41"/>
+  <rect x="40" y="145" width="120" height="2" fill="#6d4c41"/>
+  <rect x="50" y="120" width="2" height="30" fill="#6d4c41"/>
+  <rect x="70" y="120" width="2" height="30" fill="#6d4c41"/>
+  <rect x="90" y="120" width="2" height="30" fill="#6d4c41"/>
+  <rect x="110" y="120" width="2" height="30" fill="#6d4c41"/>
+  <rect x="130" y="120" width="2" height="30" fill="#6d4c41"/>
+  <rect x="150" y="120" width="2" height="30" fill="#6d4c41"/>
+  
+  <!-- Fresh carrot -->
+  <polygon points="70,90 78,90 82,140 66,140" fill="#ff5722"/>
+  <polygon points="69,140 83,140 85,150 67,150" fill="#ff8a65"/>
+  <!-- Carrot leaves -->
+  <rect x="72" y="80" width="2" height="12" fill="#4caf50"/>
+  <rect x="75" y="78" width="2" height="14" fill="#66bb6a"/>
+  <rect x="69" y="82" width="2" height="10" fill="#4caf50"/>
+  
+  <!-- Vibrant tomato -->
+  <circle cx="130" cy="100" r="18" fill="#f44336"/>
+  <circle cx="130" cy="98" r="15" fill="#ff5722"/>
+  <circle cx="128" cy="95" r="3" fill="#ffcdd2"/>
+  <!-- Tomato leaves -->
+  <polygon points="120,82 130,87 140,82 142,90 138,95 132,90 128,90 122,95 118,90" fill="#4caf50"/>
+  
+  <!-- Broccoli -->
+  <ellipse cx="95" cy="115" rx="12" ry="18" fill="#388e3c"/>
+  <circle cx="90" cy="105" r="6" fill="#4caf50"/>
+  <circle cx="100" cy="105" r="6" fill="#4caf50"/>
+  <circle cx="95" cy="98" r="5" fill="#66bb6a"/>
+  <circle cx="88" cy="112" r="4" fill="#4caf50"/>
+  <circle cx="102" cy="112" r="4" fill="#4caf50"/>
+  <circle cx="95" cy="120" r="3" fill="#388e3c"/>
+  
+  <!-- Bell pepper -->
+  <ellipse cx="140" cy="135" rx="12" ry="16" fill="#ffeb3b"/>
+  <ellipse cx="140" cy="133" rx="10" ry="14" fill="#fff59d"/>
+  <rect x="138" y="119" width="4" height="8" fill="#4caf50"/>
+  <ellipse cx="140" cy="119" rx="3" ry="2" fill="#66bb6a"/>
+  
+  <!-- Purple eggplant -->
+  <ellipse cx="55" cy="115" rx="10" ry="20" fill="#673ab7"/>
+  <ellipse cx="55" cy="113" rx="8" ry="18" fill="#9c27b0"/>
+  <ellipse cx="53" cy="110" rx="2" ry="4" fill="#e1bee7"/>
+  <rect x="53" y="95" width="4" height="8" fill="#4caf50"/>
+  
+  <!-- Lettuce leaves -->
+  <ellipse cx="120" cy="120" rx="15" ry="12" fill="#66bb6a"/>
+  <ellipse cx="115" cy="118" rx="10" ry="8" fill="#81c784"/>
+  <path d="M 105 115 Q 110 110 115 115 Q 120 110 125 115 Q 130 110 135 115" stroke="#4caf50" stroke-width="2" fill="none"/>
+  
+  <!-- Red onion -->
+  <circle cx="75" cy="135" r="10" fill="#9c27b0"/>
+  <circle cx="75" cy="135" r="8" fill="#ba68c8"/>
+  <ellipse cx="73" cy="132" rx="2" ry="4" fill="#e1bee7"/>
+  <rect x="73" y="125" width="4" height="6" fill="#4caf50"/>
+  
+  <!-- Fresh herbs scattered -->
+  <ellipse cx="45" cy="90" rx="4" ry="6" fill="#4caf50" transform="rotate(-20 45 90)"/>
+  <ellipse cx="155" cy="85" rx="4" ry="6" fill="#66bb6a" transform="rotate(25 155 85)"/>
+  <ellipse cx="50" cy="160" rx="3" ry="5" fill="#388e3c" transform="rotate(-10 50 160)"/>
+  
+  <!-- Water droplets for freshness -->
+  <circle cx="85" cy="85" r="2" fill="#e3f2fd" opacity="0.8"/>
+  <circle cx="125" cy="88" r="1.5" fill="#e3f2fd" opacity="0.8"/>
+  <circle cx="145" cy="125" r="1" fill="#e3f2fd" opacity="0.8"/>
+  <circle cx="65" cy="125" r="1.5" fill="#e3f2fd" opacity="0.8"/>
+  
+  <!-- Organic label -->
+  <circle cx="40" cy="50" r="15" fill="#66bb6a"/>
+  <circle cx="40" cy="50" r="12" fill="#4caf50"/>
+  <text x="40" y="54" text-anchor="middle" fill="#fff" font-family="Arial" font-size="8" font-weight="bold">100%</text>
+</svg>

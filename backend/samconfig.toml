@@ -1,0 +1,43 @@
+# AWS SAM Configuration
+version = 0.1
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "WizzUser-backend-staging"
+s3_prefix = "wizzuser-backend-staging"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"staging\""
+confirm_changeset = true
+fail_on_empty_changeset = false
+profile = "Wizz_stg_UserApp"
+disable_rollback = true
+image_repositories = []
+resolve_s3 = true
+
+[staging]
+[staging.deploy]
+[staging.deploy.parameters]
+stack_name = "WizzUser-backend-staging"
+resolve_s3 = true
+s3_prefix = "wizzuser-backend-staging"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "Environment=\"staging\""
+image_repositories = []
+profile = "Wizz_stg_UserApp"
+
+[prod]
+[prod.deploy]
+[prod.deploy.parameters]
+stack_name = "WizzUser-backend-prod"
+s3_bucket = "wizzuser-backend-deployments"
+s3_prefix = "prod"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=prod"
+confirm_changeset = true
+fail_on_empty_changeset = false
