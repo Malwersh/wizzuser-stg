@@ -24,8 +24,8 @@ Parameters:
 
   MerchantWebhookUrl:
     Type: String
-    Default: ""
-    Description: Merchants webhook base URL for order notifications (staging-specific)
+    Default: "https://ie7z8r4wc0.execute-api.us-east-1.amazonaws.com/staging/webhooks/orders"
+    Description: Merchants webhook URL for order notifications (order-receiver-regional API, /webhooks/orders)
 
   OrderServiceUrl:
     Type: String
