@@ -105,6 +105,12 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   // 🔥 تتبع آخر تحديث لتجنب تضارب التحديثات
   DateTime? _lastUpdateTime;
 
+  String _displayCategoryTitle(String title, {int maxChars = 26}) {
+    final trimmed = title.trim();
+    if (trimmed.length <= maxChars) return trimmed;
+    return '${trimmed.substring(0, maxChars)}...';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -605,7 +611,15 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                             ),
                             tabs: _categoryProducts.keys
                                 .map((category) => Tab(
-                                      text: category,
+                                      child: SizedBox(
+                                        width: 170,
+                                        child: Text(
+                                          _displayCategoryTitle(category, maxChars: 22),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
                                     ))
                                 .toList(),
                             onTap: (index) {
@@ -1528,12 +1542,16 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
             child: Row(
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                Expanded(
+                  child: Text(
+                    _displayCategoryTitle(title, maxChars: 40),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 8),

@@ -1976,6 +1976,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       },
                       child: StreamBuilder<DeliveryAddress?>(
                         stream: DeliveryAddressManager.instance.addressStream,
+                        initialData: DeliveryAddressManager.instance.activeAddress,
                         builder: (context, snapshot) {
                           final address = snapshot.data;
                           return Container(

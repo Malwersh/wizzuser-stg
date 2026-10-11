@@ -160,6 +160,9 @@ class BusinessService {
   static Future<Map<String, List<ProductModel>>> getBusinessCategoriesAndProducts(String businessId) async {
     try {
       debugPrint('🔍 جاري جلب منتجات المطعم: $businessId');
+
+      // نجلب الفئات أيضاً لربط categoryId بالاسم الحقيقي عند غياب categoryName.
+      final categoriesFuture = getBusinessCategories(businessId);
       
       // جلب جميع منتجات المطعم من المسار الجديد
       final url = Uri.parse('$_baseUrl/business/$businessId/products');
@@ -179,6 +182,13 @@ class BusinessService {
         if (data['success'] == true && data['products'] != null) {
           final List<dynamic> productsJson = data['products'];
           debugPrint('✅ تم جلب ${productsJson.length} منتج من API');
+
+          final categories = await categoriesFuture;
+          final categoryNameById = <String, String>{
+            for (final category in categories)
+              if (category.categoryId.trim().isNotEmpty && category.categoryName.trim().isNotEmpty)
+                category.categoryId.trim(): category.categoryName.trim(),
+          };
           
           final products = productsJson
               .map((json) => ProductModel.fromJson(json))
@@ -191,21 +201,27 @@ class BusinessService {
           
           for (final product in products) {
             String categoryName;
-            
-            // استخدام categoryName من API مباشرة
-            if (product.categoryName != null && product.categoryName!.isNotEmpty) {
-              categoryName = product.categoryName!;
+
+            final rawCategoryName = product.categoryName?.trim() ?? '';
+            final rawCategoryId = product.categoryId.trim();
+
+            // 1) اسم الفئة القادم من المنتج (إن كان صالحاً)
+            if (rawCategoryName.isNotEmpty && !_looksLikeOpaqueId(rawCategoryName)) {
+              categoryName = rawCategoryName;
               productsWithCategory++;
-            } else if (product.categoryId.isNotEmpty) {
-              // استخدام categoryId منسق كاسم الفئة إذا لم يكن categoryName موجوداً
-              categoryName = _formatCategoryId(product.categoryId);
+            } else if (rawCategoryId.isNotEmpty && categoryNameById.containsKey(rawCategoryId)) {
+              // 2) fallback: اسم الفئة الحقيقي عبر categoryId
+              categoryName = categoryNameById[rawCategoryId]!;
               productsWithCategory++;
-              debugPrint('⚠️ استخدام categoryId منسق كاسم للفئة: ${product.categoryId} -> $categoryName');
+            } else if (rawCategoryId.isNotEmpty && !_looksLikeOpaqueId(rawCategoryId)) {
+              // 3) fallback أخير للمعرّفات القابلة للقراءة فقط
+              categoryName = _formatCategoryId(rawCategoryId);
+              productsWithCategory++;
             } else {
-              // إذا لم يكن هناك categoryId أو categoryName، ضع المنتج في فئة "أخرى"
+              // 4) إذا كان المعرّف UUID/opaque أو مفقوداً، نستخدم اسم آمن للعرض.
               categoryName = 'منتجات أخرى';
               productsWithoutCategory++;
-              debugPrint('⚠️ منتج بدون فئة: ${product.name}');
+              debugPrint('⚠️ منتج بدون اسم فئة قابل للعرض: ${product.name} (categoryId=$rawCategoryId, categoryName=$rawCategoryName)');
             }
             
             if (!result.containsKey(categoryName)) {
@@ -288,6 +304,29 @@ class BusinessService {
         .join(' ');
     
     return formatted;
+  }
+
+  /// التحقق إن كان النص يشبه معرفاً خاماً (UUID أو token طويل) وليس اسماً مناسباً للعرض.
+  static bool _looksLikeOpaqueId(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return true;
+
+    // UUID v4/v1 الشائع
+    final uuidRegex = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    if (uuidRegex.hasMatch(normalized)) return true;
+
+    // token طويل مكوّن من حروف/أرقام/فواصل ويبدو غير قابل للقراءة
+    final compact = normalized.replaceAll(RegExp(r'[\s_-]'), '');
+    final opaqueTokenRegex = RegExp(r'^[0-9a-zA-Z]{24,}$');
+    if (opaqueTokenRegex.hasMatch(compact)) {
+      final hasDigit = RegExp(r'\d').hasMatch(compact);
+      final hasLetter = RegExp(r'[A-Za-z]').hasMatch(compact);
+      if (hasDigit && hasLetter) return true;
+    }
+
+    return false;
   }
 
   /// جلب قائمة جميع المتاجر المتاحة

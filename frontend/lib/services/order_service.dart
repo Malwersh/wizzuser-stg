@@ -280,9 +280,25 @@ class OrderService extends ChangeNotifier {
         } else {
           throw Exception('استجابة غير صالحة من الخادم');
         }
+      } else if (response.statusCode == 409) {
+        // لديك طلب نشط بالفعل (Conflict) — سياسة الطلب الواحد النشط
+        final errorMessage = responseData['error'] ??
+            responseData['message'] ??
+            'لديك طلب نشط بالفعل. يجب انتظار إتمام الطلب الحالي قبل إنشاء طلب جديد.';
+        print('OrderService: Active order conflict (409): $errorMessage');
+        _setError(errorMessage);
+        return {
+          'success': false,
+          'message': errorMessage,
+          'statusCode': 409,
+          'errorType': 'ACTIVE_ORDER_CONFLICT',
+          'activeOrderDetails': responseData['activeOrder'],
+        };
       } else {
         // فشل في إنشاء الطلب
-        final errorMessage = responseData['message'] ?? 'فشل في إنشاء الطلب';
+        final errorMessage = responseData['error'] ??
+            responseData['message'] ??
+            'فشل في إنشاء الطلب';
         throw Exception(errorMessage);
       }
     } catch (e) {
