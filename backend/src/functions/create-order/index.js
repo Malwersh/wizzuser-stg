@@ -402,8 +402,20 @@ exports.handler = async (event) => {
             try {
                 const { QueryCommand } = require('@aws-sdk/lib-dynamodb');
                 
-                // Define active order statuses
-                const activeStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'on_the_way', 'in_kitchen', 'out_for_delivery'];
+                // Define TERMINAL (completed) order statuses. Any order whose status
+                // is NOT terminal is considered active. This is intentionally an
+                // allow-list of "finished" states so that new/intermediate statuses
+                // (e.g. ready_for_pickup, assigned, accepted, picked_up,
+                // heading_to_customer, ...) are treated as active by default.
+                // This enforces the "one active order per user" rule and reduces
+                // fraud (important for cash-on-delivery markets).
+                const terminalStatuses = ['delivered', 'cancelled', 'failed', 'expired', 'rejected'];
+                const isTerminalStatus = (status) => {
+                    if (!status) return false; // unknown/missing status => treat as active (safe side)
+                    const s = String(status).toLowerCase();
+                    if (s.startsWith('canceled_by_') || s.startsWith('cancelled_by_')) return true;
+                    return terminalStatuses.includes(s);
+                };
                 
                 // Query user's orders using GSI_User
                 const queryCommand = {
@@ -420,9 +432,9 @@ exports.handler = async (event) => {
                 const result = await dynamoDb.send(new QueryCommand(queryCommand));
                 
                 if (result.Items && result.Items.length > 0) {
-                    // Check if any order is active (not completed)
+                    // Check if any order is active (not in a terminal/completed state)
                     const activeOrder = result.Items.find(order => 
-                        activeStatuses.includes(order.status)
+                        !isTerminalStatus(order.status)
                     );
                     
                     if (activeOrder) {

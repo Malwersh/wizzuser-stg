@@ -1847,6 +1847,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
         );
+      } else if (result['statusCode'] == 409 ||
+          result['errorType'] == 'ACTIVE_ORDER_CONFLICT') {
+        // سياسة الطلب الواحد النشط — عرض قائمة سفلية لطيفة بدل الشريط الأحمر
+        _showActiveOrderSheet(
+          result['message'] as String? ??
+              'لديك طلب نشط بالفعل. يجب انتظار إتمام الطلب الحالي قبل إنشاء طلب جديد.',
+          result['activeOrderDetails'] as Map<String, dynamic>?,
+        );
       } else {
         _showMessage(result['message'] ?? 'فشل في إنشاء الطلب', isError: true);
       }
@@ -1878,6 +1886,191 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
       ),
+    );
+  }
+
+  /// قائمة سفلية لطيفة تُعرض عند محاولة إنشاء طلب جديد بينما يوجد طلب نشط
+  void _showActiveOrderSheet(
+    String message,
+    Map<String, dynamic>? activeOrder,
+  ) {
+    final orderNumber =
+        activeOrder?['orderNumber']?.toString() ??
+        activeOrder?['orderId']?.toString();
+    final storeName = activeOrder?['storeName']?.toString();
+    final orderId = activeOrder?['orderId']?.toString();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 12,
+            bottom: 20 + MediaQuery.of(sheetContext).padding.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // مقبض السحب
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+              // أيقونة تنبيه
+              Center(
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_rounded,
+                    color: AppColors.warning,
+                    size: 32,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'لديك طلب نشط بالفعل',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              if (orderNumber != null || storeName != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGrey,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.shopping_bag_rounded,
+                        color: AppColors.primary,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (storeName != null)
+                              Text(
+                                storeName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            if (orderNumber != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  'رقم الطلب: $orderNumber',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              // زر تتبع الطلب الحالي
+              if (orderId != null)
+                SizedBox(
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => OrderTrackingScreen(
+                            orderId: orderId,
+                            orderNumber: orderNumber ?? orderId,
+                          ),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.textOnPrimary,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'تتبّع طلبي الحالي',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              if (orderId != null) const SizedBox(height: 10),
+              // زر إغلاق
+              SizedBox(
+                height: 50,
+                child: TextButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'حسناً',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

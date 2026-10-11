@@ -55,6 +55,17 @@ class DeliveryAddressManager {
     debugPrint('   نوع المستخدم: ${isRegisteredUser ? "مسجل" : "ضيف"}');
 
     try {
+      // 🆕 الطبقة 0: إذا تم تعيين عنوان نشط مسبقاً (مثلاً العنوان الافتراضي من شاشة البداية)
+      // لا نعيد التهيئة ولا نسمح لـ GPS بأن يطغى عليه
+      if (_activeAddress != null) {
+        debugPrint('✅ يوجد عنوان نشط بالفعل - تخطي إعادة التهيئة: ${_activeAddress!.displayName}');
+        debugPrint('   regionId: ${_activeAddress!.regionId ?? "غير محددة"}');
+        _isInitialized = true;
+        // إعادة البث لضمان وصول العنوان للمستمعين الجدد (مثل الشاشة الرئيسية)
+        _addressController.add(_activeAddress);
+        return _activeAddress;
+      }
+
       // 🆕 الطبقة 1: محاولة GPS أولاً (للجميع)
       debugPrint('📍 الطبقة 1: محاولة الحصول على موقع GPS...');
       _activeAddress = await _getGPSAddress();

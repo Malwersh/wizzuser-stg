@@ -6,6 +6,9 @@ import 'intro_screen.dart';
 import 'address_gate_screen.dart';
 import '../services/delivery_address_manager.dart';
 import '../services/guest_cache_service.dart';
+import '../services/address_service.dart';
+import '../services/region_resolver_service.dart';
+import '../models/delivery_address.dart';
 import '../services/push_notifications_service.dart';
 import '../services/session_service.dart';
 import '../services/websocket_service.dart';
@@ -76,11 +79,11 @@ class _SplashScreenState extends State<SplashScreen>
     final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
     developer.log('🔄 SplashScreen: App state changed - isLoggedIn: ${appStateProvider.isLoggedIn}, isGuest: ${appStateProvider.isGuest}');
     
-    // إذا تم تسجيل الدخول بنجاح، انتقل للشاشة الرئيسية
+    // إذا تم تسجيل الدخول بنجاح، انتقل عبر فحص العنوان (مع التحميل التلقائي للعنوان الافتراضي)
     if (appStateProvider.isLoggedIn && mounted) {
       _hasNavigated = true;
-      developer.log('✅ User logged in - navigating to home from splash');
-      _navigateToHome();
+      developer.log('✅ User logged in - navigating with address check from splash');
+      _navigateWithAddressCheck(isGuest: false);
     }
   }
 
@@ -137,6 +140,11 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigateToNextScreen(AppStateProvider appStateProvider) async {
+    // تجنب التنقل المزدوج إذا سبق أن تنقّل مستمع حالة الجلسة
+    if (_hasNavigated) {
+      developer.log('ℹ️ تم التنقل بالفعل عبر مستمع حالة الجلسة - تخطي');
+      return;
+    }
     try {
       // تحديد الشاشة التالية بناءً على حالة المستخدم
       if (appStateProvider.isLoggedIn) {
@@ -189,8 +197,15 @@ class _SplashScreenState extends State<SplashScreen>
           developer.log('📍 يوجد عنوان نشط - التنقل للشاشة الرئيسية');
           _navigateToHome();
         } else {
-          developer.log('⚠️ لا يوجد عنوان نشط - التوجيه لاختيار العنوان');
-          _navigateToAddressGate(isGuest: false);
+          // 🆕 محاولة تحميل العنوان الافتراضي المحفوظ تلقائياً قبل التوجيه لاختيار العنوان
+          final autoLoaded = await _tryAutoLoadDefaultAddress(addressManager);
+          if (autoLoaded) {
+            developer.log('✅ تم تحميل العنوان الافتراضي تلقائياً - التنقل للشاشة الرئيسية');
+            _navigateToHome();
+          } else {
+            developer.log('⚠️ لا يوجد عنوان افتراضي محفوظ - التوجيه لاختيار العنوان');
+            _navigateToAddressGate(isGuest: false);
+          }
         }
       }
       
@@ -198,6 +213,89 @@ class _SplashScreenState extends State<SplashScreen>
       developer.log('❌ خطأ في التحقق من العنوان: $e');
       // في حالة الخطأ، اطلب من المستخدم اختيار العنوان
       _navigateToAddressGate(isGuest: isGuest);
+    }
+  }
+
+  /// 🆕 محاولة تحميل العنوان الافتراضي المحفوظ للمستخدم المسجل وتعيينه نشطاً تلقائياً
+  /// يُستخدم عند كل إقلاع حتى لا يضطر المستخدم لاختيار العنوان يدوياً في كل مرة.
+  /// يُرجع true إذا نجح تعيين عنوان افتراضي صالح (له regionId وإحداثيات).
+  Future<bool> _tryAutoLoadDefaultAddress(DeliveryAddressManager addressManager) async {
+    try {
+      final addressService = context.read<EnhancedAddressService>();
+
+      // جلب العناوين المحفوظة للمستخدم (عبر API مع التوكن)
+      await addressService.fetchAddresses();
+
+      final defaultAddr = addressService.defaultAddress;
+      if (defaultAddr == null) {
+        developer.log('ℹ️ لا توجد عناوين محفوظة للمستخدم - لا يمكن التحميل التلقائي');
+        return false;
+      }
+
+      // يجب توفر إحداثيات صالحة
+      if (defaultAddr.latitude == null || defaultAddr.longitude == null) {
+        developer.log('⚠️ العنوان الافتراضي بدون إحداثيات - تخطي التحميل التلقائي');
+        return false;
+      }
+
+      // تحديد regionId: استخدم المحفوظ إن وُجد، وإلا حلّه من الإحداثيات
+      // (عناوين الـ API قد لا تتضمن region_id)
+      String? regionId = defaultAddr.regionId;
+      if (regionId == null || regionId.isEmpty) {
+        developer.log('🗺️ العنوان الافتراضي بدون regionId - جاري حلّه من الإحداثيات...');
+        try {
+          final resolver = RegionResolverService();
+          final result = await resolver.resolvePoint(
+            lat: defaultAddr.latitude!,
+            lng: defaultAddr.longitude!,
+          );
+          if (result != null && result.success && result.effective.isActive) {
+            regionId = result.region.id;
+            developer.log('✅ تم حلّ المنطقة من الإحداثيات: ${result.region.nameAr} ($regionId)');
+          } else {
+            developer.log('⚠️ تعذّر حلّ منطقة مخدومة من إحداثيات العنوان الافتراضي');
+          }
+        } catch (e) {
+          developer.log('⚠️ خطأ أثناء حلّ المنطقة من الإحداثيات: $e');
+        }
+      }
+
+      // يجب توفر regionId صالح (المنطقة مخدومة) لعرض المطاعم
+      if (regionId == null || regionId.isEmpty) {
+        developer.log('⚠️ لا يوجد regionId صالح للعنوان الافتراضي - المنطقة غير مخدومة');
+        return false;
+      }
+
+      // تحويل DetailedAddress إلى DeliveryAddress وتعيينه كعنوان نشط
+      final deliveryAddress = DeliveryAddress(
+        addressId: defaultAddr.id,
+        userId: defaultAddr.userId,
+        label: defaultAddr.name.isNotEmpty
+            ? defaultAddr.name
+            : (defaultAddr.neighborhood.isNotEmpty
+                ? defaultAddr.neighborhood
+                : 'عنوان التوصيل'),
+        formattedAddress: defaultAddr.fullAddress,
+        latitude: defaultAddr.latitude!,
+        longitude: defaultAddr.longitude!,
+        regionId: regionId,
+        regionNameAr: defaultAddr.regionNameAr,
+        neighborhood: defaultAddr.neighborhood,
+        city: defaultAddr.province.isNotEmpty ? defaultAddr.province : 'النجف',
+        source: AddressSource.saved,
+        isDefault: true,
+        timestamp: DateTime.now(),
+      );
+
+      await addressManager.setActiveAddress(deliveryAddress);
+      developer.log(
+        '✅ تم تعيين العنوان الافتراضي كعنوان نشط تلقائياً: '
+        '${deliveryAddress.label} (regionId=${deliveryAddress.regionId})',
+      );
+      return true;
+    } catch (e) {
+      developer.log('❌ خطأ في التحميل التلقائي للعنوان الافتراضي: $e');
+      return false;
     }
   }
 
