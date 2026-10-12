@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
 import '../models/address_model.dart';
+import '../models/store_discount.dart';
 import "session_service.dart";
 import '../config/api_config.dart';
 
@@ -47,6 +48,7 @@ class OrderService extends ChangeNotifier {
     double discount = 0.0,
     String? deliveryInstructions,
     String? promoCode,
+    String? discountId,
     // معلومات المستخدم الإضافية
     String? userId, // null للضيوف
     String? customerName,
@@ -159,6 +161,7 @@ class OrderService extends ChangeNotifier {
         'discount': discount,
         'deliveryInstructions': deliveryInstructions,
         'promoCode': promoCode,
+        'discountId': discountId,
         'userId': userId,
         'customerName': customerName,
         'customerPhone': customerPhone,
@@ -529,50 +532,80 @@ class OrderService extends ChangeNotifier {
     ).toList();
   }
 
-  /// تطبيق كود خصم
-  Future<Map<String, dynamic>> applyPromoCode(String promoCode, double orderTotal) async {
+  /// جلب العروض/الخصومات الفعالة لمتجر معين
+  Future<List<StoreDiscount>> getStoreDiscounts(String storeId) async {
     try {
-      final sessionService = SessionService.instance;
-      if (!sessionService.isLoggedIn) {
-        throw Exception('يجب تسجيل الدخول أولاً');
-      }
-
-      final token = sessionService.accessToken;
-
-      if (token == null) {
-        throw Exception('لم يتم العثور على رمز المصادقة');
-      }
-
-      final response = await http.post(
-        Uri.parse('$_baseUrl/promo-codes/validate'),
-        headers: {
-          'Authorization': 'Bearer $token',
+      final response = await http.get(
+        Uri.parse('$_baseUrl/business/$storeId/discounts'),
+        headers: const {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final list = (responseData['discounts'] as List?) ?? const [];
+        return list
+            .map((d) => StoreDiscount.fromJson(Map<String, dynamic>.from(d)))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('خطأ في جلب خصومات المتجر: $e');
+      return [];
+    }
+  }
+
+  /// التحقق من خصم تاجر وحساب قيمته من الخادم
+  Future<Map<String, dynamic>> validateDiscount({
+    required String storeId,
+    required String discountId,
+    required double orderTotal,
+    required List<Map<String, dynamic>> items,
+    double deliveryFee = 0,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/promo-codes/apply'),
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: jsonEncode({
-          'promo_code': promoCode,
-          'order_total': orderTotal,
+          'businessId': storeId,
+          'discountId': discountId,
+          'orderTotal': orderTotal,
+          'deliveryFee': deliveryFee,
+          'items': items.map((item) => {
+            'id': item['id'],
+            'categoryId': item['categoryId'] ?? item['category_id'],
+            'price': item['price'].toString(),
+            'quantity': item['quantity'] ?? 1,
+          }).toList(),
         }),
       );
 
       final responseData = jsonDecode(response.body);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && responseData['valid'] == true) {
         return {
           'success': true,
-          'discount': responseData['data']['discount_amount'],
-          'message': responseData['message'],
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['message'] ?? 'كود الخصم غير صالح',
+          'valid': true,
+          'discount': (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
+          'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
         };
       }
+      return {
+        'success': false,
+        'valid': false,
+        'message': responseData['message'] ?? 'الخصم غير صالح',
+      };
     } catch (e) {
       return {
         'success': false,
-        'message': 'خطأ في التحقق من كود الخصم: ${e.toString()}',
+        'valid': false,
+        'message': 'خطأ في التحقق من الخصم: ${e.toString()}',
       };
     }
   }

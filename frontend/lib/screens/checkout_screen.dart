@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/order_model.dart';
 import '../models/address_model.dart';
+import '../models/store_discount.dart';
 import '../providers/app_state_provider.dart';
 import '../services/address_service.dart';
 import '../services/session_service.dart';
@@ -35,6 +36,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
   String _deliveryInstructions = '';
   bool _isLoading = false;
+
+  // Merchant discounts
+  List<StoreDiscount> _availableDiscounts = [];
+  String? _selectedDiscountId;
+  double _discount = 0.0;
+  bool _isLoadingDiscounts = false;
+  bool _isValidatingDiscount = false;
   
   // User information for checkout
   bool _isGuestUser = false;
@@ -60,7 +68,74 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     // تأخير تهيئة البيانات لتحسين الأداء
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeUserData();
+      _loadStoreDiscounts();
     });
+  }
+
+  Future<void> _loadStoreDiscounts() async {
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    final storeId = widget.storeId ??
+        (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
+    if (storeId == null || storeId.toString().isEmpty) return;
+
+    setState(() {
+      _isLoadingDiscounts = true;
+    });
+
+    final discounts = await _orderService.getStoreDiscounts(storeId.toString());
+
+    if (mounted) {
+      setState(() {
+        _availableDiscounts = discounts;
+        _isLoadingDiscounts = false;
+      });
+    }
+  }
+
+  Future<void> _selectDiscount(StoreDiscount? discount) async {
+    if (discount == null) {
+      setState(() {
+        _selectedDiscountId = null;
+        _discount = 0.0;
+      });
+      return;
+    }
+
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    final storeId = widget.storeId ??
+        (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
+    if (storeId == null) return;
+
+    setState(() {
+      _isValidatingDiscount = true;
+    });
+
+    final result = await _orderService.validateDiscount(
+      storeId: storeId.toString(),
+      discountId: discount.discountId,
+      orderTotal: appState.cartTotal,
+      deliveryFee: 10.0,
+      items: appState.cartItems,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isValidatingDiscount = false;
+      if (result['valid'] == true) {
+        _selectedDiscountId = discount.discountId;
+        _discount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+      } else {
+        _selectedDiscountId = null;
+        _discount = 0.0;
+      }
+    });
+
+    if (result['valid'] == true) {
+      _showMessage('تم تطبيق الخصم بنجاح');
+    } else {
+      _showMessage(result['message'] ?? 'الخصم غير صالح', isError: true);
+    }
   }
 
   @override
@@ -217,6 +292,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               // قسم طريقة الدفع
                               RepaintBoundary(
                                 child: _buildPaymentSection(),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // قسم العروض والخصومات
+                              RepaintBoundary(
+                                child: _buildDiscountsSection(),
                               ),
                               const SizedBox(height: 16),
                               
@@ -675,9 +756,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // TODO: Re-enable promo section later
-  /*
-  Widget _buildPromoSection() {
+  Widget _buildDiscountsSection() {
+    if (_isLoadingDiscounts) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    if (_availableDiscounts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -710,57 +810,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(width: 12),
               const Text(
-                'كود الخصم',
+                'العروض والخصومات',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.black87,
                 ),
               ),
+              if (_isValidatingDiscount) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _promoController,
-                  decoration: InputDecoration(
-                    hintText: 'أدخل كود الخصم',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppColors.primary),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                  ),
+          ..._availableDiscounts.map((discount) {
+            return RadioListTile<String>(
+              value: discount.discountId,
+              groupValue: _selectedDiscountId,
+              onChanged: _isValidatingDiscount
+                  ? null
+                  : (_) => _selectDiscount(discount),
+              title: Text(
+                discount.title.isNotEmpty ? discount.title : discount.displayValue,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
                 ),
               ),
-              const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: null, // معطل مؤقتاً
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey,
-                  foregroundColor: AppColors.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text('قريباً'),
+              subtitle: Text(
+                discount.description.isNotEmpty
+                    ? discount.description
+                    : discount.displayValue,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
-            ],
-          ),
-          // Discount display section - temporarily disabled
-          /*
+              activeColor: AppColors.primary,
+              contentPadding: EdgeInsets.zero,
+            );
+          }),
+          if (_selectedDiscountId != null) ...[
+            TextButton(
+              onPressed: _isValidatingDiscount ? null : () => _selectDiscount(null),
+              child: const Text(
+                'إزالة الخصم',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ],
           if (_discount > 0) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -771,14 +874,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 20,
-                  ),
+                  const Icon(Icons.check_circle, color: Colors.green, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'تم تطبيق خصم ${_discount.toStringAsFixed(2)} ر.س',
+                    'تم تطبيق خصم ${_discount.toStringAsFixed(2)}',
                     style: const TextStyle(
                       color: Colors.green,
                       fontWeight: FontWeight.w600,
@@ -788,12 +887,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
           ],
-          */
         ],
       ),
     );
   }
-  */
 
   Widget _buildInstructionsSection() {
     return Container(
@@ -865,8 +962,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget _buildPriceSummary(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
     const deliveryFee = 10.0;
-    // TODO: Re-enable discounts later
-    final discount = 0.0; // Temporarily disabled: _discount
+    final discount = _discount;
     final total = subtotal + deliveryFee - discount;
 
     return Container(
@@ -926,23 +1022,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Text('${deliveryFee.toStringAsFixed(2)} ر.س'),
             ],
           ),
-          // TODO: Re-enable discount display later
-          // if (_discount > 0) ...[
-          //   const SizedBox(height: 8),
-          //   Row(
-          //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          //     children: [
-          //       const Text(
-          //         'الخصم',
-          //         style: TextStyle(color: Colors.green),
-          //       ),
-          //       Text(
-          //         '-${_discount.toStringAsFixed(2)} ر.س',
-          //         style: const TextStyle(color: Colors.green),
-          //       ),
-          //     ],
-          //   ),
-          // ],
+          if (discount > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'الخصم',
+                  style: TextStyle(color: Colors.green),
+                ),
+                Text(
+                  '-${discount.toStringAsFixed(2)} ر.س',
+                  style: const TextStyle(color: Colors.green),
+                ),
+              ],
+            ),
+          ],
           const Divider(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -972,7 +1067,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget _buildConfirmButton(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
     const deliveryFee = 10.0;
-    const discount = 0.0; // Temporarily disabled
+    final discount = _discount;
     final total = subtotal + deliveryFee - discount;
     final bool canConfirm = _selectedAddress != null && !_isLoading;
 
@@ -1598,44 +1693,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
 
 
-  // TODO: Re-enable promo code function later
-  /*
-  Future<void> _applyPromoCode() async {
-    if (_promoController.text.trim().isEmpty) {
-      _showMessage('أدخل كود الخصم أولاً', isError: true);
-      return;
-    }
-
-    setState(() {
-      _isApplyingPromo = true;
-    });
-
-    try {
-      final appState = Provider.of<AppStateProvider>(context, listen: false);
-      final result = await _orderService.applyPromoCode(
-        _promoController.text.trim(),
-        appState.cartTotal,
-      );
-
-      if (result['success']) {
-        setState(() {
-          _discount = result['discount'];
-          _promoCode = _promoController.text.trim();
-        });
-        _showMessage(result['message'] ?? 'تم تطبيق كود الخصم بنجاح');
-      } else {
-        _showMessage(result['message'] ?? 'كود الخصم غير صالح', isError: true);
-      }
-    } catch (e) {
-      _showMessage('خطأ في تطبيق كود الخصم', isError: true);
-    } finally {
-      setState(() {
-        _isApplyingPromo = false;
-      });
-    }
-  }
-  */
-
   Future<void> _confirmOrder(AppStateProvider appState) async {
     // التحقق من صحة النموذج أولاً
     if (!_formKey.currentState!.validate()) {
@@ -1814,11 +1871,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryAddress: _selectedAddress!,
         paymentMethod: _selectedPaymentMethod,
         deliveryInstructions: _deliveryInstructions.isEmpty ? null : _deliveryInstructions,
-        // TODO: Re-enable promo code and discount later
-        // promoCode: _promoCode.isEmpty ? null : _promoCode,
-        // discount: _discount,
         promoCode: null,
-        discount: 0.0,
+        discountId: _selectedDiscountId,
+        discount: _discount,
         // إضافة معلومات المستخدم الحقيقية
         userId: userId,
         customerName: customerName,

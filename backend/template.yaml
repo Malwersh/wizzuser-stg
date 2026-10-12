@@ -46,6 +46,7 @@ Globals:
         WALLETS_TABLE: !Ref WalletsTable
         TRANSACTIONS_TABLE: !Ref TransactionsTable
         WIZZORDERS_TABLE: WizzOrders
+        DISCOUNTS_TABLE: WhizzMerchants_Discounts
         USER_POOL_ID: !Ref CognitoUserPool
         USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClient
         SES_FROM_EMAIL: noreply@foodapp.com
@@ -818,6 +819,38 @@ Resources:
                 type: aws_proxy
                 httpMethod: POST
                 uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WizzUserGetBusinessWorkingHoursFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+          /business/{businessId}/discounts:
+            get:
+              security: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetStoreDiscountsFunction.Arn}/invocations"
             options:
               security: []
               x-amazon-apigateway-integration:
@@ -3735,6 +3768,15 @@ Resources:
         - Statement:
           - Effect: Allow
             Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:UpdateItem
+            Resource: 
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
+        - Statement:
+          - Effect: Allow
+            Action:
               - dynamodb:Query
               - dynamodb:Scan
               - dynamodb:UpdateItem
@@ -3912,6 +3954,30 @@ Resources:
             Resource: 
               - arn:aws:dynamodb:*:*:table/WizzOrders
               - arn:aws:dynamodb:*:*:table/WizzOrders/index/*
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+            Resource: 
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
+
+  GetStoreDiscountsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/get-store-discounts/index.handler
+      FunctionName: !Sub "WizzUser-GetStoreDiscounts-${Environment}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+            Resource: 
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
 
   SearchOrderByNumberFunction:
     Type: AWS::Serverless::Function
@@ -4797,6 +4863,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref ApplyPromoCodeFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
+
+  GetStoreDiscountsLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetStoreDiscountsFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"

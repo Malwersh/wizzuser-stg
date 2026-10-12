@@ -1008,40 +1008,6 @@ class OrderServiceV2 extends ChangeNotifier {
     }
   }
 
-  /// تطبيق كود خصم
-  Future<Map<String, dynamic>> applyPromoCode(
-    String promoCode,
-    double orderTotal,
-  ) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/promo-codes/apply'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'promoCode': promoCode, 'orderTotal': orderTotal}),
-      );
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200 && responseData['success'] == true) {
-        return {
-          'success': true,
-          'discount': responseData['discount'],
-          'message': responseData['message'],
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['message'] ?? 'كود الخصم غير صالح',
-        };
-      }
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'خطأ في التحقق من كود الخصم: ${e.toString()}',
-      };
-    }
-  }
-
   /// الحصول على الطلبات النشطة (غير مكتملة)
   List<OrderModel> get activeOrders {
     return _orders

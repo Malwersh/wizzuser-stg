@@ -219,16 +219,6 @@ class OptimizedApiService {
     return _getCachedOrFetch(cacheKey, () => _apiClient.get('/categories'));
   }
 
-  // Promotions APIs
-  Future<Map<String, dynamic>> getPromotions() async {
-    final cacheKey = 'promotions';
-    return _getCachedOrFetch(cacheKey, () => _apiClient.get('/promotions'));
-  }
-
-  Future<Map<String, dynamic>> applyPromoCode(String promoCode) async {
-    return _apiClient.post('/promotions/apply', body: {'code': promoCode});
-  }
-
   // Notification APIs
   Future<Map<String, dynamic>> getNotifications({int page = 1, int limit = 20}) async {
     return _apiClient.get('/notifications?page=$page&limit=$limit');

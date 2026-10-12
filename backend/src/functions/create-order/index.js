@@ -1,7 +1,8 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
+const { normalizeDiscount, validateDiscount, calculateDiscountAmount } = require('../shared/discount-engine');
 
 const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_BASE_URL || '').trim();
 const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
@@ -25,6 +26,8 @@ function requireEnv(name) {
 const TABLE_NAME = process.env.WIZZORDERS_TABLE || 'WizzOrders';
 // Businesses table (used as fallback to fetch store address when frontend doesn't provide one)
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
+// Merchant discounts table (shared with the merchants app)
+const DISCOUNTS_TABLE = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
 const MERCHANT_WEBHOOK_URL = process.env.MERCHANT_WEBHOOK_URL;
 
 function postJson(urlString, headers, body, timeoutMs = 6000) {
@@ -208,6 +211,7 @@ function sendOrderToMerchant(order) {
             deliveryAddress: order.deliveryAddress,
             items: order.items,
             pricing: order.pricing,
+            discountId: order.discountId,
             notes: order.notes,
             deliveryType: order.deliveryType,
             paymentMethod: order.paymentMethod,
@@ -485,6 +489,7 @@ exports.handler = async (event) => {
                 lineId: lineId,
                 skuId: item.id || item.skuId || item.productId,
                 itemId: item.id || item.itemId || item.productId,
+                categoryId: item.categoryId || item.category_id || null,
                 name: item.name || item.dishName || 'عنصر غير محدد',
                 quantity: quantity,
                 unitPrice: unitPrice,
@@ -513,9 +518,76 @@ exports.handler = async (event) => {
         const tax = Math.round((body.tax || 0) * 1000);
         const tip = Math.round((body.tip || 0) * 1000);
         const rounding = Math.round((body.rounding || 0) * 1000);
-        
-        // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding
-        const total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding;
+
+        // Merchant discount (WhizzMerchants_Discounts) - validated server-side
+        let discountFils = 0;
+        let appliedDiscount = null;
+        if (body.discountId) {
+            console.log('🏷️ Discount requested:', body.discountId, 'for store:', body.storeId);
+            try {
+                const discountResult = await dynamoDb.send(new GetCommand({
+                    TableName: DISCOUNTS_TABLE,
+                    Key: { discountId: body.discountId }
+                }));
+
+                if (!discountResult.Item) {
+                    return {
+                        statusCode: 400,
+                        headers: headers,
+                        body: JSON.stringify({
+                            error: 'Discount not found',
+                            success: false
+                        })
+                    };
+                }
+
+                const discount = normalizeDiscount(discountResult.Item);
+
+                if (discount.businessId !== body.storeId) {
+                    return {
+                        statusCode: 400,
+                        headers: headers,
+                        body: JSON.stringify({
+                            error: 'Discount does not belong to this store',
+                            success: false
+                        })
+                    };
+                }
+
+                const validation = validateDiscount(discount, goodsSubtotal);
+                if (!validation.valid) {
+                    return {
+                        statusCode: 400,
+                        headers: headers,
+                        body: JSON.stringify({
+                            error: validation.message,
+                            success: false
+                        })
+                    };
+                }
+
+                const itemsFils = processedItems.map(item => ({
+                    itemId: item.itemId,
+                    id: item.itemId,
+                    categoryId: item.categoryId,
+                    price: item.unitPrice,
+                    quantity: item.quantity
+                }));
+
+                discountFils = Math.round(
+                    calculateDiscountAmount(discount, goodsSubtotal, itemsFils, deliveryFee)
+                );
+                appliedDiscount = discount;
+                console.log('🏷️ Discount validated. Amount (fils):', discountFils);
+            } catch (discountError) {
+                // DynamoDB errors surface as 500; validation failures returned above
+                console.error('❌ Error validating discount:', discountError);
+                throw discountError;
+            }
+        }
+
+        // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discount
+        const total = Math.max(0, goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discountFils);
 
         // Determine user fields and generate guestToken for guest orders
         const isGuestOrder = body.userId === null || body.userId === 'guest' || !body.userId;
@@ -746,8 +818,13 @@ exports.handler = async (event) => {
                 tax: tax,
                 tip: tip,
                 rounding: rounding,
+                discount: discountFils,
                 total: total
             },
+
+            // Applied merchant discount (if any)
+            discountId: appliedDiscount ? appliedDiscount.discountId : null,
+            promoCode: body.promoCode || null,
             
             // Payment (ز)
             paymentMethod: body.paymentMethod || 'cod',
@@ -826,6 +903,34 @@ exports.handler = async (event) => {
         await dynamoDb.send(putCommand);
 
         console.log('Order created successfully:', orderId);
+
+        // Increment the merchant discount usage counter (non-blocking for the order)
+        if (appliedDiscount) {
+            try {
+                const usageUpdate = {
+                    TableName: DISCOUNTS_TABLE,
+                    Key: { discountId: appliedDiscount.discountId },
+                    UpdateExpression: 'SET #usageCount = #usageCount + :inc, #updatedAt = :updatedAt',
+                    ExpressionAttributeNames: {
+                        '#usageCount': 'usage_count',
+                        '#updatedAt': 'updated_at'
+                    },
+                    ExpressionAttributeValues: {
+                        ':inc': 1,
+                        ':updatedAt': new Date().toISOString()
+                    }
+                };
+                if (appliedDiscount.usageLimit) {
+                    usageUpdate.ConditionExpression =
+                        'attribute_not_exists(#usageCount) OR #usageCount < :limit';
+                    usageUpdate.ExpressionAttributeValues[':limit'] = appliedDiscount.usageLimit;
+                }
+                await dynamoDb.send(new UpdateCommand(usageUpdate));
+                console.log('🏷️ Discount usage_count incremented for:', appliedDiscount.discountId);
+            } catch (usageError) {
+                console.error('🏷️ Failed to increment discount usage_count (order already created):', usageError.message);
+            }
+        }
 
         // Send order to merchant backend webhook (non-blocking)
         try {
