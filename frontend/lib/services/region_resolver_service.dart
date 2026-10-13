@@ -4,7 +4,14 @@ import '../config/google_places_config.dart';
 
 /// Region Resolver Service
 /// يتواصل مع WizzCentral API لتحويل GPS إلى معلومات المنطقة
+class RegionResolutionException implements Exception {
+  @override
+  String toString() => 'تعذر التحقق من تغطية العنوان الآن. حاول مرة أخرى.';
+}
+
 class RegionResolverService {
+  final http.Client? _client;
+  RegionResolverService({http.Client? client}) : _client = client;
   /// Resolve GPS coordinates to region information
   /// 
   /// Returns region data including:
@@ -15,6 +22,7 @@ class RegionResolverService {
   Future<RegionResolveResult?> resolvePoint({
     required double lat,
     required double lng,
+    bool throwOnFailure = false,
   }) async {
     try {
       print('🗺️ Resolving region for: lat=$lat, lng=$lng');
@@ -33,7 +41,7 @@ class RegionResolverService {
 
       print('🌐 Region resolver URL: $uri');
 
-      final response = await http.get(
+      final response = await (_client?.get ?? http.get)(
         uri,
         headers: {
           'Content-Type': 'application/json',
@@ -48,7 +56,10 @@ class RegionResolverService {
       print('📡 Response status: ${response.statusCode}');
       
       if (response.statusCode != 200) {
-        print('❌ HTTP ${response.statusCode}: ${response.body}');
+        if (throwOnFailure) {
+          final body = jsonDecode(response.body);
+          if (response.statusCode != 404 || body is! Map || body['error'] != 'REGION_NOT_FOUND') { throw RegionResolutionException(); }
+        }
         return null;
       }
 
@@ -91,10 +102,10 @@ class RegionResolverService {
         return RegionResolveResult.fromJson(payload);
       }
 
-      print('❌ Resolution failed: unexpected response shape');
+      if (throwOnFailure) { throw RegionResolutionException(); }
       return null;
     } catch (e) {
-      print('❌ Error resolving region: $e');
+      if (throwOnFailure) { throw RegionResolutionException(); }
       return null;
     }
   }

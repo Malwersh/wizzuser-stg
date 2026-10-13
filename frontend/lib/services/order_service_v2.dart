@@ -921,7 +921,7 @@ class OrderServiceV2 extends ChangeNotifier {
       final sessionService = SessionService.instance;
       final userId = sessionService.currentUserId;
 
-      if (userId == null) {
+      if (userId == null && _guestToken == null) {
         throw Exception('User ID not found in session');
       }
 
@@ -929,18 +929,13 @@ class OrderServiceV2 extends ChangeNotifier {
         'orderId': orderId,
         'canceledBy': 'customer',
         'reason': reason,
-        'requestedBy': userId,
+        'requestedBy': userId ?? _guestToken,
+        if (_guestToken != null) 'guestToken': _guestToken,
       });
 
-      print('🔴 Request body: $requestBody');
 
-      // Order Service doesn't require Authorization header (no authorizer configured)
-      // Using basic headers to avoid AWS signature validation errors
-      final headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      print('🔴 Request headers: $headers');
+
+      final headers = await _getHeaders();
       print('🔴 Request URL: $_orderServiceUrl/order/cancel');
 
       final response = await http

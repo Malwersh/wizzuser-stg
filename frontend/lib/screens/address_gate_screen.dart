@@ -122,7 +122,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
     try {
       final apiKey = GooglePlacesConfig.httpKey; // المفتاح الصحيح للـ HTTP API
       print('🔍 بدء البحث عن: $query');
-      print('🔑 API Key: ${apiKey.substring(0, 20)}...');
+
       
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/place/autocomplete/json'
@@ -132,7 +132,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         '&key=$apiKey',
       );
 
-      print('🌐 URL: $url');
+
       final response = await http.get(url);
       print('📥 Response Status: ${response.statusCode}');
       
@@ -257,6 +257,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
       final result = await regionService.resolvePoint(
         lat: latitude,
         lng: longitude,
+        throwOnFailure: true,
       );
       
       if (result != null && result.success) {
@@ -283,7 +284,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         return null;
       }
     } catch (e) {
-      print('❌ خطأ في العثور على region_id: $e');
+      if (e is RegionResolutionException) rethrow;
       return null;
     }
   }
@@ -309,7 +310,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
       }
     } catch (e) {
       print('خطأ في معالجة اختيار العنوان: $e');
-      _showErrorSnackBar('حدث خطأ');
+      _showErrorSnackBar(e is RegionResolutionException ? e.toString() : 'حدث خطأ');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -404,7 +405,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
 
     } catch (e) {
       print('خطأ في الحصول على الموقع: $e');
-      _showErrorSnackBar('فشل تحديد موقعك الحالي');
+      _showErrorSnackBar(e is RegionResolutionException ? e.toString() : 'فشل تحديد موقعك الحالي');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -1007,7 +1008,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
       await _saveAndProceed(address);
     } catch (e) {
       print('خطأ في اختيار العنوان المحفوظ: $e');
-      _showErrorSnackBar('فشل تحديد العنوان');
+      _showErrorSnackBar(e is RegionResolutionException ? e.toString() : 'فشل تحديد العنوان');
     } finally {
       setState(() => _isLoading = false);
     }
