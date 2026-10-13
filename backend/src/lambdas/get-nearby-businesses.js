@@ -14,10 +14,11 @@
  * 6. Apply limit
  */
 
-const AWS = require('aws-sdk');
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,ScanCommand,BatchGetCommand}=require('@aws-sdk/lib-dynamodb');
 const { haversineDistance, sortByDistance } = require('../utils/haversine');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Table name
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
@@ -27,7 +28,7 @@ const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Busines
  */
 exports.handler = async (event) => {
   console.log('🔍 Get Nearby Businesses');
-  console.log('Event:', JSON.stringify(event, null, 2));
+
 
   try {
     // Extract parameters
@@ -134,7 +135,7 @@ async function scanAllItems(params) {
       scanParams.ExclusiveStartKey = lastEvaluatedKey;
     }
 
-    const result = await dynamodb.scan(scanParams).promise();
+    const result = await dynamodb.send(new ScanCommand(scanParams));
 
     if (result.Items) {
       items.push(...result.Items);

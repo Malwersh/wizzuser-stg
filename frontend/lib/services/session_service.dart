@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -83,9 +85,63 @@ class SessionService extends ChangeNotifier {
   String? get idToken => _idToken;
   String? get refreshToken => _refreshToken;
   
-  // Backward compatibility methods
+  Future<String?>? _tokenRefresh;
+
   Future<String?> getToken() async {
-    return _accessToken;
+    final token = _accessToken;
+    if (token == null || !_isLoggedIn || _isGuest || _isPerformingLogout) {
+      return null;
+    }
+    try {
+      if (JwtDecoder.getExpirationDate(token).isAfter(
+        DateTime.now().add(const Duration(seconds: 60)),
+      )) return token;
+    } catch (_) {
+      return null;
+    }
+    final pending = _tokenRefresh;
+    if (pending != null) return pending;
+    final operation = _refreshAccessToken();
+    _tokenRefresh = operation;
+    try {
+      return await operation;
+    } finally {
+      if (identical(_tokenRefresh, operation)) _tokenRefresh = null;
+    }
+  }
+
+  Future<String?> _refreshAccessToken() async {
+    final refresh = _refreshToken;
+    final account = _currentUserId;
+    if (refresh == null || refresh.isEmpty) return null;
+    try {
+      final response = await http.post(
+        Uri.https('cognito-idp.${ApiConfig.cognitoRegion}.amazonaws.com', '/'),
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+        },
+        body: jsonEncode({
+          'AuthFlow': 'REFRESH_TOKEN_AUTH',
+          'ClientId': ApiConfig.cognitoClientId,
+          'AuthParameters': {'REFRESH_TOKEN': refresh},
+        }),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return null;
+      final result = jsonDecode(response.body)['AuthenticationResult'];
+      final access = result?['AccessToken'] as String?;
+      final id = result?['IdToken'] as String?;
+      if (access == null || JwtDecoder.isExpired(access)) return null;
+      if (!_isLoggedIn || _isPerformingLogout ||
+          _currentUserId != account || _refreshToken != refresh) return null;
+      _accessToken = access;
+      if (id != null) _idToken = id;
+      await _secureStorage.write(key: _accessTokenKey, value: access);
+      if (id != null) await _secureStorage.write(key: _idTokenKey, value: id);
+      return access;
+    } catch (_) {
+      return null;
+    }
   }
   
   int getCartItemsCountForStore(String storeId) {
@@ -440,9 +496,6 @@ class SessionService extends ChangeNotifier {
           
           // طباعة تفاصيل كل حقل
           developer.log('🔍 USER DATA: $user', name: _tag);
-          developer.log('🔍 ACCESS_TOKEN: $accessToken', name: _tag);
-          developer.log('🔍 ID_TOKEN: $idToken', name: _tag);
-          developer.log('🔍 REFRESH_TOKEN: $refreshToken', name: _tag);
           
           // فحص أن بيانات المستخدم والتوكينات الأساسية موجودة
           if (user != null && user is Map<String, dynamic> && 
