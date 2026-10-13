@@ -172,7 +172,9 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
     // إصلاح: عرض البيانات من المصادر الصحيحة
     final userName = userData?['name'] ?? userData?['username'] ?? userData?['userName'] ?? 'مستخدم';
-    final userEmail = userData?['email'] ?? userData?['userEmail'] ?? 'غير محدد';
+    final userPhone = [userData?['phone'], userData?['phone_number'], userData?['userPhone']]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere((value) => value.isNotEmpty, orElse: () => 'رقم الهاتف غير مضاف');
     
     // 🔧 إصلاح: إزالة الـ developer.log من build methods لتجنب اللوب اللانهائي
 
@@ -230,10 +232,11 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                userEmail,
+                userPhone,
+                textDirection: TextDirection.ltr,
                 style: const TextStyle(
                   fontSize: 14,
-                  color: Colors.black,
+                  color: Colors.white,
                   fontWeight: FontWeight.w500,
                 ),
               ),

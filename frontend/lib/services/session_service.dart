@@ -219,7 +219,8 @@ class SessionService extends ChangeNotifier {
     
     // منع تكرار نفس الحالة
     if (_sessionStateController.hasValue && 
-        _sessionStateController.value.runtimeType == state.runtimeType) {
+        _sessionStateController.value.runtimeType == state.runtimeType &&
+        state is! SessionActive) {
       return;
     }
     
