@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
-import '../services/logout_service.dart';
-import 'intro_screen.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -38,64 +36,10 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   }
 
   Future<void> _deleteAccount() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (!_confirmationChecked) {        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('يرجى تأكيد موافقتك على حذف الحساب'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      return;
-    }
-
-    // إظهار مربع حوار تأكيد نهائي
-    final confirmed = await _showFinalConfirmationDialog();
-    if (!confirmed) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // TODO: إضافة استدعاء API لحذف الحساب
-
-      // محاكاة استدعاء API
-      await Future.delayed(const Duration(seconds: 3));
-      
-      if (mounted) {
-        // مسح بيانات الجلسة باستخدام خدمة تسجيل الخروج الآمن
-        await LogoutService.performSecureLogout(context, showConfirmation: false);
-        
-        if (!mounted) return;
-        
-        // إظهار رسالة نجاح والانتقال إلى الشاشة الرئيسية
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم حذف الحساب بنجاح. نأسف لرؤيتك تغادر'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-        
-        // الانتقال إلى شاشة البداية وإزالة جميع الشاشات السابقة
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const IntroScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في حذف الحساب: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    // Never claim deletion or clear the session without a server receipt.
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('خدمة حذف الحساب قيد التجهيز. لم يتم حذف حسابك أو تغيير رصيدك.'),
+    ));
   }
 
   Future<bool> _showFinalConfirmationDialog() async {
