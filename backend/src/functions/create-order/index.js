@@ -2,7 +2,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
-const { normalizeDiscount, validateDiscount, calculateDiscountAmount } = require('../shared/discount-engine');
+const { normalizeDiscount, validateDiscount, calculateDiscountAmount, normalizePlatformPromo, validatePlatformPromo } = require('../shared/discount-engine');
 
 const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_BASE_URL || '').trim();
 const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
@@ -28,6 +28,8 @@ const TABLE_NAME = process.env.WIZZORDERS_TABLE || 'WizzOrders';
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
 // Merchant discounts table (shared with the merchants app)
 const DISCOUNTS_TABLE = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
+// Platform promo codes table (written by the central platform)
+const PLATFORM_DISCOUNTS_TABLE = process.env.PLATFORM_DISCOUNTS_TABLE || 'WizzCentral_Platform_Discounts';
 const MERCHANT_WEBHOOK_URL = process.env.MERCHANT_WEBHOOK_URL;
 
 function postJson(urlString, headers, body, timeoutMs = 6000) {
@@ -520,8 +522,20 @@ exports.handler = async (event) => {
         const rounding = Math.round((body.rounding || 0) * 1000);
 
         // Merchant discount (WhizzMerchants_Discounts) - validated server-side
+        if (body.discountId && body.promoCode) {
+            return {
+                statusCode: 400,
+                headers: headers,
+                body: JSON.stringify({
+                    error: 'Only one discount per order is allowed (discountId or promoCode)',
+                    success: false
+                })
+            };
+        }
+
         let discountFils = 0;
         let appliedDiscount = null;
+        let appliedPromo = null;
         if (body.discountId) {
             console.log('🏷️ Discount requested:', body.discountId, 'for store:', body.storeId);
             try {
@@ -583,6 +597,52 @@ exports.handler = async (event) => {
                 // DynamoDB errors surface as 500; validation failures returned above
                 console.error('❌ Error validating discount:', discountError);
                 throw discountError;
+            }
+        } else if (body.promoCode) {
+            // Platform promo code (WizzCentral_Platform_Discounts) - validated server-side
+            console.log('🏷️ Promo code requested:', body.promoCode);
+            try {
+                const promoResult = await dynamoDb.send(new QueryCommand({
+                    TableName: PLATFORM_DISCOUNTS_TABLE,
+                    IndexName: 'code-index',
+                    KeyConditionExpression: '#code = :code',
+                    ExpressionAttributeNames: { '#code': 'code' },
+                    ExpressionAttributeValues: { ':code': String(body.promoCode).trim() }
+                }));
+
+                if (!promoResult.Items || promoResult.Items.length === 0) {
+                    return {
+                        statusCode: 400,
+                        headers: headers,
+                        body: JSON.stringify({
+                            error: 'Promo code not found',
+                            success: false
+                        })
+                    };
+                }
+
+                const promo = normalizePlatformPromo(promoResult.Items[0]);
+
+                const validation = validatePlatformPromo(promo, goodsSubtotal);
+                if (!validation.valid) {
+                    return {
+                        statusCode: 400,
+                        headers: headers,
+                        body: JSON.stringify({
+                            error: validation.message,
+                            success: false
+                        })
+                    };
+                }
+
+                discountFils = Math.round(
+                    calculateDiscountAmount(promo, goodsSubtotal, [], deliveryFee)
+                );
+                appliedPromo = promo;
+                console.log('🏷️ Promo validated. Amount (fils):', discountFils);
+            } catch (promoError) {
+                console.error('❌ Error validating promo code:', promoError);
+                throw promoError;
             }
         }
 
@@ -929,6 +989,35 @@ exports.handler = async (event) => {
                 console.log('🏷️ Discount usage_count incremented for:', appliedDiscount.discountId);
             } catch (usageError) {
                 console.error('🏷️ Failed to increment discount usage_count (order already created):', usageError.message);
+            }
+        }
+
+        // Increment the platform promo usage counters (non-blocking for the order)
+        if (appliedPromo) {
+            try {
+                const promoUpdate = {
+                    TableName: PLATFORM_DISCOUNTS_TABLE,
+                    Key: { discountId: appliedPromo.discountId },
+                    UpdateExpression: 'SET #usage = #usage + :inc, #currentUsage = #currentUsage + :inc, #updatedAt = :updatedAt',
+                    ExpressionAttributeNames: {
+                        '#usage': 'usage',
+                        '#currentUsage': 'currentUsage',
+                        '#updatedAt': 'updatedAt'
+                    },
+                    ExpressionAttributeValues: {
+                        ':inc': 1,
+                        ':updatedAt': new Date().toISOString()
+                    }
+                };
+                if (appliedPromo.usageLimit) {
+                    promoUpdate.ConditionExpression =
+                        '(attribute_not_exists(#usage) OR #usage < :limit)';
+                    promoUpdate.ExpressionAttributeValues[':limit'] = appliedPromo.usageLimit;
+                }
+                await dynamoDb.send(new UpdateCommand(promoUpdate));
+                console.log('🏷️ Promo usage incremented for:', appliedPromo.code);
+            } catch (usageError) {
+                console.error('🏷️ Failed to increment promo usage (order already created):', usageError.message);
             }
         }
 

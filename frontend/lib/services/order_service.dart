@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
 import '../models/address_model.dart';
 import '../models/store_discount.dart';
+import '../models/platform_promo.dart';
 import "session_service.dart";
 import '../config/api_config.dart';
 
@@ -530,6 +531,75 @@ class OrderService extends ChangeNotifier {
       order.status == OrderStatus.cancelled ||
       order.status == OrderStatus.failed
     ).toList();
+  }
+
+  /// جلب أكواد الخصم الفعالة من المنصة المركزية
+  Future<List<PlatformPromo>> getActivePromoCodes() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/promo-codes/active'),
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final list = (responseData['promos'] as List?) ?? const [];
+        return list
+            .map((p) => PlatformPromo.fromJson(Map<String, dynamic>.from(p)))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('خطأ في جلب أكواد الخصم: $e');
+      return [];
+    }
+  }
+
+  /// التحقق من كود خصم منصة وحساب قيمته من الخادم
+  Future<Map<String, dynamic>> validatePromoCode({
+    required String code,
+    required double orderTotal,
+    double deliveryFee = 0,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/promo-codes/validate'),
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'code': code,
+          'orderTotal': orderTotal,
+          'deliveryFee': deliveryFee,
+        }),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && responseData['valid'] == true) {
+        return {
+          'success': true,
+          'valid': true,
+          'discount': (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
+          'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
+        };
+      }
+      return {
+        'success': false,
+        'valid': false,
+        'message': responseData['message'] ?? 'كود الخصم غير صالح',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'valid': false,
+        'message': 'خطأ في التحقق من كود الخصم: ${e.toString()}',
+      };
+    }
   }
 
   /// جلب العروض/الخصومات الفعالة لمتجر معين

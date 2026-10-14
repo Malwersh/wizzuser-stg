@@ -119,9 +119,59 @@ function calculateBuyXGetYDiscount(discount, items) {
     return freeItems * getItem.price * (discount.value / 100);
 }
 
+// Platform promos (WizzCentral_Platform_Discounts) are written by the
+// central platform with duplicated legacy field names (type/discountType,
+// usage/currentUsage, minOrderAmount/minOrderValue, ...). Unify them here.
+function normalizePlatformPromo(d) {
+    if (!d) return d;
+    const rawType = d.type || d.discountType || 'percentage';
+    return {
+        ...d,
+        type: rawType === 'fixed_amount' ? 'fixedAmount' : (rawType === 'fixed' ? 'fixedAmount' : rawType),
+        value: parseFloat(d.value ?? d.discountValue ?? 0) || 0,
+        usageCount: d.usage ?? d.currentUsage ?? 0,
+        usageLimit: (d.usageLimit || d.limit) ? parseInt(d.usageLimit || d.limit) : null,
+        minimumOrderAmount: parseFloat(d.minOrderAmount ?? d.minOrderValue ?? 0) || 0,
+        validFrom: d.validFrom || d.startDate || '',
+        validTo: d.validTo || d.endDate || '',
+    };
+}
+
+// Returns { valid: true } or { valid: false, message }
+function validatePlatformPromo(promo, orderTotalFils) {
+    const statusOk = (promo.status || 'active') === 'active' && promo.isActive !== false;
+    if (!statusOk) {
+        return { valid: false, message: 'Promo code is not active' };
+    }
+
+    const now = new Date();
+    if (promo.validFrom && now < new Date(promo.validFrom)) {
+        return { valid: false, message: 'Promo code is not valid yet' };
+    }
+    if (promo.validTo && now > new Date(promo.validTo)) {
+        return { valid: false, message: 'Promo code has expired' };
+    }
+
+    const minOrderFils = Math.round((promo.minimumOrderAmount || 0) * 1000);
+    if (orderTotalFils < minOrderFils) {
+        return {
+            valid: false,
+            message: `Order must be at least ${promo.minimumOrderAmount} IQD`
+        };
+    }
+
+    if (promo.usageLimit && promo.usageCount >= promo.usageLimit) {
+        return { valid: false, message: 'Promo code usage limit reached' };
+    }
+
+    return { valid: true };
+}
+
 module.exports = {
     normalizeDiscount,
     validateDiscount,
     calculateDiscountAmount,
     calculateBuyXGetYDiscount,
+    normalizePlatformPromo,
+    validatePlatformPromo,
 };

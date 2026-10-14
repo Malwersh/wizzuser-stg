@@ -4,6 +4,7 @@ import '../constants/app_colors.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order_model.dart';
 import '../models/address_model.dart';
 import '../models/store_discount.dart';
@@ -43,6 +44,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _discount = 0.0;
   bool _isLoadingDiscounts = false;
   bool _isValidatingDiscount = false;
+
+  // Platform promo code
+  final TextEditingController _promoCodeController = TextEditingController();
+  String? _appliedPromoCode;
+
+  // Kept separately so a failed switch between discount types
+  // restores the previously applied amount instead of wiping it
+  double _promoDiscountAmount = 0.0;
+  double _merchantDiscountAmount = 0.0;
   
   // User information for checkout
   bool _isGuestUser = false;
@@ -69,7 +79,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeUserData();
       _loadStoreDiscounts();
+      _autoApplyPendingPromo();
     });
+  }
+
+  /// If the user tapped a promo code on the home-screen floating card,
+  /// it is stored as pending — prefill and apply it automatically here.
+  Future<void> _autoApplyPendingPromo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final code = prefs.getString('pending_promo_code');
+      if (code == null || code.isEmpty || !mounted) return;
+      _promoCodeController.text = code;
+      await _applyPromoCode();
+      await prefs.remove('pending_promo_code');
+    } catch (_) {}
   }
 
   Future<void> _loadStoreDiscounts() async {
@@ -92,11 +116,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  Future<void> _applyPromoCode() async {
+    final code = _promoCodeController.text.trim();
+    if (code.isEmpty) {
+      _showMessage('أدخل كود الخصم أولاً', isError: true);
+      return;
+    }
+
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+
+    setState(() {
+      _isValidatingDiscount = true;
+    });
+
+    final result = await _orderService.validatePromoCode(
+      code: code,
+      orderTotal: appState.cartTotal,
+      deliveryFee: 10.0,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isValidatingDiscount = false;
+      if (result['valid'] == true) {
+        _appliedPromoCode = code;
+        _promoDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+        _discount = _promoDiscountAmount;
+        // Only one discount per order: clear any selected merchant discount
+        _selectedDiscountId = null;
+        _merchantDiscountAmount = 0.0;
+      } else {
+        _appliedPromoCode = null;
+        _promoDiscountAmount = 0.0;
+        _discount = _merchantDiscountAmount;
+      }
+    });
+
+    if (result['valid'] == true) {
+      _showMessage('تم تطبيق كود الخصم بنجاح');
+    } else {
+      _showMessage(result['message'] ?? 'كود الخصم غير صالح', isError: true);
+    }
+  }
+
+  void _clearPromoCode() {
+    setState(() {
+      _appliedPromoCode = null;
+      _promoCodeController.clear();
+      _promoDiscountAmount = 0.0;
+      _discount = _merchantDiscountAmount;
+    });
+  }
+
   Future<void> _selectDiscount(StoreDiscount? discount) async {
     if (discount == null) {
       setState(() {
         _selectedDiscountId = null;
-        _discount = 0.0;
+        _merchantDiscountAmount = 0.0;
+        _discount = _promoDiscountAmount;
       });
       return;
     }
@@ -124,10 +202,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isValidatingDiscount = false;
       if (result['valid'] == true) {
         _selectedDiscountId = discount.discountId;
-        _discount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+        _merchantDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+        _discount = _merchantDiscountAmount;
+        // Only one discount per order: clear any applied promo code
+        _appliedPromoCode = null;
+        _promoDiscountAmount = 0.0;
+        _promoCodeController.clear();
       } else {
+        // Keep the previously applied promo code and its amount —
+        // only the failed merchant discount is rejected
         _selectedDiscountId = null;
-        _discount = 0.0;
+        _merchantDiscountAmount = 0.0;
+        _discount = _promoDiscountAmount;
       }
     });
 
@@ -144,6 +230,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _guestNameController.dispose();
     _guestPhoneController.dispose();
     _guestEmailController.dispose();
+    _promoCodeController.dispose();
     super.dispose();
   }
 
@@ -774,10 +861,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
     }
 
-    if (_availableDiscounts.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -825,6 +908,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Promo code entry (platform codes from the central platform)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _promoCodeController,
+                  enabled: _appliedPromoCode == null && !_isValidatingDiscount,
+                  decoration: InputDecoration(
+                    hintText: 'أدخل كود الخصم',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.primary),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: _isValidatingDiscount
+                    ? null
+                    : (_appliedPromoCode != null ? _clearPromoCode : _applyPromoCode),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.secondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(_appliedPromoCode != null ? 'إزالة' : 'تطبيق'),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -1871,7 +1996,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryAddress: _selectedAddress!,
         paymentMethod: _selectedPaymentMethod,
         deliveryInstructions: _deliveryInstructions.isEmpty ? null : _deliveryInstructions,
-        promoCode: null,
+        promoCode: _appliedPromoCode,
         discountId: _selectedDiscountId,
         discount: _discount,
         // إضافة معلومات المستخدم الحقيقية

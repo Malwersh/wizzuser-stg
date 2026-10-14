@@ -47,6 +47,7 @@ Globals:
         TRANSACTIONS_TABLE: !Ref TransactionsTable
         WIZZORDERS_TABLE: WizzOrders
         DISCOUNTS_TABLE: WhizzMerchants_Discounts
+        PLATFORM_DISCOUNTS_TABLE: WizzCentral_Platform_Discounts
         USER_POOL_ID: !Ref CognitoUserPool
         USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClient
         SES_FROM_EMAIL: noreply@foodapp.com
@@ -1659,6 +1660,70 @@ Resources:
                       type: string
                     Access-Control-Allow-Methods:
                       type: string
+          /promo-codes/active:
+            get:
+              security: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetActivePromoCodesFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+          /promo-codes/validate:
+            post:
+              security: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ValidatePromoCodeFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
           # WizzUser Wallet Endpoints
           /wallet/init:
             post:
@@ -2472,6 +2537,29 @@ Resources:
         - IndexName: phone-index
           KeySchema:
             - AttributeName: phone
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # Platform promo codes table - shared with the central platform, which
+  # writes promo/campaign codes here from its admin UI (data-service.js).
+  PlatformDiscountsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WizzCentral_Platform_Discounts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: discountId
+          AttributeType: S
+        - AttributeName: code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: discountId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: code-index
+          KeySchema:
+            - AttributeName: code
               KeyType: HASH
           Projection:
             ProjectionType: ALL
@@ -3778,6 +3866,14 @@ Resources:
           - Effect: Allow
             Action:
               - dynamodb:Query
+              - dynamodb:UpdateItem
+            Resource:
+              - !GetAtt PlatformDiscountsTable.Arn
+              - !Sub "${PlatformDiscountsTable.Arn}/index/*"
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
               - dynamodb:Scan
               - dynamodb:UpdateItem
             Resource: 
@@ -3978,6 +4074,38 @@ Resources:
             Resource: 
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
+
+  GetActivePromoCodesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/get-active-promo-codes/index.handler
+      FunctionName: !Sub "WizzUser-GetActivePromoCodes-${Environment}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Scan
+              - dynamodb:Query
+            Resource:
+              - !GetAtt PlatformDiscountsTable.Arn
+              - !Sub "${PlatformDiscountsTable.Arn}/index/*"
+
+  ValidatePromoCodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/validate-promo-code/index.handler
+      FunctionName: !Sub "WizzUser-ValidatePromoCode-${Environment}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+              - dynamodb:GetItem
+            Resource:
+              - !GetAtt PlatformDiscountsTable.Arn
+              - !Sub "${PlatformDiscountsTable.Arn}/index/*"
 
   SearchOrderByNumberFunction:
     Type: AWS::Serverless::Function
@@ -4871,6 +4999,22 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref GetStoreDiscountsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
+
+  GetActivePromoCodesLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetActivePromoCodesFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
+
+  ValidatePromoCodeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ValidatePromoCodeFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
