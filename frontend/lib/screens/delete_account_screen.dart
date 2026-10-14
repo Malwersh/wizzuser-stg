@@ -1,400 +1,260 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
 import '../constants/app_colors.dart';
+import '../services/account_deletion_service.dart';
+import '../services/session_service.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
-
   @override
   State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
 }
 
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _passwordController = TextEditingController();
-  final _reasonController = TextEditingController();
-  
-  bool _isLoading = false;
-  bool _passwordVisible = false;
-  bool _confirmationChecked = false;
-  String _selectedReason = '';
+  final _service = AccountDeletionService();
+  final _code = TextEditingController();
+  final _requestId = const Uuid().v4();
+  Map<String, dynamic>? _request;
+  String? _challengeId, _phoneHint, _error;
+  bool _busy = true, _confirmed = false, _statusKnown = false;
+  int _resendSeconds = 0;
+  Timer? _timer;
 
-  final List<String> _deleteReasons = [
-    'لا أستخدم التطبيق بانتظام',
-    'وجدت تطبيق آخر أفضل',
-    'مشاكل في التوصيل',
-    'أسعار مرتفعة',
-    'مشاكل تقنية في التطبيق',
-    'أسباب خصوصية',
-    'سبب آخر',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
 
   @override
   void dispose() {
-    _passwordController.dispose();
-    _reasonController.dispose();
+    _timer?.cancel();
+    _code.dispose();
     super.dispose();
   }
 
-  Future<void> _deleteAccount() async {
-    // Never claim deletion or clear the session without a server receipt.
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('خدمة حذف الحساب قيد التجهيز. لم يتم حذف حسابك أو تغيير رصيدك.'),
-    ));
+  Future<void> _perform(Future<void> Function() action) async {
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
   }
 
-  Future<bool> _showFinalConfirmationDialog() async {
-    return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.warning, color: AppColors.error),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'تأكيد نهائي',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
-        content: const Text(
-          'هل أنت متأكد من رغبتك في حذف حسابك نهائياً؟\n\nسيتم حذف جميع بياناتك وطلباتك السابقة ولا يمكن استرجاعها.',
-          style: TextStyle(height: 1.5, fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'إلغاء',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: AppColors.secondary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('حذف نهائي'),
-          ),
-        ],
-      ),
-    ) ?? false;
-  }
+  Future<void> _refresh() => _perform(() async {
+    final data = await _service.call('status');
+    if ((data['request'] as Map?)?['status'] == 'COMPLETED' &&
+        SessionService.instance.isLoggedIn) {
+      await SessionService.instance.logout();
+    }
+    if (mounted) {
+      setState(() {
+        _request = data['request'] as Map<String, dynamic>?;
+        _statusKnown = true;
+      });
+    }
+  });
+
+  Future<void> _send() => _perform(() async {
+    final data = await _service.call('send', body: {'requestId': _requestId});
+    if (!mounted) return;
+    setState(() {
+      _challengeId = data['challengeId'] as String;
+      _phoneHint = data['phoneHint'] as String?;
+      _resendSeconds = (data['resendAfter'] as num).toInt();
+      _code.clear();
+    });
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _resendSeconds <= 1) {
+        timer.cancel();
+      }
+      if (mounted) {
+        setState(() {
+          _resendSeconds = (_resendSeconds - 1).clamp(0, 60);
+        });
+      }
+    });
+  });
+
+  Future<void> _submit() => _perform(() async {
+    final data = await _service.call(
+      'request',
+      body: {
+        'requestId': _requestId,
+        'challengeId': _challengeId,
+        'code': _code.text.trim(),
+      },
+    );
+    if (mounted) {
+      setState(() {
+        _request = data;
+        _code.clear();
+      });
+    }
+  });
+
+  String get _statusText => switch (_request?['status']) {
+    'COMPLETED' => 'اكتمل حذف الحساب',
+    'PENDING_SETTLEMENT' => 'طلب الحذف مسجّل وبانتظار تسوية الطلبات أو الأموال',
+    'PENDING_POLICY' => 'طلب الحذف مسجّل وبانتظار اكتمال تجهيز التنفيذ',
+    'PROCESSING' => 'حذف الحساب قيد التنفيذ',
+    'RETRY_REQUIRED' => 'طلبك محفوظ؛ التنفيذ يحتاج متابعة وإعادة محاولة',
+    _ => 'طلب الحذف مسجّل وبانتظار التنفيذ',
+  };
+
+  String _blocker(Map<String, dynamic> item) => switch (item['code']) {
+    'REFUND_REQUIRED' =>
+      'رصيد يحتاج تسوية: ${item['amount']} د.ع. يمكنك تحويله إلى محفظة أخرى أو طلب صرف زين كاش من الإدارة.',
+    'AMOUNT_DUE' => 'يوجد مبلغ مستحق يحتاج تسوية.',
+    'ACTIVE_ORDERS' => 'توجد طلبات لم تنتهِ بعد.',
+    'ACTIVE_HOLDS' || 'LOCKED_BALANCE' => 'توجد أموال محجوزة مرتبطة بالطلبات.',
+    'PENDING_TRANSFERS' => 'توجد تحويلات لم تُحسم بعد.',
+    'PENDING_PAYMENTS' => 'توجد عمليات دفع أو شحن لم تُحسم بعد.',
+    _ => 'يوجد إجراء يحتاج متابعة قبل تنفيذ الحذف.',
+  };
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          'حذف الحساب',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.red,
-        foregroundColor: AppColors.secondary,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildWarningCard(),
-              const SizedBox(height: 20),
-              _buildReasonSection(),
-              const SizedBox(height: 20),
-              _buildPasswordSection(),
-              const SizedBox(height: 20),
-              _buildConfirmationSection(),
-              const SizedBox(height: 30),
-              _buildDeleteButton(),
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.background,
+    appBar: AppBar(
+      title: const Text('حذف الحساب'),
+      centerTitle: true,
+      backgroundColor: AppColors.white,
+      foregroundColor: AppColors.secondary,
+    ),
+    body: Directionality(
+      textDirection: TextDirection.rtl,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          const Icon(
+            Icons.person_remove_outlined,
+            size: 48,
+            color: AppColors.secondary,
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'حذف حسابك وبياناتك الشخصية',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'تُزال بيانات حسابك الشخصية والعناوين والمفضلة بعد التحقق من هويتك وتسوية الطلبات والأموال. نحتفظ بالسجلات المالية الضرورية لمدة 7 سنوات وفق السياسة الحالية، وبالبيانات اللازمة لنزاع أو التزام موثّق قائم.',
+            style: TextStyle(height: 1.7, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 24),
+          if (_request != null) ...[
+            Text(
+              _statusText,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.secondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final item in (_request!['blockers'] as List? ?? []))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(_blocker(Map<String, dynamic>.from(item as Map))),
+              ),
+            SelectableText(
+              'مرجع الطلب: ${_request!['requestId']}',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+          ] else ...[
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppColors.secondary,
+              value: _confirmed,
+              onChanged:
+                  _busy
+                      ? null
+                      : (v) => setState(() {
+                        _confirmed = v ?? false;
+                      }),
+              title: const Text('أفهم أثر حذف الحساب وأريد متابعة الطلب'),
+            ),
+            if (_challengeId != null) ...[
+              Text(
+                'أرسلنا رمزًا إلى رقم حسابك $_phoneHint. أدخله لتأكيد طلب الحذف.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _code,
+                enabled: !_busy,
+                keyboardType: TextInputType.number,
+                textDirection: TextDirection.ltr,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'رمز التحقق',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _busy || !_confirmed ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.secondary,
+                  foregroundColor: AppColors.white,
+                ),
+                child: const Text('تأكيد طلب الحذف'),
+              ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWarningCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.red[50],
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.red[200]!),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.warning_amber_rounded,
-            size: 50,
-            color: Colors.red[600],
-          ),
-          const SizedBox(height: 15),
-          Text(
-            'تحذير: حذف نهائي',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.red[800],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'عند حذف حسابك سيتم فقدان جميع البيانات التالية نهائياً:',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.red[700],
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 15),
-          _buildWarningItem('جميع طلباتك السابقة'),
-          _buildWarningItem('المطاعم والأطباق المفضلة'),
-          _buildWarningItem('عناوين التوصيل المحفوظة'),
-          _buildWarningItem('طرق الدفع المحفوظة'),
-          _buildWarningItem('نقاط الولاء والعروض'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWarningItem(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Icon(Icons.close, color: Colors.red[600], size: 16),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: TextStyle(color: Colors.red[700]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReasonSection() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'سبب حذف الحساب (اختياري)',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 15),
-          Text(
-            'ساعدنا في تحسين خدماتنا بإخبارنا عن سبب مغادرتك:',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 15),
-          ..._deleteReasons.map((reason) => _buildReasonTile(reason)),
-          if (_selectedReason == 'سبب آخر') ...[
-            const SizedBox(height: 15),
-            TextFormField(
-              controller: _reasonController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText: 'يرجى توضيح السبب...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AppColors.primary),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReasonTile(String reason) {
-    return InkWell(
-      onTap: () => setState(() => _selectedReason = reason),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Radio<String>(
-              value: reason,
-              groupValue: _selectedReason,
-              onChanged: (value) => setState(() => _selectedReason = value!),
-              activeColor: AppColors.primary,
-            ),
-            Expanded(
+            TextButton(
+              onPressed:
+                  _busy || !_confirmed || !_statusKnown || _resendSeconds > 0
+                      ? null
+                      : _send,
               child: Text(
-                reason,
-                style: const TextStyle(fontSize: 16),
+                _resendSeconds > 0
+                    ? 'إعادة الإرسال بعد $_resendSeconds ثانية'
+                    : _challengeId == null
+                    ? 'إرسال رمز التحقق'
+                    : 'إعادة إرسال الرمز',
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPasswordSection() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'تأكيد كلمة المرور',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 15),
-          TextFormField(
-            controller: _passwordController,
-            obscureText: !_passwordVisible,
-            decoration: InputDecoration(
-              hintText: 'أدخل كلمة المرور للتأكيد',
-              prefixIcon: const Icon(Icons.lock_outline),
-              suffixIcon: IconButton(
-                icon: Icon(_passwordVisible ? Icons.visibility : Icons.visibility_off),
-                onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey[300]!),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.primary),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: AppColors.secondary),
               ),
             ),
-            validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'يرجى إدخال كلمة المرور للتأكيد';
-              }
-              return null;
-            },
+          if (_busy)
+            const Center(
+              child: CircularProgressIndicator(color: AppColors.secondary),
+            ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: _busy ? null : _refresh,
+            child: const Text('تحديث حالة الطلب'),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildConfirmationSection() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: CheckboxListTile(
-        value: _confirmationChecked,
-        onChanged: (value) => setState(() => _confirmationChecked = value!),
-        activeColor: Colors.red,
-        title: const Text(
-          'أفهم أن حذف الحساب نهائي ولا يمكن التراجع عنه',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: const Text(
-          'بتحديد هذا المربع، أؤكد موافقتي على حذف حسابي وجميع البيانات المرتبطة به نهائياً',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey,
-          ),
-        ),
-        controlAffinity: ListTileControlAffinity.leading,
-      ),
-    );
-  }
-
-  Widget _buildDeleteButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 50,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _deleteAccount,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.red,
-          foregroundColor: AppColors.secondary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(25),
-          ),
-        ),
-        child: _isLoading
-            ? const CircularProgressIndicator(color: Colors.white)
-            : const Text(
-                'حذف الحساب نهائياً',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-      ),
-    );
-  }
+    ),
+  );
 }

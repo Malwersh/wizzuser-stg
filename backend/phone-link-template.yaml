@@ -28,6 +28,7 @@ Resources:
           ENVIRONMENT: staging
           OTP_TABLE: !Ref Sessions
           USERS_TABLE: WizzUser_users_staging
+          DELETION_TABLE: staging-AccountDeletion
           USER_POOL_ID: us-east-1_TpyyrVkEE
           CLIENT_ID: 4a9e8o3em311eq2rgckp0pd2s9
           OTP_SECRET_ARN: arn:aws:secretsmanager:us-east-1:699561669180:secret:wizz/staging/otpiq-SB1iGZ
@@ -37,6 +38,13 @@ Resources:
             Effect: Allow
             Action: secretsmanager:GetSecretValue
             Resource: arn:aws:secretsmanager:us-east-1:699561669180:secret:wizz/staging/otpiq-SB1iGZ
+        - Statement:
+            Effect: Allow
+            Action: [dynamodb:ConditionCheckItem]
+            Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
+            Condition:
+              ForAllValues:StringLike:
+                dynamodb:LeadingKeys: ["ACCOUNT_LIFECYCLE#CUSTOMER#*"]
         - Statement:
             Effect: Allow
             Action: [cognito-idp:ListUsers, cognito-idp:AdminUpdateUserAttributes]

@@ -183,6 +183,8 @@ class OrderService extends ChangeNotifier {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          if (SessionService().accessToken?.isNotEmpty == true)
+            'Authorization': 'Bearer ${SessionService().accessToken}',
         },
         body: jsonEncode(orderData),
       );

@@ -6,6 +6,7 @@ const {SecretsManagerClient,GetSecretValueCommand}=require('@aws-sdk/client-secr
 const {CognitoIdentityProviderClient,ListUsersCommand,AdminCreateUserCommand,AdminSetUserPasswordCommand,AdminInitiateAuthCommand,AdminRespondToAuthChallengeCommand}=require('@aws-sdk/client-cognito-identity-provider');
 const {normalizeIraqiPhone}=require('./iraqi-phone');const {digest,matches}=require('./challenge-policy');const {newProof}=require('./login-proof');
 const {attributes,eligible,belongs,publicProfile}=require('./profile-policy');
+const {lifecycleFence}=require('./lifecycle-fence');
 const db=DynamoDBDocumentClient.from(new DynamoDBClient({})),c=new CognitoIdentityProviderClient({}),secrets=new SecretsManagerClient({});
 const table=process.env.OTP_TABLE,pool=process.env.USER_POOL_ID,usersTable=process.env.USERS_TABLE;
 const validEnrollment=body=>typeof body.name==='string' && body.name.trim().length>=2 && body.name.trim().length<=80 && !/[\u0000-\u001f]/.test(body.name) && body.termsAccepted===true && body.privacyAccepted===true;
@@ -20,11 +21,14 @@ async function profileFor(user,phone){
  if(rows.length!==1 || !belongs(rows[0],user))throw Error('RecoveryRequired');return rows[0];
 }
 async function send(phone,event,key){
+ const existing=await findUser(phone);
+ if(existing&&!existing.Enabled)throw Error('AccountClosing');
+ const sendFence=existing?[lifecycleFence(process.env.DELETION_TABLE,attributes(existing).sub)]:[];
  const time=now(),day=Math.floor(time/86400),ip=event.requestContext?.identity?.sourceIp||'unknown';
  const limits=[{id:`COOLDOWN#${phone}`,cooldown:true},{id:`DAILY#${day}#${phone}`,limit:10},{id:`IP#${day}#${crypto.createHash('sha256').update(ip).digest('hex')}`,limit:30},{id:`GLOBAL#${day}`,limit:200}];
- await db.send(new TransactWriteCommand({TransactItems:limits.map(x=>({Update:{TableName:table,Key:{id:x.id},UpdateExpression:x.cooldown?'SET nextAllowedAt = :next, expiresAt = :ttl':'SET expiresAt = :ttl ADD sends :one',ConditionExpression:x.cooldown?'attribute_not_exists(nextAllowedAt) OR nextAllowedAt <= :now':'attribute_not_exists(sends) OR sends < :limit',ExpressionAttributeValues:x.cooldown?{':next':time+60,':ttl':time+86400,':now':time}:{':ttl':time+172800,':one':1,':limit':x.limit}}}))}));
+ await db.send(new TransactWriteCommand({TransactItems:[...sendFence,...limits.map(x=>({Update:{TableName:table,Key:{id:x.id},UpdateExpression:x.cooldown?'SET nextAllowedAt = :next, expiresAt = :ttl':'SET expiresAt = :ttl ADD sends :one',ConditionExpression:x.cooldown?'attribute_not_exists(nextAllowedAt) OR nextAllowedAt <= :now':'attribute_not_exists(sends) OR sends < :limit',ExpressionAttributeValues:x.cooldown?{':next':time+60,':ttl':time+86400,':now':time}:{':ttl':time+172800,':one':1,':limit':x.limit}}}))]}));
  const id=crypto.randomUUID(),code=String(crypto.randomInt(0,1000000)).padStart(6,'0');
- await db.send(new TransactWriteCommand({TransactItems:[{Put:{TableName:table,Item:{id,phone,username:phone,purpose:'customer-phone-otp',expiresAt:time+300,attempts:0,used:false,digest:digest(key.hmacKey,id,phone,code)},ConditionExpression:'attribute_not_exists(id)'}},{Put:{TableName:table,Item:{id:`ACTIVE#${phone}`,sessionId:id,expiresAt:time+300}}}]}));
+ await db.send(new TransactWriteCommand({TransactItems:[...sendFence,{Put:{TableName:table,Item:{id,phone,username:phone,purpose:'customer-phone-otp',expiresAt:time+300,attempts:0,used:false,digest:digest(key.hmacKey,id,phone,code)},ConditionExpression:'attribute_not_exists(id)'}},{Put:{TableName:table,Item:{id:`ACTIVE#${phone}`,sessionId:id,expiresAt:time+300}}}]}));
  const response=await fetch('https://api.otpiq.com/api/sms',{method:'POST',headers:{Authorization:`Bearer ${key.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:phone.slice(1),smsType:'verification',provider:'whatsapp-sms',verificationCode:code}),signal:AbortSignal.timeout(10000)});
  if(!response.ok)return reply(503,{message:'تعذر إرسال الرمز. حاول لاحقًا'});return reply(200,{sessionId:id,expiresIn:300,resendAfter:60});
 }
@@ -56,20 +60,26 @@ async function verify(phone,body,key){
  await db.send(new TransactWriteCommand({TransactItems:[{ConditionCheck:{TableName:table,Key:{id:`ACTIVE#${phone}`},ConditionExpression:'sessionId = :id',ExpressionAttributeValues:{':id':r.id}}},{Update:{TableName:table,Key:{id:r.id},UpdateExpression:'SET used = :yes ADD attempts :one',ConditionExpression:'used = :no AND attempts < :max AND expiresAt > :now',ExpressionAttributeValues:{':yes':true,':no':false,':max':5,':now':time,':one':1}}}]}));
  if(!user){user=await provision(phone,body);if(!user)return reply(400,{message:'الاسم والموافقة على الشروط مطلوبان'});}
  const a=attributes(user),timestamp=new Date().toISOString();
+ const fence=lifecycleFence(process.env.DELETION_TABLE,a.sub);
+ const lifecycle=await db.send(new GetCommand({TableName:process.env.DELETION_TABLE,Key:fence.ConditionCheck.Key,ConsistentRead:true}));
+ if(lifecycle.Item)throw Error('AccountClosing');
  if(!profile){
   const {Item:p}=await db.send(new GetCommand({TableName:table,Key:{id:`PROVISION#${phone}`},ConsistentRead:true}));if(p?.username!==user.Username||p?.sub!==a.sub)throw Error('RecoveryRequired');
   profile={userId:a.sub,cognitoSub:a.sub,cognitoUsername:user.Username,name:p.name,phone,phoneVerified:true,registrationMethod:'phone-otp',isActive:true,termsAccepted:true,privacyAccepted:true,preferredLanguage:'ar',createdAt:p.createdAt||timestamp,updatedAt:timestamp};
-  try{await db.send(new PutCommand({TableName:usersTable,Item:profile,ConditionExpression:'attribute_not_exists(userId)'}));}catch(e){if(e.name!=='ConditionalCheckFailedException')throw e;profile=await profileFor(user,phone);}
+  await db.send(new TransactWriteCommand({TransactItems:[fence,{Put:{TableName:usersTable,Item:profile,ConditionExpression:'attribute_not_exists(userId)'}}]}));
  }
  if(profile.isActive===false)throw Error('RecoveryRequired');
  // Never overwrite existing balances; create only the canonical zero wallet.
- try{await db.send(new PutCommand({TableName:process.env.WALLETS_TABLE,Item:{walletId:`WALLET#CUSTOMER#${a.sub}`,sk:'META',ownerType:'CUSTOMER',ownerId:a.sub,currency:'IQD',status:'ACTIVE',availableBalance:0,lockedBalance:0,minRequiredBalance:0,version:1,createdAt:timestamp,updatedAt:timestamp},ConditionExpression:'attribute_not_exists(walletId)'}));}catch(e){if(e.name!=='ConditionalCheckFailedException')throw e;}
+ const walletKey={walletId:`WALLET#CUSTOMER#${a.sub}`,sk:'META'};
+ const existingWallet=(await db.send(new GetCommand({TableName:process.env.WALLETS_TABLE,Key:walletKey,ConsistentRead:true}))).Item;
+ if(existingWallet){if(existingWallet.ownerId!==a.sub||existingWallet.status!=='ACTIVE'||existingWallet.deletionRequestId)throw Error('AccountClosing');}
+ else await db.send(new TransactWriteCommand({TransactItems:[fence,{Put:{TableName:process.env.WALLETS_TABLE,Item:{...walletKey,ownerType:'CUSTOMER',ownerId:a.sub,currency:'IQD',status:'ACTIVE',availableBalance:0,lockedBalance:0,minRequiredBalance:0,version:1,createdAt:timestamp,updatedAt:timestamp},ConditionExpression:'attribute_not_exists(walletId)'}}]}));
  const proof=newProof(key.hmacKey,user.Username,now());
- await db.send(new TransactWriteCommand({TransactItems:[{Put:{TableName:table,Item:proof.record,ConditionExpression:'attribute_not_exists(id)'}},{Put:{TableName:table,Item:{id:`LOGIN#${user.Username}`,proofId:proof.record.id,expiresAt:proof.record.expiresAt}}}]}));
+ await db.send(new TransactWriteCommand({TransactItems:[fence,{Put:{TableName:table,Item:proof.record,ConditionExpression:'attribute_not_exists(id)'}},{Put:{TableName:table,Item:{id:`LOGIN#${user.Username}`,proofId:proof.record.id,expiresAt:proof.record.expiresAt}}}]}));
  const start=await c.send(new AdminInitiateAuthCommand({UserPoolId:pool,ClientId:process.env.CLIENT_ID,AuthFlow:'CUSTOM_AUTH',AuthParameters:{USERNAME:user.Username}}));
  if(start.ChallengeName!=='CUSTOM_CHALLENGE'||!start.Session)throw Error('AuthenticationFailed');
  const auth=await c.send(new AdminRespondToAuthChallengeCommand({UserPoolId:pool,ClientId:process.env.CLIENT_ID,ChallengeName:'CUSTOM_CHALLENGE',Session:start.Session,ChallengeResponses:{USERNAME:user.Username,ANSWER:proof.answer}}));
  if(!auth.AuthenticationResult?.AccessToken||!auth.AuthenticationResult?.RefreshToken)throw Error('AuthenticationFailed');
  const result=auth.AuthenticationResult;return reply(200,{user:publicProfile(profile),accessToken:result.AccessToken,idToken:result.IdToken,refreshToken:result.RefreshToken});
 }
-exports.handler=async e=>{try{if(process.env.ENVIRONMENT!=='staging')throw Error('Environment');const body=JSON.parse(e.body||'{}'),phone=normalizeIraqiPhone(body.phone),key=await config();if(e.path.endsWith('/send'))return await send(phone,e,key);if(e.path.endsWith('/verify'))return await verify(phone,body,key);return reply(404,{message:'غير موجود'});}catch(x){if(x.message==='RecoveryRequired')return reply(409,{code:'PHONE_LINK_REQUIRED',message:'هذا الحساب يحتاج ربط الهاتف بأمان. سجّل الدخول بالبريد ثم وثّق رقمك'});if(['TransactionCanceledException','ConditionalCheckFailedException','TooManyRequestsException'].includes(x.name))return reply(429,{message:'انتظر قليلًا قبل إعادة المحاولة'});if(x instanceof SyntaxError||x.message?.includes('Only Iraqi')||x instanceof TypeError)return reply(400,{message:'أدخل رقم هاتف عراقي صحيح'});console.error('Customer phone auth failed',{name:x.name,kind:x.message==='AuthenticationFailed'?'authentication':'service'});return reply(503,{message:'تعذر إكمال العملية؛ اطلب رمزًا جديدًا وحاول مرة أخرى'});}};
+exports.handler=async e=>{try{if(process.env.ENVIRONMENT!=='staging')throw Error('Environment');const body=JSON.parse(e.body||'{}'),phone=normalizeIraqiPhone(body.phone),key=await config();if(e.path.endsWith('/send'))return await send(phone,e,key);if(e.path.endsWith('/verify'))return await verify(phone,body,key);return reply(404,{message:'غير موجود'});}catch(x){if(x.message==='AccountClosing')return reply(409,{code:'ACCOUNT_CLOSING',message:'هذا الحساب قيد الحذف ولا يمكن تسجيل الدخول إليه'});if(x.message==='RecoveryRequired')return reply(409,{code:'PHONE_LINK_REQUIRED',message:'هذا الحساب يحتاج ربط الهاتف بأمان. سجّل الدخول بالبريد ثم وثّق رقمك'});if(['TransactionCanceledException','ConditionalCheckFailedException','TooManyRequestsException'].includes(x.name))return reply(429,{message:'انتظر قليلًا قبل إعادة المحاولة'});if(x instanceof SyntaxError||x.message?.includes('Only Iraqi')||x instanceof TypeError)return reply(400,{message:'أدخل رقم هاتف عراقي صحيح'});console.error('Customer phone auth failed',{name:x.name,kind:x.message==='AuthenticationFailed'?'authentication':'service'});return reply(503,{message:'تعذر إكمال العملية؛ اطلب رمزًا جديدًا وحاول مرة أخرى'});}};

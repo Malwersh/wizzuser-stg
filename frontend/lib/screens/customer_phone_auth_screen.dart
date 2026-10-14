@@ -11,6 +11,8 @@ import 'home_screen.dart';
 import 'address_gate_screen.dart';
 import 'terms_conditions_screen.dart';
 import 'privacy_policy_screen.dart';
+import 'delete_account_screen.dart';
+import '../services/account_deletion_service.dart';
 
 class CustomerPhoneAuthScreen extends StatefulWidget {
   final bool registration;
@@ -34,11 +36,13 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
   int remaining = 0;
   String? error;
   Timer? timer;
+  late final Future<bool> _savedDeletionReceipt;
   @override
   void initState() {
     super.initState();
     api = widget.service ?? CustomerPhoneAuthService();
     needsName = widget.registration;
+    _savedDeletionReceipt = AccountDeletionService.hasSavedReceipt();
   }
 
   @override
@@ -71,13 +75,14 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
     });
     try {
       await api.send(phone.text);
-      if (mounted)
+      if (mounted) {
         setState(() {
           sent = true;
           _countdown();
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () =>
               error =
@@ -85,6 +90,7 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
                       ? e.message
                       : 'تعذر إرسال الرمز. حاول مجددًا',
         );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -138,7 +144,7 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
       }
       await _finish();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () =>
               error =
@@ -146,6 +152,7 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
                       ? e.message
                       : 'تعذر الدخول. حاول مجددًا',
         );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -329,6 +336,18 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
               ),
             ],
             const SizedBox(height: 20),
+            FutureBuilder<bool>(
+              future: _savedDeletionReceipt,
+              builder: (context, snapshot) => snapshot.data == true
+                  ? TextButton(
+                      onPressed: busy ? null : () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const DeleteAccountScreen()),
+                      ),
+                      child: const Text('متابعة طلب حذف الحساب'),
+                    )
+                  : const SizedBox.shrink(),
+            ),
             TextButton(
               onPressed:
                   busy

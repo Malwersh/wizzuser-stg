@@ -11,6 +11,7 @@ import 'package:rxdart/rxdart.dart';
 import '../models/session_state.dart';
 import 'websocket_service.dart';
 import 'http_service.dart';
+import 'restored_session_identity.dart';
 
 /// خدمة إدارة الجلسات الآمنة والمركزية
 /// تتولى جميع عمليات تسجيل الدخول والخروج والحفاظ على الجلسات
@@ -171,6 +172,16 @@ class SessionService extends ChangeNotifier {
       if (_isLoggedIn && !_isGuest && _currentUserId != null) {
         // Load user session
         await _loadUserSession();
+        if (_accessToken != null) {
+          final valid = await _validateRestoredIdentity();
+          if (valid == null) {
+            _isLoggedIn = false;
+            _currentUser = null;
+            _safeEmit(SessionInitial());
+            return;
+          }
+          if (!valid) await _clearSession();
+        }
         
         if (_currentUser != null && _accessToken != null) {
           final userData = Map<String, dynamic>.from(_currentUser!);
@@ -207,6 +218,38 @@ class SessionService extends ChangeNotifier {
       developer.log('Stack trace: $stackTrace', name: _tag);
       await _clearSession();
       _safeEmit(SessionInitial());
+    }
+  }
+
+  // A cached JWT does not prove that its account still exists.
+  // Transport failures leave storage intact and never activate cached identity.
+  Future<bool?> _validateRestoredIdentity() async {
+    try {
+      final token = await getToken();
+      if (token == null) return null;
+      final response = await http.post(
+        Uri.https('cognito-idp.${ApiConfig.cognitoRegion}.amazonaws.com', '/'),
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser',
+        },
+        body: jsonEncode({'AccessToken': token}),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final attrs = (data['UserAttributes'] as List).cast<Map>();
+        final sub = attrs.firstWhere((a) => a['Name'] == 'sub')['Value'];
+        return sub is String && sub == JwtDecoder.decode(token)['sub'] &&
+            restoredProfileMatchesSubject(_currentUser, _currentUserId, sub);
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final code = '${data['__type']}'.split('#').last;
+      if (code == 'NotAuthorizedException' || code == 'UserNotFoundException') {
+        return false;
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 

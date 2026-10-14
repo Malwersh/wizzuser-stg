@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/wallet_model.dart';
 import '../models/wallet_transaction_model.dart';
 import '../config.dart';
+import 'session_service.dart';
 
 class WalletService {
   static const String baseUrl = ApiConfig.baseUrl;
@@ -14,19 +15,22 @@ class WalletService {
         Uri.parse('$baseUrl/wallet/init'),
         headers: {
           'Content-Type': 'application/json',
+          if (SessionService().accessToken?.isNotEmpty == true)
+            'Authorization': 'Bearer ${SessionService().accessToken}',
         },
-        body: jsonEncode({
-          'userId': userId,
-        }),
+        body: jsonEncode({'userId': userId}),
       );
 
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 201 || response.statusCode == 200) {
         return {
           'success': true,
           'message': data['message'],
-          'wallet': data['wallet'] != null ? WalletModel.fromJson(data['wallet']) : null,
+          'wallet':
+              data['wallet'] != null
+                  ? WalletModel.fromJson(data['wallet'])
+                  : null,
         };
       } else {
         return {
@@ -36,10 +40,7 @@ class WalletService {
       }
     } catch (e) {
       print('WalletService.initializeWallet Error: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الشبكة: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الشبكة: $e'};
     }
   }
 
@@ -48,13 +49,11 @@ class WalletService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/wallet/balance?userId=$userId'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
       );
 
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 200) {
         return {
           'success': true,
@@ -71,10 +70,7 @@ class WalletService {
       }
     } catch (e) {
       print('WalletService.getWalletBalance Error: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الشبكة: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الشبكة: $e'};
     }
   }
 
@@ -88,39 +84,42 @@ class WalletService {
   }) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        final response = await http.post(
-          Uri.parse('$baseUrl/wallet/topup'),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'userId': userId,
-            'amount': amount,
-            'currency': currency,
-            'sessionTimeout': 2700, // 45 minutes - match backend setting
-            'customerInfo': customerInfo ?? {
-              'name': 'مستخدم التطبيق',
-              'email': 'user@foodapp.com',
-              'phone': '+964xxxxxxxxx',
-              'city': 'بغداد',
-              'country': 'IQ',
-            },
-          }),
-        ).timeout(const Duration(seconds: 45)); // Increased timeout
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl/wallet/topup'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'userId': userId,
+                'amount': amount,
+                'currency': currency,
+                'sessionTimeout': 2700, // 45 minutes - match backend setting
+                'customerInfo':
+                    customerInfo ??
+                    {
+                      'name': 'مستخدم التطبيق',
+                      'email': 'user@foodapp.com',
+                      'phone': '+964xxxxxxxxx',
+                      'city': 'بغداد',
+                      'country': 'IQ',
+                    },
+              }),
+            )
+            .timeout(const Duration(seconds: 45)); // Increased timeout
 
         final data = jsonDecode(response.body);
-        
+
         if (response.statusCode == 200) {
           // Validate payment URL
           String? paymentUrl = data['paymentUrl'] as String?;
           if (paymentUrl == null || paymentUrl.isEmpty) {
             throw Exception('رابط الدفع فارغ أو غير صحيح');
           }
-          
-          if (!paymentUrl.startsWith('http://') && !paymentUrl.startsWith('https://')) {
+
+          if (!paymentUrl.startsWith('http://') &&
+              !paymentUrl.startsWith('https://')) {
             throw Exception('رابط الدفع غير صالح');
           }
-          
+
           // Enhanced PayTabs environment logging
           if (paymentUrl.contains('secure-iraq.paytabs.com')) {
           } else if (paymentUrl.contains('sandbox-secure.paytabs.com')) {
@@ -129,7 +128,7 @@ class WalletService {
           } else {
             print('ℹ️ Unknown PayTabs environment: $paymentUrl');
           }
-          
+
           return {
             'success': true,
             'message': data['message'] ?? 'تم إنشاء طلب الدفع بنجاح',
@@ -154,19 +153,16 @@ class WalletService {
         }
       } catch (e) {
         print('WalletService.requestTopUp Error (attempt $attempt): $e');
-        
+
         if (attempt == maxRetries) {
-          return {
-            'success': false,
-            'message': 'خطأ في الشبكة: $e',
-          };
+          return {'success': false, 'message': 'خطأ في الشبكة: $e'};
         }
-        
+
         // Wait before retry
         await Future.delayed(Duration(seconds: attempt * 2));
       }
     }
-    
+
     return {
       'success': false,
       'message': 'فشل في الاتصال بعد $maxRetries محاولات',
@@ -185,6 +181,8 @@ class WalletService {
         Uri.parse('$baseUrl/wallet/spend'),
         headers: {
           'Content-Type': 'application/json',
+          if (SessionService().accessToken?.isNotEmpty == true)
+            'Authorization': 'Bearer ${SessionService().accessToken}',
         },
         body: jsonEncode({
           'userId': userId,
@@ -195,7 +193,7 @@ class WalletService {
       );
 
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 200) {
         return {
           'success': true,
@@ -216,10 +214,7 @@ class WalletService {
       }
     } catch (e) {
       print('WalletService.spendFromWallet Error: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الشبكة: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الشبكة: $e'};
     }
   }
 
@@ -237,18 +232,17 @@ class WalletService {
 
       final response = await http.get(
         Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
       );
 
       final data = jsonDecode(response.body);
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> transactionsJson = data['transactions'] ?? [];
-        final List<WalletTransactionModel> transactions = transactionsJson
-            .map((json) => WalletTransactionModel.fromJson(json))
-            .toList();
+        final List<WalletTransactionModel> transactions =
+            transactionsJson
+                .map((json) => WalletTransactionModel.fromJson(json))
+                .toList();
 
         return {
           'success': true,
@@ -265,10 +259,7 @@ class WalletService {
       }
     } catch (e) {
       print('WalletService.getWalletTransactions Error: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الشبكة: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الشبكة: $e'};
     }
   }
 

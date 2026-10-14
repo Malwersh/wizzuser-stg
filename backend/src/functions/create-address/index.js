@@ -6,6 +6,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const crypto = require('crypto');
+const {writeContext}=require('../create-order/guarded-write');
 
 // Function to generate UUID-like string using crypto
 function generateUUID() {
@@ -140,7 +141,7 @@ function buildFullAddress(data) {
 /**
  * Clear existing default addresses for user
  */
-async function clearDefaultAddresses(userId) {
+async function clearDefaultAddresses(userId, write) {
     try {
         // First, find all default addresses for this user
         const queryParams = {
@@ -162,12 +163,14 @@ async function clearDefaultAddresses(userId) {
                 Key: { addressId: address.addressId },
                 UpdateExpression: 'SET isDefault = :isDefault, updatedAt = :updatedAt',
                 ExpressionAttributeValues: {
-                    ':isDefault': false,
+                    ':isDefault': 'false',
                     ':updatedAt': new Date().toISOString()
                 }
             };
             
-            await dynamodb.send(new UpdateCommand(updateParams));
+            updateParams.ConditionExpression='attribute_exists(addressId) AND userId = :owner';
+            updateParams.ExpressionAttributeValues[':owner']=userId;
+            await write('Update',updateParams);
         }
         
         console.log(`✅ Cleared ${result.Items.length} default addresses for user ${userId}`);
@@ -199,7 +202,7 @@ async function checkAddressLimit(userId, limit = 10) {
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Create address request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -226,6 +229,7 @@ exports.handler = async (event) => {
             };
         }
 
+        const write=await writeContext(dynamodb,event,userId);
         // Parse request body
         let requestData;
         try {
@@ -272,7 +276,7 @@ exports.handler = async (event) => {
 
         // If this is set as default, clear other default addresses
         if (requestData.is_default === true) {
-            await clearDefaultAddresses(userId);
+            await clearDefaultAddresses(userId,write);
         }
 
         // Generate address ID and timestamps
@@ -323,7 +327,8 @@ exports.handler = async (event) => {
             Item: addressItem
         };
 
-        await dynamodb.send(new PutCommand(putParams));
+        putParams.ConditionExpression='attribute_not_exists(addressId)';
+        await write('Put',putParams);
 
         // Format response
         const responseData = {
@@ -374,7 +379,7 @@ exports.handler = async (event) => {
         console.error('💥 Error creating address:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,

@@ -1,5 +1,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, TransactWriteCommand } = require('@aws-sdk/lib-dynamodb');
+const { accountGuard } = require('./account-guard');
+const cognito = new (require('aws-sdk').CognitoIdentityServiceProvider)();
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
 
@@ -95,7 +97,7 @@ async function sendMerchantOrderPush(payload) {
  * @returns {Object} Formatted address object
  */
 function formatDeliveryAddress(addressData, isGuestOrder = false) {
-    console.log('🏠 formatDeliveryAddress: Input data:', JSON.stringify(addressData, null, 2));
+    console.log('Delivery address formatting started');
     console.log('🏠 formatDeliveryAddress: isGuestOrder:', isGuestOrder);
     
     // Base address structure
@@ -232,7 +234,8 @@ function sendOrderToMerchant(order) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(postData),
-                'User-Agent': 'WizzUser-Backend/1.0'
+                'User-Agent': 'WizzUser-Backend/1.0',
+                'x-merchant-webhook-key': process.env.MERCHANT_WEBHOOK_INTERNAL_KEY || ''
             },
             timeout: 10000 // 10 second timeout
         };
@@ -283,7 +286,7 @@ function sendOrderToMerchant(order) {
  * Lambda handler for creating a new order
  */
 exports.handler = async (event) => {
-    console.log('Event received:', JSON.stringify(event, null, 2));
+    console.log('Create order request received', {requestId:event.requestContext?.requestId});
     console.log('TABLE_NAME:', TABLE_NAME);
     console.log('Environment variables:', {
         WIZZORDERS_TABLE: process.env.WIZZORDERS_TABLE,
@@ -360,27 +363,12 @@ exports.handler = async (event) => {
             };
         }
 
-        // If an auth token exists, extract the Cognito subject (sub) as a stable identifier for push.
-        // Keep body.userId semantics unchanged for existing APIs.
-        const authHeader = (event.headers && (event.headers.Authorization || event.headers.authorization)) || '';
-        const bearer = String(authHeader).replace(/^Bearer\s+/i, '').trim();
-        let userSub = null;
-        if (bearer) {
-            try {
-                const parts = bearer.split('.');
-                if (parts.length >= 2) {
-                    const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-                    const json = Buffer.from(payloadB64, 'base64').toString('utf8');
-                    const payload = JSON.parse(json);
-                    if (payload && typeof payload.sub === 'string' && payload.sub.trim()) {
-                        userSub = payload.sub.trim();
-                        console.log('🔐 Resolved userSub from JWT sub:', userSub);
-                    }
-                }
-            } catch (e) {
-                console.warn('⚠️ Failed to decode JWT for userSub');
-            }
-        }
+        const profilesTable = requireEnv('USERS_TABLE');
+        const guardedAccount = await accountGuard({event,userId:body.userId,
+            pool:requireEnv('USER_POOL_ID'),clientId:requireEnv('USER_POOL_CLIENT_ID'),profilesTable,
+            getUser:token=>cognito.getUser({AccessToken:token}).promise(),
+            getProfile:async userId=>(await dynamoDb.send(new GetCommand({TableName:profilesTable,Key:{userId},ConsistentRead:true}))).Item});
+        const userSub = guardedAccount.sub;
 
         // Validate items array
         if (!Array.isArray(body.items) || body.items.length === 0) {
@@ -827,15 +815,27 @@ exports.handler = async (event) => {
             console.log('✅ Omitting scheduledAt for non-scheduled order (sparse index)');
         }
 
-        console.log('Order to be created:', JSON.stringify(order, null, 2));
+        console.log('Creating order', {orderId});
 
         // Save order to DynamoDB
-        const putCommand = new PutCommand({
-            TableName: TABLE_NAME,
-            Item: order
-        });
 
-        await dynamoDb.send(putCommand);
+
+        // Fence order creation against concurrent merchant/business closure,
+        // including guest orders. A read before the write is not sufficient.
+        const businessFences = [
+            {ConditionCheck: {TableName: 'staging-AccountDeletion', Key: {pk: 'BUSINESS_LIFECYCLE#MERCHANT#' + body.storeId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}},
+            {ConditionCheck: {TableName: BUSINESSES_TABLE, Key: {businessId: body.storeId}, ConditionExpression: 'attribute_exists(businessId) AND attribute_not_exists(deletionRequestId)'}},
+        ];
+        try {
+            await dynamoDb.send(new TransactWriteCommand({TransactItems: [
+                ...(guardedAccount.condition ? [guardedAccount.condition] : []),
+                ...businessFences,
+                {Put: {TableName: TABLE_NAME, Item: order, ConditionExpression: 'attribute_not_exists(orderId)'}},
+            ]}));
+        } catch (e) {
+            if (e.name === 'TransactionCanceledException') throw Object.assign(new Error('ACCOUNT_OR_BUSINESS_UNAVAILABLE'), {statusCode: 409});
+            throw e;
+        }
 
         console.log('Order created successfully:', orderId);
 
@@ -920,7 +920,7 @@ exports.handler = async (event) => {
         console.error('Error name:', error.name);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || 500,
             headers: headers,
             body: JSON.stringify({
                 error: 'Failed to create order',
