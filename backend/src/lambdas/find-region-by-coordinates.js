@@ -13,10 +13,11 @@
  * 5. Return region information
  */
 
-const AWS = require('aws-sdk');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const { latLngToCell } = require('h3-js');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -70,12 +71,10 @@ exports.handler = async (event) => {
     console.log(`🔢 H3 Cell: ${h3Cell}`);
 
     // Step 2: Query REGION_INDEX_TABLE
-    const indexResult = await dynamodb
-      .get({
+    const indexResult = await dynamodb.send(new GetCommand({
         TableName: REGION_INDEX_TABLE,
         Key: { index_cell_id: h3Cell },
-      })
-      .promise();
+      }));
 
     if (!indexResult.Item) {
       console.log('⚠️ No region found for this H3 cell');
@@ -90,12 +89,10 @@ exports.handler = async (event) => {
     console.log(`✅ Found region_id: ${regionId}`);
 
     // Step 3: Query WizzCentral_Regions for details
-    const regionResult = await dynamodb
-      .get({
+    const regionResult = await dynamodb.send(new GetCommand({
         TableName: REGIONS_TABLE,
         Key: { regionId: regionId },
-      })
-      .promise();
+      }));
 
     if (!regionResult.Item) {
       console.log('⚠️ Region metadata not found');

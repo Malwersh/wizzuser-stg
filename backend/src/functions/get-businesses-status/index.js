@@ -1,9 +1,8 @@
 "use strict";
-const AWS = require('aws-sdk');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
-const docClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10'
-});
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
 const WORKING_HOURS_TABLE = process.env.WORKING_HOURS_TABLE || 'WhizzMerchants_BusinessWorkingHours';
@@ -82,13 +81,11 @@ async function getTodayWindow(businessId, timezone) {
   try {
     const weekday = getTodayWeekday(timezone);
     console.log(`[${businessId}] Looking for working hours - weekday: ${weekday}, table: ${WORKING_HOURS_TABLE}`);
-    const res = await docClient
-      .query({
+    const res = await docClient.send(new QueryCommand({
         TableName: WORKING_HOURS_TABLE,
         KeyConditionExpression: 'businessId = :bid', // 🔥 تصحيح: businessId بدلاً من business_id
         ExpressionAttributeValues: { ':bid': businessId }
-      })
-      .promise();
+      }));
     const items = res.Items || [];
     console.log(`[${businessId}] Found ${items.length} working hour records:`, JSON.stringify(items));
     const today = items.find(x => (x.weekday === weekday) || (x.day === weekday));
@@ -195,12 +192,10 @@ exports.handler = async (event) => {
 
   const results = await Promise.all(businessIds.map(async (businessId) => {
     try {
-      const res = await docClient
-        .get({
+      const res = await docClient.send(new GetCommand({
           TableName: BUSINESSES_TABLE,
           Key: { businessId }
-        })
-        .promise();
+        }));
       const item = res.Item;
       if (!item) return [businessId, { found: false }];
 
