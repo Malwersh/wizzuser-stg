@@ -9,6 +9,7 @@ import '../models/order_model.dart';
 import '../models/address_model.dart';
 import 'session_service.dart';
 import 'push_notifications_service.dart';
+import 'live_activity_service.dart';
 import '../config/api_config.dart';
 
 class OrderServiceV2 extends ChangeNotifier {
@@ -356,6 +357,22 @@ class OrderServiceV2 extends ChangeNotifier {
         );
 
         _currentOrder = order;
+
+        // Start iOS Live Activity for this order
+        final etaMinutes = order.estimatedDeliveryTime
+                ?.difference(order.createdAt)
+                .inMinutes ??
+            30;
+        LiveActivityService.start(
+          orderId: order.id,
+          status: order.status.value,
+          statusLabel: order.status.arabicName,
+          storeName: order.storeName,
+          orderNumber: order.orderNumber,
+          etaText: 'التوصيل المتوقع خلال $etaMinutes دقيقة',
+          progress: _statusProgress(order.status),
+        );
+
         // إضافة الطلب للقائمة
         final existingIndex = _orders.indexWhere((o) => o.id == order.id);
         if (existingIndex != -1) {
@@ -884,6 +901,7 @@ class OrderServiceV2 extends ChangeNotifier {
         if (index != -1) {
           _orders[index] = _orders[index].copyWith(status: newStatus);
           notifyListeners();
+          _syncLiveActivity(_orders[index]);
         }
         return true;
       } else {
@@ -973,6 +991,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
           print('   - استدعاء notifyListeners()...');
           notifyListeners();
+          _syncLiveActivity(_orders[index]);
           print('   ✅ تم إلغاء الطلب بنجاح!');
         } else {
           print('   ⚠️ لم يتم العثور على الطلب في القائمة المحلية');
@@ -1070,6 +1089,7 @@ class OrderServiceV2 extends ChangeNotifier {
       }
 
       notifyListeners();
+      _syncLiveActivity(updatedOrder);
 
       // 🔧 NEW: Log order status changes for debugging
       debugPrint(
@@ -1115,6 +1135,76 @@ class OrderServiceV2 extends ChangeNotifier {
 
   void _clearError() {
     _error = null;
+  }
+
+  static double _statusProgress(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return 0.1;
+      case OrderStatus.confirmed:
+        return 0.25;
+      case OrderStatus.preparing:
+        return 0.4;
+      case OrderStatus.readyForPickup:
+        return 0.5;
+      case OrderStatus.assigned:
+      case OrderStatus.accepted:
+      case OrderStatus.headingToStore:
+        return 0.6;
+      case OrderStatus.arrivedAtStore:
+        return 0.65;
+      case OrderStatus.pickedUp:
+      case OrderStatus.onTheWay:
+      case OrderStatus.headingToCustomer:
+        return 0.8;
+      case OrderStatus.arrivedAtCustomer:
+        return 0.95;
+      case OrderStatus.delivered:
+        return 1.0;
+      case OrderStatus.cancelled:
+      case OrderStatus.failed:
+      case OrderStatus.expired:
+      case OrderStatus.rejected:
+        return 1.0;
+      default:
+        return 0.0;
+    }
+  }
+
+  static bool _isTerminalStatus(OrderStatus status) {
+    return [
+      OrderStatus.delivered,
+      OrderStatus.cancelled,
+      OrderStatus.failed,
+      OrderStatus.expired,
+      OrderStatus.rejected,
+    ].contains(status);
+  }
+
+  static String _etaText(OrderModel order) {
+    final estimated = order.estimatedDeliveryTime;
+    if (estimated == null) return '';
+    final minutes = estimated.difference(DateTime.now()).inMinutes;
+    if (minutes <= 0) return 'الطلب قريباً';
+    return 'التوصيل المتوقع خلال $minutes دقيقة';
+  }
+
+  void _syncLiveActivity(OrderModel order) {
+    if (order.isGuestOrder && order.userId == 'guest') {
+      // Guest orders already handled by push notifications; keep local updates optional.
+    }
+    LiveActivityService.update(
+      orderId: order.id,
+      status: order.status.value,
+      statusLabel: order.status.arabicName,
+      storeName: order.storeName,
+      orderNumber: order.orderNumber,
+      etaText: _etaText(order),
+      progress: _statusProgress(order.status),
+    );
+    if (_isTerminalStatus(order.status)) {
+      LiveActivityService.end(order.id);
+    }
   }
 
   /// تحديث الطلب الحالي
@@ -1330,6 +1420,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
       // 🔔 إشعار جميع المستمعين بالتحديث الفوري
       notifyListeners();
+      _syncLiveActivity(updatedOrder);
       print('📡 OrderService: تم إرسال notifyListeners() للتحديث الفوري');
     } else {
       print(

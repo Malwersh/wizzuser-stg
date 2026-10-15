@@ -14,6 +14,12 @@ import GoogleMaps
     GMSServices.provideAPIKey("AIzaSyDrvzgil3g2SwE8zl_44IGM35n7khAyoVI")
 
     GeneratedPluginRegistrant.register(with: self)
+
+    if let controller = window?.rootViewController as? FlutterViewController {
+      LiveActivityChannel.shared.register(with: controller)
+    }
+    LiveActivityChannel.shared.resumeExistingActivities()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

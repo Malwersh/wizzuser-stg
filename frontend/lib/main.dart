@@ -10,6 +10,7 @@ import 'helpers/favorites_session_integration.dart';
 import 'screens/splash_screen.dart';
 import 'themes/app_theme.dart';
 import 'services/notification_navigation.dart';
+import 'services/live_activity_service.dart';
 
 void main() async {
   // تأكد من تهيئة Flutter
@@ -25,7 +26,10 @@ void main() async {
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
   ));
-  
+
+  // Initialize iOS Live Activity token listener
+  await LiveActivityService.initialize();
+
   runApp(const FoodApp());
 }
 

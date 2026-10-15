@@ -78,6 +78,11 @@
 			<string>audio</string>
 			<string>processing</string>
 		</array>
+		<!-- Live Activities -->
+		<key>NSSupportsLiveActivities</key>
+		<true/>
+		<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+		<true/>
 		<!-- Background Task Scheduler -->
 		<key>BGTaskSchedulerPermittedIdentifiers</key>
 		<array>
