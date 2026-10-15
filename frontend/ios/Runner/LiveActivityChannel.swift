@@ -102,12 +102,12 @@ class LiveActivityChannel: NSObject {
         Task {
             for activity in Activity<OrderLiveActivityAttributes>.activities where activity.attributes.orderId == orderId {
                 let contentState = OrderLiveActivityAttributes.ContentState(
-                    status: args["status"] as? String ?? activity.state.status,
-                    statusLabel: args["statusLabel"] as? String ?? activity.state.statusLabel,
-                    storeName: args["storeName"] as? String ?? activity.state.storeName,
-                    orderNumber: args["orderNumber"] as? String ?? activity.state.orderNumber,
-                    etaText: args["etaText"] as? String ?? activity.state.etaText,
-                    progress: (args["progress"] as? Double) ?? activity.state.progress
+                    status: args["status"] as? String ?? activity.contentState.status,
+                    statusLabel: args["statusLabel"] as? String ?? activity.contentState.statusLabel,
+                    storeName: args["storeName"] as? String ?? activity.contentState.storeName,
+                    orderNumber: args["orderNumber"] as? String ?? activity.contentState.orderNumber,
+                    etaText: args["etaText"] as? String ?? activity.contentState.etaText,
+                    progress: (args["progress"] as? Double) ?? activity.contentState.progress
                 )
                 await activity.update(using: contentState)
             }
@@ -122,7 +122,7 @@ class LiveActivityChannel: NSObject {
         }
         Task {
             for activity in Activity<OrderLiveActivityAttributes>.activities where activity.attributes.orderId == orderId {
-                await activity.end(nil, dismissalPolicy: .default)
+                await activity.end()
             }
             result(nil)
         }
