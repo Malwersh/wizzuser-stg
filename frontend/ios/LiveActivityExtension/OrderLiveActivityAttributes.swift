@@ -1,8 +1,6 @@
 import ActivityKit
 
 struct OrderLiveActivityAttributes: ActivityAttributes {
-    public typealias ContentState = ContentState
-
     public struct ContentState: Codable, Hashable {
         var status: String
         var statusLabel: String
