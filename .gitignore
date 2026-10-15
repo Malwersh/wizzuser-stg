@@ -1,18 +1,18 @@
 # OS
 .DS_Store
 
-# Flutter / Dart
-frontend/.dart_tool/
-frontend/build/
-frontend/.flutter-plugins
-frontend/.flutter-plugins-dependencies
-frontend/.packages
-frontend/.metadata
+# Flutter / Dart generated
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.metadata
 
-# Node / Serverless
-backend/node_modules/
-backend/.aws-sam/
-backend/.serverless/
+# Node / Serverless generated
+**/node_modules/
+**/.aws-sam/
+**/.serverless/
 
 # Logs
 *.log

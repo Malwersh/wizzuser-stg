@@ -3534,8 +3534,8 @@ Resources:
   UpdateUserProfileFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/update-user-profile/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/update-user-profile/index.handler
       FunctionName: !Sub "WizzUser-UpdateUserProfile-${Environment}"
       Policies:
         - DynamoDBCrudPolicy:
@@ -3565,10 +3565,14 @@ Resources:
   CreateAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/create-address/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/create-address/index.handler
       FunctionName: !Sub "WizzUser-CreateAddress-${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
 
@@ -3585,30 +3589,42 @@ Resources:
   UpdateAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/update-address/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/update-address/index.handler
       FunctionName: !Sub "WizzUser-UpdateAddress-${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
 
   DeleteAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/delete-address/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/delete-address/index.handler
       FunctionName: !Sub "WizzUser-DeleteAddress-${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
 
   SetDefaultAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/set-default-address/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/set-default-address/index.handler
       FunctionName: !Sub "WizzUser-SetDefaultAddress-${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
 
@@ -3766,26 +3782,34 @@ Resources:
   AddFavoriteFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/add-favorite/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/add-favorite/index.handler
       FunctionName: !Sub "WizzUser-AddFavorite-${Environment}"
       Environment:
         Variables:
           FAVORITES_TABLE: !Ref FavoritesTable
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref FavoritesTable
 
   RemoveFavoriteFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/remove-favorite/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/remove-favorite/index.handler
       FunctionName: !Sub "WizzUser-RemoveFavorite-${Environment}"
       Environment:
         Variables:
           FAVORITES_TABLE: !Ref FavoritesTable
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref FavoritesTable
 
@@ -3832,6 +3856,12 @@ Resources:
           CENTRAL_NOTIFICATIONS_BASE_URL: !Ref CentralNotificationsBaseUrl
           CENTRAL_NOTIFICATIONS_INTERNAL_KEY: !Ref CentralNotificationsInternalKey
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:ConditionCheckItem
+            Resource: !GetAtt UsersTable.Arn
         - Statement:
           - Effect: Allow
             Action:
@@ -4171,6 +4201,18 @@ Resources:
           WEBSOCKET_SUBSCRIPTIONS_TABLE: !Sub "WizzUser_websocket_subscriptions_${Environment}"
           DRIVER_LIVE_STATE_TABLE: !Sub "WizzDriverLiveState_${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [cognito-idp:AdminGetUser]
+            Resource:
+              - arn:aws:cognito-idp:us-east-1:699561669180:userpool/us-east-1_TpyyrVkEE
+              - arn:aws:cognito-idp:us-east-1:699561669180:userpool/us-east-1_RGTqUXF5C
+              - arn:aws:cognito-idp:us-east-1:699561669180:userpool/us-east-1_gtCR3ndzT
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource:
+              - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
+              - arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Businesses
         - Statement:
           - Effect: Allow
             Action:
@@ -5058,14 +5100,18 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "WizzUser_wallet-init-${Environment}"
-      CodeUri: src/functions/wallet-init/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/wallet-init/index.handler
       Runtime: nodejs20.x
       Environment:
         Variables:
           WALLETS_TABLE: !Ref WalletsTable
           TRANSACTIONS_TABLE: !Ref TransactionsTable
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref WalletsTable
         - DynamoDBCrudPolicy:
@@ -5157,14 +5203,22 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "WizzUser_wallet-spend-${Environment}"
-      CodeUri: src/functions/wallet-spend/
-      Handler: index.handler
+      CodeUri: src/
+      Handler: functions/wallet-spend/index.handler
       Runtime: nodejs20.x
       Environment:
         Variables:
           WALLETS_TABLE: !Ref WalletsTable
           TRANSACTIONS_TABLE: !Ref TransactionsTable
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: !GetAtt UsersTable.Arn
+        - Statement:
+          - Effect: Allow
+            Action: dynamodb:GetItem
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzOrders"
         - DynamoDBCrudPolicy:
             TableName: !Ref WalletsTable
         - DynamoDBCrudPolicy:

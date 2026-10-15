@@ -1,3 +1,6 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'notifications_screen.dart';
+import '../services/notification_inbox_service.dart';
 import 'dart:developer' as developer;
 // lib/screens/home_screen.dart
 
@@ -22,7 +25,7 @@ import 'package:foodapp_user/screens/order_tracking_screen.dart';
 import 'package:foodapp_user/screens/improved_account_screen.dart';
 import 'package:foodapp_user/widgets/animated_cart_bar.dart';
 import 'package:foodapp_user/widgets/modern_cart_icon.dart';
-import 'package:foodapp_user/screens/wallet_screen.dart';
+import 'package:foodapp_user/screens/wallet_transfer_screen.dart';
 import 'package:foodapp_user/widgets/enhanced_restaurant_card.dart';
 import 'package:foodapp_user/services/websocket_service.dart';
 import 'package:foodapp_user/services/session_service.dart';
@@ -119,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    NotificationInboxService.instance.load().catchError((Object _) {});
     // مراقبة دورة حياة التطبيق لتفعيل جلب فوري عند العودة للمقدمة
     WidgetsBinding.instance.addObserver(this);
     _bannerController = PageController();
@@ -1241,6 +1245,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _updateStatusPollingWatchedIds();
       _statusPolling.forceImmediateFetch();
 
+      NotificationInboxService.instance.load().catchError((Object _) {});
       // Also consume any pending push-tap navigation.
       _handlePendingPushNavigation();
     }
@@ -1259,6 +1264,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       }
 
+      final notificationPrefs = await SharedPreferences.getInstance();
+      if (notificationPrefs.getBool('pendingWalletFromPushTap') == true) {
+        await notificationPrefs.remove('pendingWalletFromPushTap');
+        if (mounted) await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletTransferScreen()));
+      }
       final pendingOrder = await PushNotificationsService.consumeStashedOrderFromTap();
       if (pendingOrder == null || !mounted) return;
 
@@ -2041,6 +2051,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       },
                       child: StreamBuilder<DeliveryAddress?>(
                         stream: DeliveryAddressManager.instance.addressStream,
+                        initialData: DeliveryAddressManager.instance.activeAddress,
                         builder: (context, snapshot) {
                           final address = snapshot.data;
                           return Container(
@@ -2084,7 +2095,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       GestureDetector(
                         onTap: () {
                           Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const WalletScreen()),
+                            MaterialPageRoute(builder: (_) => const WalletTransferScreen()),
                           );
                         },
                         child: Container(
@@ -2093,14 +2104,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('ميزة الإشعارات قريباً')),
-                          );
+                        onTap: () async {
+                          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
                         },
                         child: Container(
                           padding: const EdgeInsets.all(6),
-                          child: Icon(Icons.notifications_outlined, color: AppColors.primary, size: 24),
+                          child: ValueListenableBuilder<bool>(valueListenable: NotificationInboxService.hasUnread,builder:(_,unread,__)=>Badge(isLabelVisible:unread,backgroundColor:AppColors.secondary,child:const Icon(Icons.notifications_outlined,color:AppColors.primary,size:24))),
                         ),
                       ),
                       Consumer<AppStateProvider>(

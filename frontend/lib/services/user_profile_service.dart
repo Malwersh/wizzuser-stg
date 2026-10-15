@@ -12,7 +12,9 @@ class UserProfileService {
   static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
       // التحقق من صحة userId
-      if (userId.isEmpty || userId == 'placeholder_user_id' || userId == 'default_user_id') {
+      if (userId.isEmpty ||
+          userId == 'placeholder_user_id' ||
+          userId == 'default_user_id') {
         print('⚠️ تحذير: استخدام userId غير صالح ($userId)');
         return null; // إرجاع null بدلاً من بيانات افتراضية
       }
@@ -22,25 +24,26 @@ class UserProfileService {
         print('⚠️ تحذير: تنسيق userId غير متوقع: $userId');
       }
 
-      final token = await SessionService.instance.idToken;
-      
+      final token = SessionService.instance.accessToken;
+
       print('🔍 جلب المعلومات الشخصية للمستخدم: $userId');
-      print('🔑 Token: ${token?.substring(0, 20) ?? 'null'}...');
       print('🌐 API URL: $baseUrl/users/$userId/profile');
-      
+
       final response = await http.get(
         Uri.parse('$baseUrl/users/$userId/profile'),
         headers: {
           'Content-Type': 'application/json',
           // فقط إضافة Authorization إذا كان التوكن حقيقي
-          if (token != null && token.isNotEmpty && token != 'placeholder_access_token') 
+          if (token != null &&
+              token.isNotEmpty &&
+              token != 'placeholder_access_token')
             'Authorization': 'Bearer $token',
         },
       );
-      
+
       print('📊 Get Profile Response: ${response.statusCode}');
       print('📋 Response Body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final userData = data['data'] ?? data;
@@ -64,7 +67,7 @@ class UserProfileService {
       return null;
     }
   }
-  
+
   /// تحديث المعلومات الشخصية في قاعدة البيانات WizzUser_users_dev
   static Future<Map<String, dynamic>> updatePersonalInfo({
     required String userId,
@@ -76,7 +79,9 @@ class UserProfileService {
   }) async {
     try {
       // التحقق من صحة userId
-      if (userId.isEmpty || userId == 'placeholder_user_id' || userId == 'default_user_id') {
+      if (userId.isEmpty ||
+          userId == 'placeholder_user_id' ||
+          userId == 'default_user_id') {
         print('❌ خطأ: معرف المستخدم غير صالح ($userId)');
         return {
           'success': false,
@@ -89,32 +94,36 @@ class UserProfileService {
         print('⚠️ تحذير: تنسيق userId غير متوقع: $userId');
       }
 
-      final token = await SessionService.instance.idToken;
-      
+      final token = SessionService.instance.accessToken;
+
       final requestData = <String, dynamic>{};
       if (name != null) requestData['name'] = name;
       if (gender != null) requestData['gender'] = gender;
       if (birthdate != null) requestData['birth_date'] = birthdate;
-      if (marketingConsent != null) requestData['marketing_consent'] = marketingConsent;
-      if (newsletterSubscription != null) requestData['newsletter_subscription'] = newsletterSubscription;
-      
+      if (marketingConsent != null)
+        requestData['marketing_consent'] = marketingConsent;
+      if (newsletterSubscription != null)
+        requestData['newsletter_subscription'] = newsletterSubscription;
+
       print('📤 تحديث المعلومات للمستخدم: $userId');
       print('📋 البيانات المرسلة: $requestData');
-      
+
       final response = await http.put(
         Uri.parse('$baseUrl/users/$userId/profile'),
         headers: {
           'Content-Type': 'application/json',
           // فقط إضافة Authorization إذا كان التوكن حقيقي
-          if (token != null && token.isNotEmpty && token != 'placeholder_access_token') 
+          if (token != null &&
+              token.isNotEmpty &&
+              token != 'placeholder_access_token')
             'Authorization': 'Bearer $token',
         },
         body: json.encode(requestData),
       );
-      
+
       print('📊 Update Profile Response: ${response.statusCode}');
       print('📋 Response Body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return {
@@ -152,10 +161,7 @@ class UserProfileService {
       }
     } catch (e) {
       print('💥 استثناء في تحديث المعلومات: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الاتصال: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الاتصال: $e'};
     }
   }
 
@@ -165,23 +171,24 @@ class UserProfileService {
     required String language,
   }) async {
     try {
-      final token = await SessionService.instance.idToken;
-      
+      final token = SessionService.instance.accessToken;
+
       print('🌐 تحديث تفضيل اللغة للمستخدم: $userId');
       print('🗣️ اللغة الجديدة: $language');
-      
+
       final response = await http.put(
         Uri.parse('$baseUrl/users/$userId/language'),
         headers: {
           'Content-Type': 'application/json',
-          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
         },
         body: json.encode({'language': language}),
       );
-      
+
       print('📊 Update Language Response: ${response.statusCode}');
       print('📋 Response Body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return {
@@ -198,10 +205,7 @@ class UserProfileService {
       }
     } catch (e) {
       print('💥 استثناء في تحديث تفضيل اللغة: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الاتصال: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الاتصال: $e'};
     }
   }
 
@@ -212,25 +216,28 @@ class UserProfileService {
     required String newPassword,
   }) async {
     try {
-      final token = await SessionService.instance.idToken;
-      
+      final token = SessionService.instance.accessToken;
+
       print('🔐 تغيير كلمة المرور للمستخدم: $userId');
-      
+
       final response = await http.put(
         Uri.parse('$baseUrl/users/$userId/password'),
         headers: {
           'Content-Type': 'application/json',
-          if (token != null && token.isNotEmpty && token != 'placeholder_access_token') 'Authorization': 'Bearer $token',
+          if (token != null &&
+              token.isNotEmpty &&
+              token != 'placeholder_access_token')
+            'Authorization': 'Bearer $token',
         },
         body: json.encode({
           'current_password': currentPassword,
           'new_password': newPassword,
         }),
       );
-      
+
       print('📊 Change Password Response: ${response.statusCode}');
       print('📋 Response Body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return {
@@ -247,10 +254,7 @@ class UserProfileService {
       }
     } catch (e) {
       print('💥 استثناء في تغيير كلمة المرور: $e');
-      return {
-        'success': false,
-        'message': 'خطأ في الاتصال: $e',
-      };
+      return {'success': false, 'message': 'خطأ في الاتصال: $e'};
     }
   }
 }

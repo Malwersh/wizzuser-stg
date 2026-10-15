@@ -6,6 +6,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
+const {writeContext}=require('../create-order/guarded-write');
 const client = new DynamoDBClient({ 
     region: 'us-east-1'
 });
@@ -34,7 +35,7 @@ const CORS_HEADERS = {
 /**
  * Clear existing default addresses for user
  */
-async function clearDefaultAddresses(userId) {
+async function clearDefaultAddresses(userId,write) {
     try {
         // First, find all default addresses for this user
         const queryParams = {
@@ -61,7 +62,7 @@ async function clearDefaultAddresses(userId) {
                 }
             };
             
-            await dynamodb.send(new UpdateCommand(updateParams));
+            await write('Update',{...updateParams,ConditionExpression:'attribute_exists(addressId) AND userId = :owner',ExpressionAttributeValues:{...updateParams.ExpressionAttributeValues,':owner':userId}});
         }
         
         console.log(`✅ Cleared ${result.Items.length} default addresses for user ${userId}`);
@@ -75,7 +76,7 @@ async function clearDefaultAddresses(userId) {
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Account mutation request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -106,6 +107,7 @@ exports.handler = async (event) => {
         }
 
         // First, verify that the address exists and belongs to the user
+        const write=await writeContext(dynamodb,event,userId);
         const getParams = {
             TableName: TABLE_NAME,
             Key: { addressId: addressId }
@@ -154,7 +156,7 @@ exports.handler = async (event) => {
         }
 
         // Clear existing default addresses
-        await clearDefaultAddresses(userId);
+        await clearDefaultAddresses(userId,write);
 
         // Set this address as default
         const updateParams = {
@@ -168,7 +170,7 @@ exports.handler = async (event) => {
             ReturnValues: 'ALL_NEW'
         };
 
-        const result = await dynamodb.send(new UpdateCommand(updateParams));
+        const result = await write('Update',{...updateParams,ConditionExpression:'attribute_exists(addressId) AND userId = :owner',ExpressionAttributeValues:{...updateParams.ExpressionAttributeValues,':owner':userId}});
         const updatedAddress = result.Attributes;
 
         // Format response
@@ -210,7 +212,7 @@ exports.handler = async (event) => {
         console.error('💥 Error setting default address:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,

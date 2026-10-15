@@ -9,6 +9,7 @@ import 'models/favorites_model.dart';
 import 'helpers/favorites_session_integration.dart';
 import 'screens/splash_screen.dart';
 import 'themes/app_theme.dart';
+import 'services/notification_navigation.dart';
 
 void main() async {
   // تأكد من تهيئة Flutter
@@ -67,6 +68,8 @@ class FoodApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'Food App',
+        navigatorKey: NotificationNavigation.navigatorKey,
+        scaffoldMessengerKey: NotificationNavigation.messengerKey,
         debugShowCheckedModeBanner: false,
         
         // الموضوع المحسن - بسيط ونظيف

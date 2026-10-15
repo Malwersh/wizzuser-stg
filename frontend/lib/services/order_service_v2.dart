@@ -464,25 +464,14 @@ class OrderServiceV2 extends ChangeNotifier {
   /// الحصول على الطلبات الحالية فقط
   List<OrderModel> getCurrentOrders() {
     return _orders
-        .where(
-          (order) => [
-            'pending',
-            'confirmed',
-            'preparing',
-            'ready',
-            'on_the_way',
-          ].contains(order.status.value),
-        )
+        .where((order) => !terminalStatuses.contains(order.status.value))
         .toList();
   }
 
   /// الحصول على الطلبات السابقة فقط
   List<OrderModel> getPastOrders() {
     return _orders
-        .where(
-          (order) =>
-              ['delivered', 'cancelled', 'failed'].contains(order.status.value),
-        )
+        .where((order) => terminalStatuses.contains(order.status.value))
         .toList();
   }
 
@@ -834,23 +823,28 @@ class OrderServiceV2 extends ChangeNotifier {
     }
   }
 
+  /// الحالات النهائية (الطلب انتهى) — أي حالة خارج هذه القائمة تُعتبر نشطة
+  static const List<String> terminalStatuses = [
+    'delivered',
+    'cancelled',
+    'failed',
+    'expired',
+    'rejected',
+  ];
+
   /// الحصول على الطلبات النشطة من القائمة المحلية
+  /// يُعتبر الطلب نشطاً إذا لم يكن في حالة نهائية، حتى تظهر الطلبات في جميع
+  /// مراحل التوصيل (ready_for_pickup, assigned, accepted, picked_up,
+  /// heading_to_customer ... إلخ) وليس فقط مراحل التحضير الأولى.
   List<OrderModel> getActiveOrdersLocal() {
-    final activeStatuses = [
-      'pending',
-      'confirmed',
-      'preparing',
-      'ready',
-      'on_the_way',
-    ];
     final activeOrders =
         _orders
-            .where((order) => activeStatuses.contains(order.status.value))
+            .where((order) => !terminalStatuses.contains(order.status.value))
             .toList();
 
     print('🔍 OrderService.getActiveOrdersLocal():');
     print('   - إجمالي الطلبات في الذاكرة: ${_orders.length}');
-    print('   - الحالات النشطة المطلوبة: $activeStatuses');
+    print('   - الحالات النهائية المستثناة: $terminalStatuses');
     print('   - عدد الطلبات النشطة الموجودة: ${activeOrders.length}');
 
     // طباعة تفاصيل جميع الطلبات للتشخيص
@@ -869,15 +863,7 @@ class OrderServiceV2 extends ChangeNotifier {
   /// الحصول على الطلبات المكتملة من القائمة المحلية
   List<OrderModel> getCompletedOrdersLocal() {
     return _orders
-        .where(
-          (order) => [
-            'delivered',
-            'cancelled',
-            'failed',
-            'expired',
-            'rejected',
-          ].contains(order.status.value),
-        )
+        .where((order) => terminalStatuses.contains(order.status.value))
         .toList();
   }
 
@@ -921,7 +907,7 @@ class OrderServiceV2 extends ChangeNotifier {
       final sessionService = SessionService.instance;
       final userId = sessionService.currentUserId;
 
-      if (userId == null) {
+      if (userId == null && _guestToken == null) {
         throw Exception('User ID not found in session');
       }
 
@@ -929,18 +915,13 @@ class OrderServiceV2 extends ChangeNotifier {
         'orderId': orderId,
         'canceledBy': 'customer',
         'reason': reason,
-        'requestedBy': userId,
+        'requestedBy': userId ?? _guestToken,
+        if (_guestToken != null) 'guestToken': _guestToken,
       });
 
-      print('🔴 Request body: $requestBody');
 
-      // Order Service doesn't require Authorization header (no authorizer configured)
-      // Using basic headers to avoid AWS signature validation errors
-      final headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      print('🔴 Request headers: $headers');
+
+      final headers = await _getHeaders();
       print('🔴 Request URL: $_orderServiceUrl/order/cancel');
 
       final response = await http

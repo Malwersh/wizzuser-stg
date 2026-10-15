@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 
 import '../constants/app_colors.dart';
 import '../models/delivery_address.dart';
+import '../models/address_model.dart';
 import '../services/delivery_address_manager.dart';
 import '../services/guest_cache_service.dart';
 import '../services/address_service.dart';
@@ -122,7 +124,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
     try {
       final apiKey = GooglePlacesConfig.httpKey; // المفتاح الصحيح للـ HTTP API
       print('🔍 بدء البحث عن: $query');
-      print('🔑 API Key: ${apiKey.substring(0, 20)}...');
+
       
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/place/autocomplete/json'
@@ -132,7 +134,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         '&key=$apiKey',
       );
 
-      print('🌐 URL: $url');
+
       final response = await http.get(url);
       print('📥 Response Status: ${response.statusCode}');
       
@@ -257,6 +259,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
       final result = await regionService.resolvePoint(
         lat: latitude,
         lng: longitude,
+        throwOnFailure: true,
       );
       
       if (result != null && result.success) {
@@ -283,7 +286,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         return null;
       }
     } catch (e) {
-      print('❌ خطأ في العثور على region_id: $e');
+      if (e is RegionResolutionException) rethrow;
       return null;
     }
   }
@@ -309,7 +312,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
       }
     } catch (e) {
       print('خطأ في معالجة اختيار العنوان: $e');
-      _showErrorSnackBar('حدث خطأ');
+      _showErrorSnackBar(e is RegionResolutionException ? e.toString() : 'حدث خطأ');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -404,7 +407,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
 
     } catch (e) {
       print('خطأ في الحصول على الموقع: $e');
-      _showErrorSnackBar('فشل تحديد موقعك الحالي');
+      _showErrorSnackBar(e is RegionResolutionException ? e.toString() : 'فشل تحديد موقعك الحالي');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -435,8 +438,60 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         final savedList = await GuestCacheService.getAllGuestAddresses();
         print('📊 إجمالي العناوين المحفوظة الآن: ${savedList.length}');
       } else {
-        // TODO: حفظ في Database للمستخدم المسجل
-        print('✅ تم حفظ عنوان المستخدم في قاعدة البيانات');
+        // 🆕 حفظ عنوان المستخدم المسجّل في قاعدة البيانات مع region_id
+        // نحفظ فقط العناوين الجديدة (من البحث أو GPS)، أما العناوين المحفوظة
+        // مسبقاً (source == saved) فلا نكررها في قاعدة البيانات.
+        if (address.source != AddressSource.saved) {
+          try {
+            final addressService = context.read<EnhancedAddressService>();
+            final request = AddressCreateRequest(
+              name: (address.label != null && address.label!.trim().isNotEmpty)
+                  ? address.label!.trim()
+                  : 'عنوان التوصيل',
+              province: address.city.isNotEmpty ? address.city : 'غير محدد',
+              district: '-',
+              neighborhood:
+                  (address.neighborhood != null && address.neighborhood!.trim().isNotEmpty)
+                      ? address.neighborhood!.trim()
+                      : '-',
+              landmark: 'موقع محدد من الخريطة',
+              detailedAddress: address.formattedAddress,
+              latitude: address.latitude,
+              longitude: address.longitude,
+              addressType: AddressType.other,
+              isDefault: address.isDefault,
+              // ✅ تخزين region_id مع العنوان حتى لا يُعاد حسابه عند كل إقلاع
+              regionId: address.regionId,
+              regionNameAr: address.regionNameAr,
+            );
+            final created = await addressService.createAddress(request);
+            if (created != null) {
+              print('✅ تم حفظ عنوان المستخدم المسجّل في قاعدة البيانات: ${created.id}');
+              // استخدم addressId الحقيقي من قاعدة البيانات واجعل المصدر saved
+              // حتى يُحفظ كـ "آخر عنوان مستخدم" ولا يُعاد إنشاؤه لاحقاً.
+              address = DeliveryAddress(
+                addressId: created.id,
+                userId: created.userId,
+                label: address.label,
+                formattedAddress: address.formattedAddress,
+                latitude: address.latitude,
+                longitude: address.longitude,
+                regionId: address.regionId,
+                regionNameAr: address.regionNameAr,
+                neighborhood: address.neighborhood,
+                city: address.city,
+                source: AddressSource.saved,
+                isDefault: address.isDefault,
+                timestamp: DateTime.now(),
+              );
+            }
+          } catch (e) {
+            print('⚠️ تعذّر حفظ العنوان في قاعدة البيانات: $e');
+            // نكمل حتى لو فشل الحفظ (يبقى العنوان نشطاً للجلسة الحالية)
+          }
+        } else {
+          print('ℹ️ عنوان محفوظ مسبقاً - لا حاجة لإعادة الحفظ في قاعدة البيانات');
+        }
       }
 
       // تعيين كعنوان نشط
@@ -1007,7 +1062,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
       await _saveAndProceed(address);
     } catch (e) {
       print('خطأ في اختيار العنوان المحفوظ: $e');
-      _showErrorSnackBar('فشل تحديد العنوان');
+      _showErrorSnackBar(e is RegionResolutionException ? e.toString() : 'فشل تحديد العنوان');
     } finally {
       setState(() => _isLoading = false);
     }

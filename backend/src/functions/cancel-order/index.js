@@ -38,7 +38,7 @@ const SERVICE_TOKEN = process.env.SERVICE_TOKEN;
  * - Updating order status
  * - Sending notifications
  */
-async function callOrderService(orderId, reason, userId) {
+async function callOrderService(orderId, reason, userId, authorization, guestToken) {
     if (!ORDER_SERVICE_URL) {
         throw new Error('Missing required environment variable: ORDER_SERVICE_URL');
     }
@@ -48,7 +48,8 @@ async function callOrderService(orderId, reason, userId) {
             orderId: orderId,
             canceledBy: 'customer',
             reason: reason,
-            requestedBy: userId  // Send userId without prefix
+            requestedBy: userId,
+            ...(guestToken ? {guestToken} : {})
         });
 
         const url = new URL('/order/cancel', ORDER_SERVICE_URL);
@@ -62,7 +63,7 @@ async function callOrderService(orderId, reason, userId) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(postData),
-                ...(SERVICE_TOKEN ? { 'x-service-token': SERVICE_TOKEN } : {})
+                ...(authorization ? {Authorization:authorization} : {})
             }
         };
 
@@ -421,7 +422,7 @@ exports.handler = async (event) => {
         
         let orderServiceResponse;
         try {
-            orderServiceResponse = await callOrderService(orderId, reason, userId);
+            orderServiceResponse = await callOrderService(orderId, reason, userId,event.headers?.Authorization||event.headers?.authorization,body.guestToken);
         } catch (orderServiceError) {
             console.error('❌ Order Service call failed:', orderServiceError);
             
