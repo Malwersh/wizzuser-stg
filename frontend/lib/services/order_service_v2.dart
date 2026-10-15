@@ -359,19 +359,7 @@ class OrderServiceV2 extends ChangeNotifier {
         _currentOrder = order;
 
         // Start iOS Live Activity for this order
-        final etaMinutes = order.estimatedDeliveryTime
-                ?.difference(order.createdAt)
-                .inMinutes ??
-            30;
-        LiveActivityService.start(
-          orderId: order.id,
-          status: order.status.value,
-          statusLabel: order.status.arabicName,
-          storeName: order.storeName,
-          orderNumber: order.orderNumber,
-          etaText: 'التوصيل المتوقع خلال $etaMinutes دقيقة',
-          progress: _statusProgress(order.status),
-        );
+        LiveActivityService.startForOrder(order);
 
         // إضافة الطلب للقائمة
         final existingIndex = _orders.indexWhere((o) => o.id == order.id);
@@ -1137,74 +1125,16 @@ class OrderServiceV2 extends ChangeNotifier {
     _error = null;
   }
 
-  static double _statusProgress(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending:
-        return 0.1;
-      case OrderStatus.confirmed:
-        return 0.25;
-      case OrderStatus.preparing:
-        return 0.4;
-      case OrderStatus.readyForPickup:
-        return 0.5;
-      case OrderStatus.assigned:
-      case OrderStatus.accepted:
-      case OrderStatus.headingToStore:
-        return 0.6;
-      case OrderStatus.arrivedAtStore:
-        return 0.65;
-      case OrderStatus.pickedUp:
-      case OrderStatus.onTheWay:
-      case OrderStatus.headingToCustomer:
-        return 0.8;
-      case OrderStatus.arrivedAtCustomer:
-        return 0.95;
-      case OrderStatus.delivered:
-        return 1.0;
-      case OrderStatus.cancelled:
-      case OrderStatus.failed:
-      case OrderStatus.expired:
-      case OrderStatus.rejected:
-        return 1.0;
-      default:
-        return 0.0;
-    }
-  }
+  static double _statusProgress(OrderStatus status) =>
+      LiveActivityService.statusProgress(status);
 
-  static bool _isTerminalStatus(OrderStatus status) {
-    return [
-      OrderStatus.delivered,
-      OrderStatus.cancelled,
-      OrderStatus.failed,
-      OrderStatus.expired,
-      OrderStatus.rejected,
-    ].contains(status);
-  }
+  static bool _isTerminalStatus(OrderStatus status) =>
+      LiveActivityService.isTerminal(status);
 
-  static String _etaText(OrderModel order) {
-    final estimated = order.estimatedDeliveryTime;
-    if (estimated == null) return '';
-    final minutes = estimated.difference(DateTime.now()).inMinutes;
-    if (minutes <= 0) return 'الطلب قريباً';
-    return 'التوصيل المتوقع خلال $minutes دقيقة';
-  }
+  static String _etaText(OrderModel order) => LiveActivityService.etaText(order);
 
   void _syncLiveActivity(OrderModel order) {
-    if (order.isGuestOrder && order.userId == 'guest') {
-      // Guest orders already handled by push notifications; keep local updates optional.
-    }
-    LiveActivityService.update(
-      orderId: order.id,
-      status: order.status.value,
-      statusLabel: order.status.arabicName,
-      storeName: order.storeName,
-      orderNumber: order.orderNumber,
-      etaText: _etaText(order),
-      progress: _statusProgress(order.status),
-    );
-    if (_isTerminalStatus(order.status)) {
-      LiveActivityService.end(order.id);
-    }
+    LiveActivityService.syncOrder(order);
   }
 
   /// تحديث الطلب الحالي

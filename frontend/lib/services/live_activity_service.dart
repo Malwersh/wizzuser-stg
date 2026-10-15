@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
+import '../models/order_model.dart';
 import 'session_service.dart';
 
 class LiveActivityService {
@@ -103,6 +104,91 @@ class LiveActivityService {
       );
     } on PlatformException catch (e) {
       debugPrint('LiveActivity end error: ${e.code} - ${e.message}');
+    }
+  }
+
+  /// Start a Live Activity for a newly created order.
+  static Future<void> startForOrder(OrderModel order) async {
+    final etaMinutes = order.estimatedDeliveryTime
+            ?.difference(order.createdAt)
+            .inMinutes ??
+        30;
+    await start(
+      orderId: order.id,
+      status: order.status.value,
+      statusLabel: order.status.arabicName,
+      storeName: order.storeName,
+      orderNumber: order.orderNumber,
+      etaText: 'التوصيل المتوقع خلال $etaMinutes دقيقة',
+      progress: statusProgress(order.status),
+    );
+  }
+
+  /// Push the current order state to the Live Activity, ending it if terminal.
+  static Future<void> syncOrder(OrderModel order) async {
+    await update(
+      orderId: order.id,
+      status: order.status.value,
+      statusLabel: order.status.arabicName,
+      storeName: order.storeName,
+      orderNumber: order.orderNumber,
+      etaText: etaText(order),
+      progress: statusProgress(order.status),
+    );
+    if (isTerminal(order.status)) {
+      await end(order.id);
+    }
+  }
+
+  static bool isTerminal(OrderStatus status) {
+    return [
+      OrderStatus.delivered,
+      OrderStatus.cancelled,
+      OrderStatus.failed,
+      OrderStatus.expired,
+      OrderStatus.rejected,
+    ].contains(status);
+  }
+
+  static String etaText(OrderModel order) {
+    final estimated = order.estimatedDeliveryTime;
+    if (estimated == null) return '';
+    final minutes = estimated.difference(DateTime.now()).inMinutes;
+    if (minutes <= 0) return 'الطلب قريباً';
+    return 'التوصيل المتوقع خلال $minutes دقيقة';
+  }
+
+  static double statusProgress(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pending:
+        return 0.1;
+      case OrderStatus.confirmed:
+        return 0.25;
+      case OrderStatus.preparing:
+        return 0.4;
+      case OrderStatus.readyForPickup:
+        return 0.5;
+      case OrderStatus.assigned:
+      case OrderStatus.accepted:
+      case OrderStatus.headingToStore:
+        return 0.6;
+      case OrderStatus.arrivedAtStore:
+        return 0.65;
+      case OrderStatus.pickedUp:
+      case OrderStatus.onTheWay:
+      case OrderStatus.headingToCustomer:
+        return 0.8;
+      case OrderStatus.arrivedAtCustomer:
+        return 0.95;
+      case OrderStatus.delivered:
+        return 1.0;
+      case OrderStatus.cancelled:
+      case OrderStatus.failed:
+      case OrderStatus.expired:
+      case OrderStatus.rejected:
+        return 1.0;
+      default:
+        return 0.0;
     }
   }
 

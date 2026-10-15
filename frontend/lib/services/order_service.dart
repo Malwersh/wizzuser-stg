@@ -8,6 +8,7 @@ import '../models/address_model.dart';
 import '../models/store_discount.dart';
 import '../models/platform_promo.dart';
 import "session_service.dart";
+import 'live_activity_service.dart';
 import '../config/api_config.dart';
 
 class OrderService extends ChangeNotifier {
@@ -270,9 +271,12 @@ class OrderService extends ChangeNotifier {
           
           _currentOrder = createdOrder;
           _orders.insert(0, createdOrder);
-          
+
           notifyListeners();
-          
+
+          // Start iOS Live Activity for this order
+          LiveActivityService.startForOrder(createdOrder);
+
           print('OrderService: Order created successfully:');
           print('- Order ID: ${createdOrder.id}');
           print('- Order Total: ${createdOrder.total}');
@@ -475,8 +479,9 @@ class OrderService extends ChangeNotifier {
             cancelReason: reason ?? 'Order cancelled by user',
           );
           notifyListeners();
+          LiveActivityService.syncOrder(_orders[index]);
         }
-        
+
         return true;
       } else {
         final errorMessage = responseData['message'] ?? 'فشل في إلغاء الطلب';
@@ -516,14 +521,15 @@ class OrderService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final order = OrderModel.fromJson(responseData['data']);
-        
+
         // تحديث الطلب في القائمة
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
           _orders[index] = order;
           notifyListeners();
+          LiveActivityService.syncOrder(order);
         }
-        
+
         return order;
       }
     } catch (e) {
@@ -736,6 +742,7 @@ class OrderService extends ChangeNotifier {
         actualDeliveryTime: actualDeliveryTime,
       );
       notifyListeners();
+      LiveActivityService.syncOrder(_orders[index]);
     }
   }
 
