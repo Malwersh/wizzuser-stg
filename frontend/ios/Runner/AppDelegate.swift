@@ -15,11 +15,14 @@ import GoogleMaps
 
     GeneratedPluginRegistrant.register(with: self)
 
+    let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+
+    // Register after super so the window/rootViewController are guaranteed to exist.
     if let controller = window?.rootViewController as? FlutterViewController {
       LiveActivityChannel.shared.register(with: controller)
     }
     LiveActivityChannel.shared.resumeExistingActivities()
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    return result
   }
 }
