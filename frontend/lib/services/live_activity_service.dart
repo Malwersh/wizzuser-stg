@@ -21,6 +21,20 @@ class LiveActivityService {
 
   static StreamSubscription<dynamic>? _tokenSub;
   static String? _pendingOrderId;
+  static String? _pendingGuestToken;
+
+  /// Persist the guest token returned by the backend for guest orders.
+  /// Keeps it in memory and in SharedPreferences so token registration can use it.
+  static Future<void> setGuestToken(String token) async {
+    if (token.isEmpty) return;
+    _pendingGuestToken = token;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('guest_token', token);
+    } catch (_) {
+      // ignore
+    }
+  }
 
   static Future<void> initialize() async {
     if (!Platform.isIOS) return;
@@ -204,8 +218,12 @@ class LiveActivityService {
     String? guestToken;
 
     if (isGuest) {
-      final prefs = await SharedPreferences.getInstance();
-      guestToken = prefs.getString('guest_token');
+      // Prefer the in-memory token from this session's order, else fall back to storage.
+      guestToken = _pendingGuestToken;
+      if (guestToken == null || guestToken.isEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        guestToken = prefs.getString('guest_token');
+      }
     } else {
       authToken = SessionService.instance.idToken ?? SessionService.instance.accessToken;
     }

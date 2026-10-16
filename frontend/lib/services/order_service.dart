@@ -274,6 +274,12 @@ class OrderService extends ChangeNotifier {
 
           notifyListeners();
 
+          // Persist guest token for guest orders (used by push registration + Live Activity)
+          final guestToken = responseData['guestToken'] ?? backendOrder['guestToken'];
+          if (guestToken != null && guestToken.toString().isNotEmpty) {
+            LiveActivityService.setGuestToken(guestToken.toString());
+          }
+
           // Start iOS Live Activity for this order
           LiveActivityService.startForOrder(createdOrder);
 
