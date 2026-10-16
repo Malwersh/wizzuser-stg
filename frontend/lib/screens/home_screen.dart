@@ -1,4 +1,3 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'notifications_screen.dart';
 import '../services/notification_inbox_service.dart';
 import 'dart:developer' as developer;
@@ -1632,14 +1631,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // استخدام الصورة الحقيقية من قاعدة البيانات
     String finalImageUrl = business.businessPhotoUrl;
     
-    // إذا لم تكن هناك صورة أو كانت فارغة، استخدم صورة افتراضية
-    if (finalImageUrl.isEmpty) {
-      finalImageUrl = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop';
-      developer.log('  ⚠️ No image URL found, using fallback image');
-    } else {
-      developer.log('  ✅ Using real business image: $finalImageUrl');
-    }
-    
+    // Missing photos use the neutral placeholder already provided by the cards.
+
     // 🔥 حساب المسافة الحقيقية من موقع المستخدم
     String? distanceText;
     if (showDistance) {

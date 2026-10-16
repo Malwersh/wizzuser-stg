@@ -1,10 +1,15 @@
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand, TransactWriteCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { accountGuard } = require('./account-guard');
+const { createStagingQuoteOrder, QuoteOrderError } = require('./quote-runtime/deliveryQuoteOrder');
 const cognito = new (require('aws-sdk').CognitoIdentityServiceProvider)();
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
-const { normalizeDiscount, validateDiscount, calculateDiscountAmount, normalizePlatformPromo, validatePlatformPromo } = require('../shared/discount-engine');
+const {resolveDiscount} = require('../shared/discount-reservation');
+const {createStagingCommercialSource} = require('./quote-runtime/orderCommercialSource');
+const {moneyFromMinor} = require('./quote-runtime/money');
+const {createStagingOrderGoodsPricing} = require('./quote-runtime/orderGoodsPricing');
 
 const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_BASE_URL || '').trim();
 const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
@@ -370,10 +375,11 @@ exports.handler = async (event) => {
         }
 
         const profilesTable = requireEnv('USERS_TABLE');
-        const guardedAccount = await accountGuard({event,userId:body.userId,
+        const readAccount = () => accountGuard({event,userId:body.userId,
             pool:requireEnv('USER_POOL_ID'),clientId:requireEnv('USER_POOL_CLIENT_ID'),profilesTable,
             getUser:token=>cognito.getUser({AccessToken:token}).promise(),
             getProfile:async userId=>(await dynamoDb.send(new GetCommand({TableName:profilesTable,Key:{userId},ConsistentRead:true}))).Item});
+        const guardedAccount = await readAccount();
         const userSub = guardedAccount.sub;
 
         // Validate items array
@@ -386,6 +392,37 @@ exports.handler = async (event) => {
                     success: false
                 })
             };
+        }
+
+        // Local quoted flow is disabled until Quote API, checkout and deletion/IAM are deployed together.
+        const quoteMode = process.env.DELIVERY_QUOTE_MODE || 'OFF';
+        if (!['OFF', 'REQUIRED'].includes(quoteMode)) throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
+        if (quoteMode === 'OFF' && body.quoteId !== undefined) throw Object.assign(Error('QUOTE_NOT_ENABLED'), {statusCode: 409});
+        const commercialMode = process.env.COMMERCIAL_PRICING_MODE || 'OFF';
+        if (!['OFF','REQUIRED'].includes(commercialMode) || (commercialMode==='REQUIRED' && quoteMode!=='REQUIRED'))
+            throw Object.assign(Error('COMMERCIAL_NOT_CONFIGURED'),{statusCode:503});
+        const previewRoute = event.resource === '/orders/commercial-preview';
+        if ((body.action==='preview_commercial') !== previewRoute) throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
+        if (body.action !== undefined && body.action !== 'preview_commercial') throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
+        if (commercialMode==='OFF' && (body.action==='preview_commercial'||body.commercialConsent!==undefined))
+            throw Object.assign(Error('COMMERCIAL_NOT_ENABLED'),{statusCode:409});
+        let quotedOrder = null;
+        const quotedResponse = (saved, replayed) => ({statusCode: replayed ? 200 : 201, headers,
+            body: JSON.stringify({success: true, message: replayed ? 'Order already created' : 'Order created successfully',
+                orderId: saved.orderId, orderNumber: saved.orderNumber, order: customerOrderView(saved), replayed})});
+        if (quoteMode === 'REQUIRED') {
+            if (process.env.AWS_REGION !== 'us-east-1' || process.env.USER_POOL_ID !== 'us-east-1_TpyyrVkEE' || profilesTable !== 'WizzUser_users_staging' ||
+                TABLE_NAME !== 'WizzOrders' || BUSINESSES_TABLE !== 'WhizzMerchants_Businesses') {
+                throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
+            }
+            const service = createStagingQuoteOrder({db: dynamoDb, authenticateCustomer: async () => {
+                const live = await readAccount();
+                return {userId: body.userId, subjectId: live.sub, condition: live.condition};
+            }});
+            quotedOrder = await service.prepare({quoteId: body.quoteId, branchId: body.storeId,
+                addressId: body.deliveryAddress?.id, requestId: body.idempotencyKey, requestContent: body});
+            // Replay precedes the active-order query, which would otherwise reject this same persisted order.
+            if (quotedOrder.replayedOrder) return quotedResponse(quotedOrder.replayedOrder, true);
         }
 
         // CRITICAL BUSINESS RULE: Check for active orders
@@ -463,7 +500,7 @@ exports.handler = async (event) => {
         }
 
         // Generate order ID and order number
-        const orderId = uuidv4();
+        const orderId = quotedOrder ? quotedOrder.orderId : uuidv4();
         const timestamp = Date.now();
         const orderNumber = `ORD${timestamp}`;
         const tripNumber = `TRP${timestamp}`;
@@ -514,140 +551,58 @@ exports.handler = async (event) => {
             return sum + itemTotal + modifiersTotal;
         }, 0);
         
-        const serviceFee = Math.round((body.serviceFee || 0) * 1000);
+        let serviceFee = Math.round((body.serviceFee || 0) * 1000);
         const packagingFee = Math.round((body.packagingFee || 0) * 1000);
-        const deliveryFee = Math.round((body.deliveryFee || 10) * 1000); // Default 10 IQD
+        const deliveryFee = quotedOrder ? quotedOrder.deliveryFeeMinor : Math.round((body.deliveryFee ?? 10) * 1000); // Legacy only while quote mode is OFF
         const tax = Math.round((body.tax || 0) * 1000);
         const tip = Math.round((body.tip || 0) * 1000);
         const rounding = Math.round((body.rounding || 0) * 1000);
 
-        // Merchant discount (WhizzMerchants_Discounts) - validated server-side
-        if (body.discountId && body.promoCode) {
-            return {
-                statusCode: 400,
-                headers: headers,
-                body: JSON.stringify({
-                    error: 'Only one discount per order is allowed (discountId or promoCode)',
-                    success: false
-                })
-            };
+        const discountOperations = [];
+        if (body.discountId || body.promoCode) {
+            if (processedItems.some(i=>i.modifiers.length)) throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
+            const catalog = await createStagingOrderGoodsPricing({db:dynamoDb}).price({branchId:body.storeId,
+                items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity}))});
+            if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some(l=>
+                processedItems.find(i=>i.itemId===l.productId)?.unitPrice !== l.unitPrice.minorAmount))
+                throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            // Specific item/category campaigns remain unavailable until catalog category scope is resolved.
+            discountOperations.push(...catalog.conditions);
         }
-
-        let discountFils = 0;
-        let appliedDiscount = null;
-        let appliedPromo = null;
-        if (body.discountId) {
-            console.log('🏷️ Discount requested:', body.discountId, 'for store:', body.storeId);
-            try {
-                const discountResult = await dynamoDb.send(new GetCommand({
-                    TableName: DISCOUNTS_TABLE,
-                    Key: { discountId: body.discountId }
-                }));
-
-                if (!discountResult.Item) {
-                    return {
-                        statusCode: 400,
-                        headers: headers,
-                        body: JSON.stringify({
-                            error: 'Discount not found',
-                            success: false
-                        })
-                    };
-                }
-
-                const discount = normalizeDiscount(discountResult.Item);
-
-                if (discount.businessId !== body.storeId) {
-                    return {
-                        statusCode: 400,
-                        headers: headers,
-                        body: JSON.stringify({
-                            error: 'Discount does not belong to this store',
-                            success: false
-                        })
-                    };
-                }
-
-                const validation = validateDiscount(discount, goodsSubtotal);
-                if (!validation.valid) {
-                    return {
-                        statusCode: 400,
-                        headers: headers,
-                        body: JSON.stringify({
-                            error: validation.message,
-                            success: false
-                        })
-                    };
-                }
-
-                const itemsFils = processedItems.map(item => ({
-                    itemId: item.itemId,
-                    id: item.itemId,
-                    categoryId: item.categoryId,
-                    price: item.unitPrice,
-                    quantity: item.quantity
-                }));
-
-                discountFils = Math.round(
-                    calculateDiscountAmount(discount, goodsSubtotal, itemsFils, deliveryFee)
-                );
-                appliedDiscount = discount;
-                console.log('🏷️ Discount validated. Amount (fils):', discountFils);
-            } catch (discountError) {
-                // DynamoDB errors surface as 500; validation failures returned above
-                console.error('❌ Error validating discount:', discountError);
-                throw discountError;
-            }
-        } else if (body.promoCode) {
-            // Platform promo code (WizzCentral_Platform_Discounts) - validated server-side
-            console.log('🏷️ Promo code requested:', body.promoCode);
-            try {
-                const promoResult = await dynamoDb.send(new QueryCommand({
-                    TableName: PLATFORM_DISCOUNTS_TABLE,
-                    IndexName: 'code-index',
-                    KeyConditionExpression: '#code = :code',
-                    ExpressionAttributeNames: { '#code': 'code' },
-                    ExpressionAttributeValues: { ':code': String(body.promoCode).trim() }
-                }));
-
-                if (!promoResult.Items || promoResult.Items.length === 0) {
-                    return {
-                        statusCode: 400,
-                        headers: headers,
-                        body: JSON.stringify({
-                            error: 'Promo code not found',
-                            success: false
-                        })
-                    };
-                }
-
-                const promo = normalizePlatformPromo(promoResult.Items[0]);
-
-                const validation = validatePlatformPromo(promo, goodsSubtotal);
-                if (!validation.valid) {
-                    return {
-                        statusCode: 400,
-                        headers: headers,
-                        body: JSON.stringify({
-                            error: validation.message,
-                            success: false
-                        })
-                    };
-                }
-
-                discountFils = Math.round(
-                    calculateDiscountAmount(promo, goodsSubtotal, [], deliveryFee)
-                );
-                appliedPromo = promo;
-                console.log('🏷️ Promo validated. Amount (fils):', discountFils);
-            } catch (promoError) {
-                console.error('❌ Error validating promo code:', promoError);
-                throw promoError;
-            }
-        }
-
+        const resolvedDiscount = await resolveDiscount({db:dynamoDb,branchId:body.storeId,discountId:body.discountId,
+            promoCode:body.promoCode,subtotal:goodsSubtotal,items:[],deliveryFee});
+        discountOperations.push(...resolvedDiscount.operations);
+        const discountFils = resolvedDiscount.amount;
+        if ((body.discountId || body.promoCode) &&
+            (typeof body.discount !== 'number' || !Number.isFinite(body.discount) || Math.round(body.discount*1000) !== discountFils))
+            throw Object.assign(Error('DISCOUNT_PREVIEW_CHANGED'),{statusCode:409});
         // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discount
-        const total = Math.max(0, goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discountFils);
+        let total = Math.max(0, goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discountFils);
+
+        let commercial = null;
+        if (commercialMode === 'REQUIRED') {
+            if (!['cod','cash','cash_on_delivery'].includes(String(body.paymentMethod).toLowerCase()) ||
+                processedItems.some(i=>i.modifiers.length) || packagingFee!==0 || tax!==0 || rounding!==0)
+                throw Object.assign(Error('COMMERCIAL_ORDER_UNSUPPORTED'),{statusCode:409});
+            commercial = await createStagingCommercialSource({db:dynamoDb}).prepare({orderId,branchId:body.storeId,
+                items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity})),
+                quote:{createdAt:quotedOrder.createdAt,expiresAt:quotedOrder.expiresAt,deliveryFeeMinor:deliveryFee,
+                    origin:quotedOrder.origin,destination:quotedOrder.destination,destinationRegionId:quotedOrder.destinationRegionId},
+                discount:resolvedDiscount.snapshot?{snapshot:resolvedDiscount.snapshot,campaign:resolvedDiscount.campaign}:null,
+                tip:moneyFromMinor(tip)});
+            if(commercial.calculation.allocationInput.goodsGross.minorAmount!==goodsSubtotal || commercial.goodsLines.some(l=>processedItems.find(i=>i.itemId===l.productId)?.unitPrice!==l.unitPrice.minorAmount))
+                throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            if(body.action==='preview_commercial') return {statusCode:200,headers,body:JSON.stringify({success:true,
+                commercial:{schemaVersion:1,quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
+                    customerTotal:commercial.calculation.customerTotal,goodsGross:commercial.calculation.allocationInput.goodsGross,
+                    serviceFee:commercial.calculation.serviceFee.amount,discount:moneyFromMinor(discountFils),deliveryFee:moneyFromMinor(deliveryFee)}})};
+            if(body.commercialConsent?.digest!==commercial.digest ||
+                body.commercialConsent?.customerTotalMinor!==commercial.calculation.customerTotal.minorAmount)
+                throw Object.assign(Error('COMMERCIAL_CONSENT_REQUIRED'),{statusCode:409});
+            serviceFee=commercial.calculation.serviceFee.amount.minorAmount;
+            total=commercial.calculation.customerTotal.minorAmount;
+            discountOperations.push(...commercial.operations,commercial.branchCondition);
+        }
 
         // Determine user fields and generate guestToken for guest orders
         const isGuestOrder = body.userId === null || body.userId === 'guest' || !body.userId;
@@ -883,7 +838,7 @@ exports.handler = async (event) => {
             },
 
             // Applied merchant discount (if any)
-            discountId: appliedDiscount ? appliedDiscount.discountId : null,
+            discountId: body.discountId || null,
             promoCode: body.promoCode || null,
             
             // Payment (ز)
@@ -952,6 +907,22 @@ exports.handler = async (event) => {
             console.log('✅ Omitting scheduledAt for non-scheduled order (sparse index)');
         }
 
+        if (quotedOrder) {
+            // Bind operational routing to the same points priced by the server.
+            order.restaurantLat = quotedOrder.origin.latitude;
+            order.restaurantLng = quotedOrder.origin.longitude;
+            order.deliveryAddress.lat = quotedOrder.destination.latitude;
+            order.deliveryAddress.lng = quotedOrder.destination.longitude;
+            order.distanceMeters = quotedOrder.distanceMeters;
+        }
+
+        if (resolvedDiscount.snapshot) order.appliedDiscount = resolvedDiscount.snapshot;
+        if (commercial) {
+            order.merchantId=commercial.merchantId;
+            order.financialSnapshot=commercial.financialSnapshot;
+            order.commercialPricing={schemaVersion:1,digest:commercial.digest,agreement:commercial.agreement,
+                calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
+        }
         console.log('Creating order', {orderId});
 
         // Save order to DynamoDB
@@ -961,12 +932,20 @@ exports.handler = async (event) => {
         // including guest orders. A read before the write is not sufficient.
         const businessFences = [
             {ConditionCheck: {TableName: 'staging-AccountDeletion', Key: {pk: 'BUSINESS_LIFECYCLE#MERCHANT#' + body.storeId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}},
-            {ConditionCheck: {TableName: BUSINESSES_TABLE, Key: {businessId: body.storeId}, ConditionExpression: 'attribute_exists(businessId) AND attribute_not_exists(deletionRequestId)'}},
+            {ConditionCheck: {TableName: BUSINESSES_TABLE, Key: {businessId: body.storeId}, ConditionExpression: 'attribute_exists(businessId) AND attribute_not_exists(deletionRequestId) AND isActive=:merchantActive AND (#merchantStatus=:merchantApproved OR #merchantStatus=:merchantLive) AND (attribute_not_exists(onboardingSchemaVersion) OR (onboardingComplete=:merchantActive AND acceptingOrders=:merchantActive)) AND (attribute_not_exists(platformSuspended) OR platformSuspended=:merchantBlocked) AND (attribute_not_exists(ordersBlocked) OR ordersBlocked=:merchantBlocked)', ExpressionAttributeNames: {'#merchantStatus':'status'}, ExpressionAttributeValues: {':merchantActive':true,':merchantApproved':'approved',':merchantLive':'active',':merchantBlocked':false}}},
         ];
         try {
-            await dynamoDb.send(new TransactWriteCommand({TransactItems: [
+            if (commercial && Date.now() >= Date.parse(commercial.expiresAt)) throw Object.assign(Error('COMMERCIAL_QUOTE_EXPIRED'),{statusCode:409});
+            if (resolvedDiscount.expiresAt !== null && resolvedDiscount.expiresAt !== undefined && Date.now() >= resolvedDiscount.expiresAt)
+                throw Object.assign(Error('DISCOUNT_EXPIRED'), {statusCode:409});
+            if (quotedOrder) {
+                const saved = await quotedOrder.commit(order, discountOperations);
+                if (saved.replayed) return quotedResponse(saved.order, true);
+                Object.assign(order, saved.order);
+            } else await dynamoDb.send(new TransactWriteCommand({TransactItems: [
                 ...(guardedAccount.condition ? [guardedAccount.condition] : []),
                 ...businessFences,
+                ...discountOperations,
                 {Put: {TableName: TABLE_NAME, Item: order, ConditionExpression: 'attribute_not_exists(orderId)'}},
             ]}));
         } catch (e) {
@@ -975,63 +954,6 @@ exports.handler = async (event) => {
         }
 
         console.log('Order created successfully:', orderId);
-
-        // Increment the merchant discount usage counter (non-blocking for the order)
-        if (appliedDiscount) {
-            try {
-                const usageUpdate = {
-                    TableName: DISCOUNTS_TABLE,
-                    Key: { discountId: appliedDiscount.discountId },
-                    UpdateExpression: 'SET #usageCount = #usageCount + :inc, #updatedAt = :updatedAt',
-                    ExpressionAttributeNames: {
-                        '#usageCount': 'usage_count',
-                        '#updatedAt': 'updated_at'
-                    },
-                    ExpressionAttributeValues: {
-                        ':inc': 1,
-                        ':updatedAt': new Date().toISOString()
-                    }
-                };
-                if (appliedDiscount.usageLimit) {
-                    usageUpdate.ConditionExpression =
-                        'attribute_not_exists(#usageCount) OR #usageCount < :limit';
-                    usageUpdate.ExpressionAttributeValues[':limit'] = appliedDiscount.usageLimit;
-                }
-                await dynamoDb.send(new UpdateCommand(usageUpdate));
-                console.log('🏷️ Discount usage_count incremented for:', appliedDiscount.discountId);
-            } catch (usageError) {
-                console.error('🏷️ Failed to increment discount usage_count (order already created):', usageError.message);
-            }
-        }
-
-        // Increment the platform promo usage counters (non-blocking for the order)
-        if (appliedPromo) {
-            try {
-                const promoUpdate = {
-                    TableName: PLATFORM_DISCOUNTS_TABLE,
-                    Key: { discountId: appliedPromo.discountId },
-                    UpdateExpression: 'SET #usage = #usage + :inc, #currentUsage = #currentUsage + :inc, #updatedAt = :updatedAt',
-                    ExpressionAttributeNames: {
-                        '#usage': 'usage',
-                        '#currentUsage': 'currentUsage',
-                        '#updatedAt': 'updatedAt'
-                    },
-                    ExpressionAttributeValues: {
-                        ':inc': 1,
-                        ':updatedAt': new Date().toISOString()
-                    }
-                };
-                if (appliedPromo.usageLimit) {
-                    promoUpdate.ConditionExpression =
-                        '(attribute_not_exists(#usage) OR #usage < :limit)';
-                    promoUpdate.ExpressionAttributeValues[':limit'] = appliedPromo.usageLimit;
-                }
-                await dynamoDb.send(new UpdateCommand(promoUpdate));
-                console.log('🏷️ Promo usage incremented for:', appliedPromo.code);
-            } catch (usageError) {
-                console.error('🏷️ Failed to increment promo usage (order already created):', usageError.message);
-            }
-        }
 
         // Send order to merchant backend webhook (non-blocking)
         try {
@@ -1093,7 +1015,7 @@ exports.handler = async (event) => {
             message: 'Order created successfully',
             orderId: orderId,
             orderNumber: orderNumber,
-            order: order
+            order: customerOrderView(order)
         };
 
         // Add guestToken to response for guest orders
@@ -1120,6 +1042,8 @@ exports.handler = async (event) => {
                 error: 'Failed to create order',
                 message: error.message,
                 errorName: error.name,
+                ...(error instanceof QuoteOrderError ? {code: error.code} :
+                    ['QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
                 success: false
             })
         };

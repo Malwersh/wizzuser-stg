@@ -1,6 +1,7 @@
 // lib/services/order_service.dart
 
 import 'dart:convert';
+import 'delivery_quote_checkout.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
@@ -46,6 +47,8 @@ class OrderService extends ChangeNotifier {
     required DetailedAddress deliveryAddress,
     required PaymentMethod paymentMethod,
     double deliveryFee = 10.0,
+    DeliveryQuoteCheckout? quoteCheckout,
+    Future<bool> Function(Map<String,dynamic>)? approveCommercial,
     double taxRate = 0.0,
     double discount = 0.0,
     String? deliveryInstructions,
@@ -183,7 +186,9 @@ class OrderService extends ChangeNotifier {
       print('- Order Data: ${jsonEncode(orderData)}');
 
       // إرسال الطلب للخادم
-      final response = await http.post(
+      final response = quoteCheckout != null
+          ? await quoteCheckout.confirm(orderData, approveCommercial: approveCommercial)
+          : await http.post(
         Uri.parse(apiUrl),
         headers: {
           'Content-Type': 'application/json',
@@ -205,6 +210,13 @@ class OrderService extends ChangeNotifier {
         if (responseData['success'] == true && responseData['order'] != null) {
           // تحويل البيانات المرجعة إلى OrderModel
           final backendOrder = responseData['order'];
+          if (quoteCheckout != null) {
+            // Quoted responses retain minor-unit pricing; never substitute local totals.
+            final createdOrder = OrderModel.fromJson(Map<String, dynamic>.from(backendOrder));
+            _currentOrder = createdOrder;
+            notifyListeners();
+            return {'success': true, 'order': createdOrder, 'message': 'تم تأكيد الطلب'};
+          }
           
           // استخدام قيم الخادم أو الحسابات المحلية كنسخة احتياطية
           final backendSubtotal = backendOrder['subtotal']?.toDouble();
@@ -296,6 +308,11 @@ class OrderService extends ChangeNotifier {
         } else {
           throw Exception('استجابة غير صالحة من الخادم');
         }
+      } else if (responseData['code'] is String) {
+        return {'success': false, 'code': responseData['code'],
+          'message': quoteCheckout?.pending == true
+              ? 'لم تتأكد نتيجة الطلب؛ اضغط متابعة التأكيد لاستعادة النتيجة نفسها'
+              : 'تعذر تأكيد الطلب بهذا العرض؛ حدّث سعر التوصيل ثم أكد مجددًا'};
       } else if (response.statusCode == 409) {
         // لديك طلب نشط بالفعل (Conflict) — سياسة الطلب الواحد النشط
         final errorMessage = responseData['error'] ??
@@ -592,6 +609,8 @@ class OrderService extends ChangeNotifier {
   Future<Map<String, dynamic>> validatePromoCode({
     required String code,
     required double orderTotal,
+    required String storeId,
+    required List<Map<String, dynamic>> items,
     double deliveryFee = 0,
   }) async {
     try {
@@ -603,6 +622,8 @@ class OrderService extends ChangeNotifier {
         },
         body: jsonEncode({
           'code': code,
+          'storeId': storeId,
+          'items': items,
           'orderTotal': orderTotal,
           'deliveryFee': deliveryFee,
         }),
@@ -610,7 +631,9 @@ class OrderService extends ChangeNotifier {
 
       final responseData = jsonDecode(response.body);
 
-      if (response.statusCode == 200 && responseData['valid'] == true) {
+      if (response.statusCode == 200 && responseData['valid'] == true &&
+          responseData['discountAmount'] is num &&
+          (responseData['discountAmount'] as num).isFinite && (responseData['discountAmount'] as num) >= 0) {
         return {
           'success': true,
           'valid': true,
@@ -650,10 +673,9 @@ class OrderService extends ChangeNotifier {
             .map((d) => StoreDiscount.fromJson(Map<String, dynamic>.from(d)))
             .toList();
       }
-      return [];
+      throw StateError('DISCOUNT_LIST_UNAVAILABLE');
     } catch (e) {
-      debugPrint('خطأ في جلب خصومات المتجر: $e');
-      return [];
+      throw StateError('DISCOUNT_LIST_UNAVAILABLE');
     }
   }
 
@@ -688,7 +710,9 @@ class OrderService extends ChangeNotifier {
 
       final responseData = jsonDecode(response.body);
 
-      if (response.statusCode == 200 && responseData['valid'] == true) {
+      if (response.statusCode == 200 && responseData['valid'] == true &&
+          responseData['discountAmount'] is num &&
+          (responseData['discountAmount'] as num).isFinite && (responseData['discountAmount'] as num) >= 0) {
         return {
           'success': true,
           'valid': true,
