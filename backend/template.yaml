@@ -11,6 +11,17 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Environment name
 
+  EnableCommercialPricing:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Staging commercial writer; requires coordinated Quote activation and approved source records.
+
+  DeliveryQuoteMapboxSecretArn:
+    Type: String
+    Default: ''
+    Description: Full staging Mapbox secret ARN; provision separately before coordinated activation.
+
   CentralNotificationsBaseUrl:
     Type: String
     Default: "https://x066k4dftk.execute-api.us-east-1.amazonaws.com/staging"
@@ -46,9 +57,19 @@ Globals:
         WALLETS_TABLE: !Ref WalletsTable
         TRANSACTIONS_TABLE: !Ref TransactionsTable
         WIZZORDERS_TABLE: WizzOrders
+        DISCOUNTS_TABLE: WhizzMerchants_Discounts
+        PLATFORM_DISCOUNTS_TABLE: WizzCentral_Platform_Discounts
         USER_POOL_ID: !Ref CognitoUserPool
         USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClient
         SES_FROM_EMAIL: noreply@foodapp.com
+
+Conditions:
+  IsQuoteStaging: !And
+    - !Equals [!Ref Environment, staging]
+    - !Equals [!Ref 'AWS::AccountId', '699561669180']
+    - !Equals [!Ref 'AWS::Region', us-east-1]
+  IsCommercialStaging: !And [!Condition IsQuoteStaging, !Equals [!Ref EnableCommercialPricing, 'true']]
+  HasQuoteSecret: !Not [!Equals [!Ref DeliveryQuoteMapboxSecretArn, '']]
 
 Resources:
   # API Gateway
@@ -59,7 +80,7 @@ Resources:
       Name: !Sub "WizzUser-API-${Environment}"
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Customer-Id,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
         AllowOrigin: "'*'"
         MaxAge: "'600'"
       DefinitionBody:
@@ -843,6 +864,38 @@ Resources:
                       type: string
                     Access-Control-Allow-Methods:
                       type: string
+          /business/{businessId}/discounts:
+            get:
+              security: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetStoreDiscountsFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
           /category/{categoryId}/products:
             get:
               security: []
@@ -1401,6 +1454,39 @@ Resources:
                       type: string
                     Access-Control-Allow-Methods:
                       type: string
+          /orders/commercial-preview:
+            post:
+              security:
+                - CognitoAuthorizer: [aws.cognito.signin.user.admin]
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateOrderFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
           /orders/{orderId}:
             get:
               security: []
@@ -1601,6 +1687,70 @@ Resources:
                 type: aws_proxy
                 httpMethod: POST
                 uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApplyPromoCodeFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+          /promo-codes/active:
+            get:
+              security: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetActivePromoCodesFunction.Arn}/invocations"
+            options:
+              security: []
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  "200":
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: "200 response"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+          /promo-codes/validate:
+            post:
+              security: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ValidatePromoCodeFunction.Arn}/invocations"
             options:
               security: []
               x-amazon-apigateway-integration:
@@ -2527,42 +2677,6 @@ Resources:
             - AttributeName: userId
               KeyType: HASH
             - AttributeName: isDefault
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-
-  # Favorites Table  
-  FavoritesTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "WizzUser_favorites_${Environment}"
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: favoriteId
-          AttributeType: S
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: favoriteType
-          AttributeType: S
-        - AttributeName: createdAt
-          AttributeType: S
-      KeySchema:
-        - AttributeName: favoriteId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: userId-createdAt-index
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: createdAt
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-        - IndexName: userId-favoriteType-index
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            - AttributeName: favoriteType
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -3719,6 +3833,76 @@ Resources:
             TableName: !Ref FavoritesTable
 
   # Order Management Functions
+  DeliveryQuotesFunction:
+    Condition: IsQuoteStaging
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/delivery-quotes/index.handler
+      FunctionName: !Sub "WizzUser-DeliveryQuotes-${Environment}"
+      Environment:
+        Variables:
+          DELIVERY_QUOTES_ENABLED: 'false'
+          # Explicit deployment value required (1..120); no operational quota inferred.
+          DELIVERY_QUOTE_MAX_PER_MINUTE: ''
+          MAPBOX_SECRET_ARN: !Ref DeliveryQuoteMapboxSecretArn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [cognito-idp:GetUser]
+              Resource: '*'
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+              Resource:
+                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging
+                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging
+                - arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Businesses
+                - arn:aws:dynamodb:us-east-1:699561669180:table/staging-MerchantPlatform
+                - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
+                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions
+                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+              Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+              Condition:
+                ForAllValues:StringEquals:
+                  dynamodb:LeadingKeys: [OPERATIONAL_SETTINGS#DELIVERY_PRICING]
+            - Effect: Allow
+              Action: [dynamodb:Query]
+              Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionIndex_staging/index/h3-index
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:ConditionCheckItem]
+              Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-DeliveryQuotes
+              Condition:
+                ForAllValues:StringLike:
+                  dynamodb:LeadingKeys: ['CUSTOMER#*']
+        - !If
+          - HasQuoteSecret
+          - Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Ref DeliveryQuoteMapboxSecretArn
+          - !Ref 'AWS::NoValue'
+      Events:
+        CreateQuote:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WizzUserFoodAppApi
+            Path: /delivery-quotes
+            Method: POST
+        ReadQuote:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WizzUserFoodAppApi
+            Path: /delivery-quotes
+            Method: GET
+        QuoteOptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WizzUserFoodAppApi
+            Path: /delivery-quotes
+            Method: OPTIONS
+
   CreateOrderFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -3728,6 +3912,9 @@ Resources:
       Environment:
         Variables:
           BUSINESSES_TABLE: WhizzMerchants_Businesses
+          # Enable only with Quote API, quoted checkout, customer deletion and scoped IAM.
+          DELIVERY_QUOTE_MODE: 'OFF'
+          COMMERCIAL_PRICING_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
           # Use shared WizzUser WebSocket infrastructure for merchant notifications
           WEBSOCKET_CONNECTIONS_TABLE: !Sub "WizzUser_websocket_connections_${Environment}"
           WEBSOCKET_ENDPOINT: !Sub "wss://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
@@ -3735,6 +3922,86 @@ Resources:
           CENTRAL_NOTIFICATIONS_BASE_URL: !Ref CentralNotificationsBaseUrl
           CENTRAL_NOTIFICATIONS_INTERNAL_KEY: !Ref CentralNotificationsInternalKey
       Policies:
+        - !If
+          - IsCommercialStaging
+          - Statement:
+              - Sid: ReadCommercialAgreementSources
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-MerchantPlatform
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys: ['COMMERCIAL_AGREEMENT#*', 'PERSON#*']
+              - Sid: ReadCommercialApprovals
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys: ['COMMERCIAL_AGREEMENT#*', 'DISCOUNT_FUNDING#*']
+              - Sid: ReadCommercialRegions
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions
+              - Sid: ReservePlatformPromotionFunds
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-Wallets
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys: ['WALLET#PLATFORM']
+              - Sid: PlatformPromotionLedger
+                Effect: Allow
+                Action: [dynamodb:PutItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-LedgerEntries
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys: ['WALLET#PLATFORM']
+              - Sid: PlatformPromotionReservationAndAudit
+                Effect: Allow
+                Action: [dynamodb:PutItem]
+                Resource:
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/staging-Holds
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AuditLog
+          - !Ref 'AWS::NoValue'
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+        - !If
+          - IsQuoteStaging
+          - Statement:
+              - Sid: ConsumeDeliveryQuote
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem, dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-DeliveryQuotes
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys: ['CUSTOMER#*']
+              - Sid: DeliveryQuoteCustomerGuard
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging
+              - Sid: DeliveryQuoteReferenceFences
+                Effect: Allow
+                Action: [dynamodb:ConditionCheckItem]
+                Resource:
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Businesses
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/staging-MerchantPlatform
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging
+              - Sid: DeliveryQuotePolicyFence
+                Effect: Allow
+                Action: [dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys: [OPERATIONAL_SETTINGS#DELIVERY_PRICING]
+          - !Ref 'AWS::NoValue'
         - Statement:
           - Effect: Allow
             Action:
@@ -3762,6 +4029,24 @@ Resources:
             Resource: 
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Businesses
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Businesses/index/*
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:UpdateItem
+            Resource:
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Platform_Discounts"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Platform_Discounts/index/*"
         - Statement:
           - Effect: Allow
             Action:
@@ -3932,16 +4217,72 @@ Resources:
       Policies:
         - Statement:
           - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+        - Statement:
+          - Effect: Allow
             Action:
-              - dynamodb:PutItem
               - dynamodb:GetItem
-              - dynamodb:UpdateItem
-              - dynamodb:DeleteItem
               - dynamodb:Query
-              - dynamodb:Scan
             Resource: 
-              - arn:aws:dynamodb:*:*:table/WizzOrders
-              - arn:aws:dynamodb:*:*:table/WizzOrders/index/*
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
+
+  GetStoreDiscountsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/get-store-discounts/index.handler
+      FunctionName: !Sub "WizzUser-GetStoreDiscounts-${Environment}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+            Resource:
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts
+              - arn:aws:dynamodb:*:*:table/WhizzMerchants_Discounts/index/*
+
+  GetActivePromoCodesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/get-active-promo-codes/index.handler
+      FunctionName: !Sub "WizzUser-GetActivePromoCodes-${Environment}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Scan
+              - dynamodb:Query
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Platform_Discounts"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Platform_Discounts/index/*"
+
+  ValidatePromoCodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: functions/validate-promo-code/index.handler
+      FunctionName: !Sub "WizzUser-ValidatePromoCode-${Environment}"
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+              - dynamodb:GetItem
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Platform_Discounts"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Platform_Discounts/index/*"
 
   SearchOrderByNumberFunction:
     Type: AWS::Serverless::Function
@@ -4839,6 +5180,30 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref ApplyPromoCodeFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
+
+  GetStoreDiscountsLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetStoreDiscountsFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
+
+  GetActivePromoCodesLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GetActivePromoCodesFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"
+
+  ValidatePromoCodeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ValidatePromoCodeFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WizzUserFoodAppApi}/*/*"

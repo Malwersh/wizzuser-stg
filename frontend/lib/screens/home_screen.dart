@@ -1,4 +1,3 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'notifications_screen.dart';
 import '../services/notification_inbox_service.dart';
 import 'dart:developer' as developer;
@@ -9,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:foodapp_user/constants/app_colors.dart';
 import 'package:foodapp_user/models/store.dart';
 import 'package:foodapp_user/models/business_model.dart';
@@ -34,6 +34,9 @@ import '../models/favorites_model.dart';
 import 'favorite_stores_screen.dart';
 import 'map_screen_new.dart';
 import '../widgets/custom_bottom_navigation.dart';
+import '../models/platform_promo.dart';
+import '../services/order_service.dart';
+import '../widgets/promo_floating_card.dart';
 
 // 🆕 Smart Delivery Address System imports
 import 'package:foodapp_user/services/delivery_address_manager.dart';
@@ -58,6 +61,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoadingRealData = false;
   int _realDataPage = 0;
   bool _hasMoreRealData = true;
+
+  // أكواد خصم المنصة (المنصة المركزية)
+  PlatformPromo? _visiblePromo;
 
   // 🛠 تتبع آخر عملية bridge في build() لتجنب إعادة المحاولة بلا نهاية
   int _lastFallbackProviderCount = -1;
@@ -136,6 +142,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // بدء خدمة polling الصامتة (ستعمل عند تزويدها بالمعرفات)
     _statusPolling.start();
+
+    // جلب أكواد الخصم الفعالة لعرضها في البطاقة العائمة
+    _loadActivePromoCodes();
     
     // 🆕 إضافة listener مباشر على RestaurantListProvider لنقل البيانات فوراً
     // MUST be done IMMEDIATELY in initState (not in postFrameCallback) to catch all notifyListeners()
@@ -1622,14 +1631,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // استخدام الصورة الحقيقية من قاعدة البيانات
     String finalImageUrl = business.businessPhotoUrl;
     
-    // إذا لم تكن هناك صورة أو كانت فارغة، استخدم صورة افتراضية
-    if (finalImageUrl.isEmpty) {
-      finalImageUrl = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&h=300&fit=crop';
-      developer.log('  ⚠️ No image URL found, using fallback image');
-    } else {
-      developer.log('  ✅ Using real business image: $finalImageUrl');
-    }
-    
+    // Missing photos use the neutral placeholder already provided by the cards.
+
     // 🔥 حساب المسافة الحقيقية من موقع المستخدم
     String? distanceText;
     if (showDistance) {
@@ -1727,6 +1730,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     developer.log('  ✅ Store created with distance: "${store.distance}"');
     return store;
+  }
+
+  /// جلب أكواد الخصم الفعالة من المنصة وعرض أول كود لم يرفضه المستخدم
+  Future<void> _loadActivePromoCodes() async {
+    try {
+      final promos = await OrderService().getActivePromoCodes();
+      if (promos.isEmpty || !mounted) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final dismissed = prefs.getStringList('dismissed_promo_ids') ?? [];
+
+      final visible = promos.where((p) => !dismissed.contains(p.code)).toList();
+      if (visible.isNotEmpty && mounted) {
+        setState(() {
+          _visiblePromo = visible.first;
+        });
+      }
+    } catch (e) {
+      debugPrint('خطأ في جلب أكواد الخصم: $e');
+    }
+  }
+
+  Future<void> _dismissPromo() async {
+    final promo = _visiblePromo;
+    if (promo == null) return;
+
+    setState(() {
+      _visiblePromo = null;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    final dismissed = prefs.getStringList('dismissed_promo_ids') ?? [];
+    if (!dismissed.contains(promo.code)) {
+      dismissed.add(promo.code);
+      await prefs.setStringList('dismissed_promo_ids', dismissed);
+    }
   }
 
   @override
@@ -1921,7 +1960,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       },
       child: Scaffold(
-        body: _selectedTabIndex == 0 ? _buildHomeContentWithStickySearch() : _buildTabContent(),
+        body: _selectedTabIndex == 0
+            ? Stack(
+                children: [
+                  _buildHomeContentWithStickySearch(),
+                  if (_visiblePromo != null)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 16,
+                      child: SafeArea(
+                        top: false,
+                        child: PromoFloatingCard(
+                          promo: _visiblePromo!,
+                          onDismiss: _dismissPromo,
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            : _buildTabContent(),
         bottomNavigationBar: _buildBottomNavigation(),
       ),
     );

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'session_service.dart';
+import 'delivery_quote_checkout.dart';
 
 class AccountDeletionService {
   static const _base = String.fromEnvironment(
@@ -26,7 +27,11 @@ class AccountDeletionService {
       throw Exception('يرجى تسجيل الدخول إلى حسابك');
     }
     try {
-      return await _request('receipt', body: {'receiptToken': receipt['token']});
+      final result = await _request('receipt', body: {'receiptToken': receipt['token']});
+      if ((result['request'] as Map?)?['status'] == 'COMPLETED') {
+        await DeliveryQuoteCheckout.forgetAccount(receipt['ownerId'] as String);
+      }
+      return result;
     } on _AuthenticationExpired {
       throw Exception('انتهت صلاحية إيصال المتابعة؛ تواصل مع الدعم بمرجع طلبك');
     }
@@ -42,7 +47,11 @@ class AccountDeletionService {
       throw Exception('يرجى تسجيل الدخول إلى حسابك');
     }
     try {
+      final owner = SessionService().currentUserId;
       final result = await _request(path, token: token, body: body);
+      if (owner != null && (result['request'] as Map?)?['status'] == 'COMPLETED') {
+        await DeliveryQuoteCheckout.forgetAccount(owner);
+      }
       if (result['receiptToken'] is String) {
         await _storage.write(
           key: 'receipt',

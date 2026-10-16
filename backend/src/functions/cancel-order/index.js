@@ -1,3 +1,4 @@
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, UpdateCommand, GetCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
@@ -146,7 +147,7 @@ async function sendWebSocketNotification({ userId, orderId, type, order }) {
         const notificationData = {
             type: type,
             orderId: orderId,
-            order: order,
+            order: customerOrderView(order),
             timestamp: new Date().toISOString()
         };
 
@@ -457,7 +458,7 @@ exports.handler = async (event) => {
                 userId: userId,
                 orderId: orderId,
                 type: 'order_cancelled',
-                order: updatedOrder
+                order: customerOrderView(updatedOrder)
             });
             console.log('✅ WebSocket notification sent to user for order cancellation');
         } catch (wsError) {
@@ -473,7 +474,7 @@ exports.handler = async (event) => {
                 type: 'ORDER_STATUS_UPDATE',
                 status: updatedOrder.status,
                 cancelReason: reason,
-                order: updatedOrder
+                order: customerOrderView(updatedOrder)
             });
             console.log('✅ WebSocket notification sent to merchant for order cancellation');
         } catch (merchantWsError) {
@@ -491,7 +492,7 @@ exports.handler = async (event) => {
                 message: orderServiceResponse.holdReleased 
                     ? 'تم إلغاء الطلب وإعادة المبلغ المحجوز إلى محفظة السائق'
                     : 'تم إلغاء الطلب بنجاح',
-                order: updatedOrder,
+                order: customerOrderView(updatedOrder),
                 orderId: orderId,
                 status: updatedOrder.status,
                 holdReleased: orderServiceResponse.holdReleased || false

@@ -1,11 +1,16 @@
 // lib/screens/checkout_screen.dart
 import '../constants/app_colors.dart';
+import '../config/api_config.dart';
+import '../services/delivery_quote_checkout.dart';
+import 'dart:convert';
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/order_model.dart';
 import '../models/address_model.dart';
+import '../models/store_discount.dart';
 import '../providers/app_state_provider.dart';
 import '../services/address_service.dart';
 import '../services/session_service.dart';
@@ -30,11 +35,53 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final OrderService _orderService = OrderService();
+  late final DeliveryQuoteCheckout _quotedCheckout;
+  Timer? _quoteClock;
+  bool get _quotesEnabled => ApiConfig.deliveryQuotesEnabled;
+  String? _branchId(AppStateProvider state) => widget.storeId ??
+      (state.cartItems.isEmpty ? null : state.cartItems.first['store_id'] as String?);
+  void _quoteChanged() { if (mounted) setState(() {}); }
+  Future<void> _loadQuote({bool renew = false}) async {
+    if (!_quotesEnabled || !mounted || _selectedAddress == null) return;
+    final branch = _branchId(context.read<AppStateProvider>());
+    if (branch != null) await _quotedCheckout.load(branch, _selectedAddress!.id, renew: renew);
+  }
+  bool _quoteMatches(AppStateProvider state) => _selectedAddress != null &&
+      _branchId(state) != null && _quotedCheckout.matches(_branchId(state)!, _selectedAddress!.id);
+
   
+  double get _actualDeliveryFee => _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+  String? _validatedDiscountContext;
+  String _discountContext() {
+    final state = context.read<AppStateProvider>();
+    return jsonEncode([SessionService.instance.currentUserId, _branchId(state), state.cartItems,
+      _selectedAddress?.id, _quotedCheckout.quote?.id, _actualDeliveryFee]);
+  }
+  bool get _discountCurrent => (_selectedDiscountId == null && _appliedPromoCode == null) ||
+      (_validatedDiscountContext == _discountContext() && (!_quotesEnabled || _quoteMatches(context.read<AppStateProvider>())));
+  double get _effectiveDiscount => _discountCurrent ? _discount : 0;
   DetailedAddress? _selectedAddress;
   PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
   String _deliveryInstructions = '';
   bool _isLoading = false;
+
+  // Merchant discounts
+  List<StoreDiscount> _availableDiscounts = [];
+  String? _selectedDiscountId;
+  double _discount = 0.0;
+  bool _isLoadingDiscounts = false;
+  String? _discountLoadError;
+  int _discountAttempt = 0;
+  bool _isValidatingDiscount = false;
+
+  // Platform promo code
+  final TextEditingController _promoCodeController = TextEditingController();
+  String? _appliedPromoCode;
+
+  // Kept separately so a failed switch between discount types
+  // restores the previously applied amount instead of wiping it
+  double _promoDiscountAmount = 0.0;
+  double _merchantDiscountAmount = 0.0;
   
   // User information for checkout
   bool _isGuestUser = false;
@@ -57,18 +104,214 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    _quotedCheckout = DeliveryQuoteCheckout(
+      account: () => SessionService.instance.currentUserId,
+      token: () => SessionService.instance.accessToken)..addListener(_quoteChanged);
+    if (_quotesEnabled) {
+      _quotedCheckout.restore().then((_) { if (mounted) _loadQuote(); });
+      _quoteClock = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
+    }
     // تأخير تهيئة البيانات لتحسين الأداء
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeUserData();
+      _loadStoreDiscounts();
+      _autoApplyPendingPromo();
     });
+  }
+
+  /// If the user tapped a promo code on the home-screen floating card,
+  /// it is stored as pending — prefill and apply it automatically here.
+  Future<void> _autoApplyPendingPromo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final code = prefs.getString('pending_promo_code');
+      if (code == null || code.isEmpty || !mounted) return;
+      _promoCodeController.text = code;
+      await _applyPromoCode();
+      await prefs.remove('pending_promo_code');
+    } catch (_) {}
+  }
+
+  Future<void> _loadStoreDiscounts() async {
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    final storeId = widget.storeId ??
+        (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
+    if (storeId == null || storeId.toString().isEmpty) return;
+
+    setState(() {
+      _isLoadingDiscounts = true;
+      _availableDiscounts = [];
+      _discountLoadError = null;
+    });
+
+    final scope = [SessionService.instance.currentUserId, storeId.toString()];
+    try {
+      final discounts = await _orderService.getStoreDiscounts(storeId.toString());
+      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>())) return;
+      setState(() { _availableDiscounts = discounts; _isLoadingDiscounts = false; _discountLoadError = null; });
+    } catch (_) {
+      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>())) return;
+      setState(() { _availableDiscounts = []; _isLoadingDiscounts = false; _discountLoadError = 'تعذر تحميل العروض'; });
+    }
+  }
+
+  Future<void> _applyPromoCode() async {
+    final code = _promoCodeController.text.trim();
+    if (code.isEmpty) {
+      _showMessage('أدخل كود الخصم أولاً', isError: true);
+      return;
+    }
+
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+
+    setState(() {
+      _isValidatingDiscount = true;
+    });
+
+    if (_quotedCheckout.pending || (_quotesEnabled && !_quoteMatches(appState))) {
+      setState(() { _isValidatingDiscount = false; });
+      _showMessage('حدّث سعر التوصيل أولًا أو تابع محاولة الطلب السابقة', isError: true);
+      return;
+    }
+    final attempt = ++_discountAttempt;
+    final validationContext = _discountContext();
+    final result = await _orderService.validatePromoCode(
+      code: code,
+      storeId: _branchId(appState) ?? '',
+      items: appState.cartItems,
+      orderTotal: appState.cartTotal,
+      deliveryFee: _actualDeliveryFee,
+    );
+
+    if (!mounted || attempt != _discountAttempt) return;
+    if (validationContext != _discountContext()) {
+      setState(() { _isValidatingDiscount = false; });
+      return;
+    }
+    setState(() {
+      _isValidatingDiscount = false;
+      if (result['valid'] == true) {
+        _validatedDiscountContext = validationContext;
+        _appliedPromoCode = code;
+        _promoDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+        _discount = _promoDiscountAmount;
+        // Only one discount per order: clear any selected merchant discount
+        _selectedDiscountId = null;
+        _merchantDiscountAmount = 0.0;
+      } else {
+        _appliedPromoCode = null;
+        _promoDiscountAmount = 0.0;
+        _discount = _merchantDiscountAmount;
+      }
+    });
+
+    if (result['valid'] == true) {
+      _showMessage('تم تطبيق كود الخصم بنجاح');
+    } else {
+      _showMessage(result['message'] ?? 'كود الخصم غير صالح', isError: true);
+    }
+  }
+
+  void _clearPromoCode() {
+    _discountAttempt++;
+    setState(() {
+      _appliedPromoCode = null;
+      _promoCodeController.clear();
+      _promoDiscountAmount = 0.0;
+      _discount = _merchantDiscountAmount;
+    });
+  }
+
+  Future<void> _selectDiscount(StoreDiscount? discount) async {
+    if (discount == null) {
+      _discountAttempt++;
+      setState(() {
+        _selectedDiscountId = null;
+        _merchantDiscountAmount = 0.0;
+        _discount = _promoDiscountAmount;
+      });
+      return;
+    }
+
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    final storeId = widget.storeId ??
+        (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
+    if (storeId == null) return;
+
+    setState(() {
+      _isValidatingDiscount = true;
+    });
+
+    if (_quotedCheckout.pending || (_quotesEnabled && !_quoteMatches(appState))) {
+      setState(() { _isValidatingDiscount = false; });
+      _showMessage('حدّث سعر التوصيل أولًا أو تابع محاولة الطلب السابقة', isError: true);
+      return;
+    }
+    final attempt = ++_discountAttempt;
+    final validationContext = _discountContext();
+    final result = await _orderService.validateDiscount(
+      storeId: storeId.toString(),
+      discountId: discount.discountId,
+      orderTotal: appState.cartTotal,
+      deliveryFee: _actualDeliveryFee,
+      items: appState.cartItems,
+    );
+
+    if (!mounted || attempt != _discountAttempt) return;
+    if (validationContext != _discountContext()) {
+      setState(() { _isValidatingDiscount = false; });
+      return;
+    }
+    setState(() {
+      _isValidatingDiscount = false;
+      if (result['valid'] == true) {
+        _validatedDiscountContext = validationContext;
+        _selectedDiscountId = discount.discountId;
+        _merchantDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+        _discount = _merchantDiscountAmount;
+        // Only one discount per order: clear any applied promo code
+        _appliedPromoCode = null;
+        _promoDiscountAmount = 0.0;
+        _promoCodeController.clear();
+      } else {
+        // Keep the previously applied promo code and its amount —
+        // only the failed merchant discount is rejected
+        _selectedDiscountId = null;
+        _merchantDiscountAmount = 0.0;
+        _discount = _promoDiscountAmount;
+      }
+    });
+
+    if (result['valid'] == true) {
+      _showMessage('تم تطبيق الخصم بنجاح');
+    } else {
+      _showMessage(result['message'] ?? 'الخصم غير صالح', isError: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant CheckoutScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.storeId != widget.storeId) {
+      _discountAttempt++;
+      _selectedDiscountId = null; _appliedPromoCode = null;
+      _discount = 0; _merchantDiscountAmount = 0; _promoDiscountAmount = 0;
+      _validatedDiscountContext = null;
+      _isValidatingDiscount = false;
+      _loadStoreDiscounts();
+    }
   }
 
   @override
   void dispose() {
+    _quoteClock?.cancel();
+    _quotedCheckout.removeListener(_quoteChanged);
+    _quotedCheckout.dispose();
     _instructionsController.dispose();
     _guestNameController.dispose();
     _guestPhoneController.dispose();
     _guestEmailController.dispose();
+    _promoCodeController.dispose();
     super.dispose();
   }
 
@@ -144,6 +387,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         setState(() {
           _selectedAddress = addressService.defaultAddress;
         });
+        await _loadQuote();
       }
     } catch (e) {
       debugPrint('خطأ في تحميل العنوان: $e');
@@ -219,6 +463,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 child: _buildPaymentSection(),
                               ),
                               const SizedBox(height: 16),
+
+                              // قسم العروض والخصومات
+                              RepaintBoundary(
+                                child: _buildDiscountsSection(),
+                              ),
+                              const SizedBox(height: 16),
                               
                               // قسم تعليمات التوصيل
                               RepaintBoundary(
@@ -228,7 +478,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               
                               // ملخص السعر
                               RepaintBoundary(
-                                child: _buildPriceSummary(appState),
+                                child: Column(children: [if (_quotesEnabled) _buildQuoteStatus(appState), _buildPriceSummary(appState)]),
                               ),
                               const SizedBox(height: 100), // مساحة للزر السفلي
                             ],
@@ -675,9 +925,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // TODO: Re-enable promo section later
-  /*
-  Widget _buildPromoSection() {
+  Widget _buildDiscountsSection() {
+    if (_discountLoadError != null) return Column(children: [
+      Text(_discountLoadError!), TextButton(onPressed: _loadStoreDiscounts, child: const Text('إعادة تحميل العروض')),
+    ]);
+    if (_isLoadingDiscounts) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Center(
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -710,21 +978,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(width: 12),
               const Text(
-                'كود الخصم',
+                'العروض والخصومات',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: Colors.black87,
                 ),
               ),
+              if (_isValidatingDiscount) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
+          // Promo code entry (platform codes from the central platform)
           Row(
             children: [
               Expanded(
                 child: TextField(
-                  controller: _promoController,
+                  controller: _promoCodeController,
+                  enabled: _appliedPromoCode == null && !_isValidatingDiscount,
                   decoration: InputDecoration(
                     hintText: 'أدخل كود الخصم',
                     border: OutlineInputBorder(
@@ -744,23 +1022,59 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: null, // معطل مؤقتاً
+                onPressed: _isValidatingDiscount
+                    ? null
+                    : (_appliedPromoCode != null ? _clearPromoCode : _applyPromoCode),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey,
+                  backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.secondary,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('قريباً'),
+                child: Text(_appliedPromoCode != null ? 'إزالة' : 'تطبيق'),
               ),
             ],
           ),
-          // Discount display section - temporarily disabled
-          /*
-          if (_discount > 0) ...[
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
+          ..._availableDiscounts.map((discount) {
+            return RadioListTile<String>(
+              value: discount.discountId,
+              groupValue: _selectedDiscountId,
+              onChanged: _isValidatingDiscount
+                  ? null
+                  : (_) => _selectDiscount(discount),
+              title: Text(
+                discount.title.isNotEmpty ? discount.title : discount.displayValue,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                ),
+              ),
+              subtitle: Text(
+                discount.description.isNotEmpty
+                    ? discount.description
+                    : discount.displayValue,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              activeColor: AppColors.primary,
+              contentPadding: EdgeInsets.zero,
+            );
+          }),
+          if (_selectedDiscountId != null) ...[
+            TextButton(
+              onPressed: _isValidatingDiscount ? null : () => _selectDiscount(null),
+              child: const Text(
+                'إزالة الخصم',
+                style: TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ],
+          if (!_discountCurrent) const Text('أعد اختيار الخصم بعد تغيير السلة أو سعر التوصيل'),
+          if (_effectiveDiscount > 0) ...[
+            const SizedBox(height: 4),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -771,14 +1085,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 20,
-                  ),
+                  const Icon(Icons.check_circle, color: Colors.green, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'تم تطبيق خصم ${_discount.toStringAsFixed(2)} ر.س',
+                    'تم تطبيق خصم ${_effectiveDiscount.toStringAsFixed(3)} د.ع',
                     style: const TextStyle(
                       color: Colors.green,
                       fontWeight: FontWeight.w600,
@@ -788,12 +1098,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
           ],
-          */
         ],
       ),
     );
   }
-  */
 
   Widget _buildInstructionsSection() {
     return Container(
@@ -862,11 +1170,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+  Widget _buildQuoteStatus(AppStateProvider appState) {
+    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+      Text(_quotedCheckout.pending
+          ? 'توجد محاولة تأكيد سابقة. تابعها لاستعادة نتيجتها قبل بدء طلب آخر.'
+          : _quoteMatches(appState)
+              ? 'سعر التوصيل صالح لفترة قصيرة. الإجمالي يشمل قيمة السلة المعروضة.'
+              : (_quotedCheckout.error ?? 'حمّل سعر التوصيل قبل تأكيد الطلب')),
+      if (!_quotedCheckout.pending)
+        TextButton(onPressed: _quotedCheckout.busy || _isLoading ? null : () => _loadQuote(renew: _quotedCheckout.quote != null),
+          child: Text(_quotedCheckout.busy ? 'جارٍ تسعير التوصيل…' : 'تحديث سعر التوصيل')),
+    ])));
+  }
+
   Widget _buildPriceSummary(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
-    const deliveryFee = 10.0;
-    // TODO: Re-enable discounts later
-    final discount = 0.0; // Temporarily disabled: _discount
+    final deliveryFee = _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+    final discount = _effectiveDiscount;
     final total = subtotal + deliveryFee - discount;
 
     return Container(
@@ -915,7 +1235,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('المجموع الفرعي'),
-              Text('${subtotal.toStringAsFixed(2)} ر.س'),
+              Text('${subtotal.toStringAsFixed(2)} د.ع'),
             ],
           ),
           const SizedBox(height: 8),
@@ -923,26 +1243,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('رسوم التوصيل'),
-              Text('${deliveryFee.toStringAsFixed(2)} ر.س'),
+              Text(_quotesEnabled && !_quoteMatches(appState) ? 'بانتظار التسعير' : '${deliveryFee.toStringAsFixed(3)} د.ع'),
             ],
           ),
-          // TODO: Re-enable discount display later
-          // if (_discount > 0) ...[
-          //   const SizedBox(height: 8),
-          //   Row(
-          //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          //     children: [
-          //       const Text(
-          //         'الخصم',
-          //         style: TextStyle(color: Colors.green),
-          //       ),
-          //       Text(
-          //         '-${_discount.toStringAsFixed(2)} ر.س',
-          //         style: const TextStyle(color: Colors.green),
-          //       ),
-          //     ],
-          //   ),
-          // ],
+          if (discount > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'الخصم',
+                  style: TextStyle(color: Colors.green),
+                ),
+                Text(
+                  '-${discount.toStringAsFixed(2)} د.ع',
+                  style: const TextStyle(color: Colors.green),
+                ),
+              ],
+            ),
+          ],
           const Divider(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -955,7 +1274,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               Text(
-                '${total.toStringAsFixed(2)} ر.س',
+                _quotesEnabled && !_quoteMatches(appState) ? 'بانتظار التسعير' : '${total.toStringAsFixed(3)} د.ع',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -971,10 +1290,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _buildConfirmButton(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
-    const deliveryFee = 10.0;
-    const discount = 0.0; // Temporarily disabled
+    final deliveryFee = _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+    final discount = _effectiveDiscount;
     final total = subtotal + deliveryFee - discount;
-    final bool canConfirm = _selectedAddress != null && !_isLoading;
+    final bool pending = _quotesEnabled && _quotedCheckout.pending;
+    final bool canConfirm = !_isValidatingDiscount && (pending || _discountCurrent) && !_isLoading && (!_quotesEnabled || !_quotedCheckout.busy) &&
+        (pending || (_selectedAddress != null && (!_quotesEnabled || _quoteMatches(appState))));
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1014,7 +1335,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                   )
                 : Text(
-                    'تأكيد الطلب • ${total.toStringAsFixed(2)} ر.س',
+                    pending ? 'متابعة تأكيد الطلب السابق' : _quotesEnabled && !_quoteMatches(appState) ? 'حدّث سعر التوصيل أولًا' : 'تأكيد الطلب • ${total.toStringAsFixed(3)} د.ع',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1479,6 +1800,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() {
         _selectedAddress = selectedAddress;
       });
+      if (_quotesEnabled) _quotedCheckout.invalidate();
+      await _loadQuote();
     }
   }
 
@@ -1598,45 +1921,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
 
 
-  // TODO: Re-enable promo code function later
-  /*
-  Future<void> _applyPromoCode() async {
-    if (_promoController.text.trim().isEmpty) {
-      _showMessage('أدخل كود الخصم أولاً', isError: true);
+  Future<void> _confirmOrder(AppStateProvider appState) async {
+    if (!_quotedCheckout.pending && !_discountCurrent) {
+      _showMessage('أعد التحقق من الخصم بعد تغيير السلة أو سعر التوصيل', isError: true);
       return;
     }
-
-    setState(() {
-      _isApplyingPromo = true;
-    });
-
-    try {
-      final appState = Provider.of<AppStateProvider>(context, listen: false);
-      final result = await _orderService.applyPromoCode(
-        _promoController.text.trim(),
-        appState.cartTotal,
-      );
-
-      if (result['success']) {
-        setState(() {
-          _discount = result['discount'];
-          _promoCode = _promoController.text.trim();
-        });
-        _showMessage(result['message'] ?? 'تم تطبيق كود الخصم بنجاح');
-      } else {
-        _showMessage(result['message'] ?? 'كود الخصم غير صالح', isError: true);
-      }
-    } catch (e) {
-      _showMessage('خطأ في تطبيق كود الخصم', isError: true);
-    } finally {
-      setState(() {
-        _isApplyingPromo = false;
-      });
+    if (_quotesEnabled && _quotedCheckout.pending) {
+      await _resumeQuotedOrder();
+      return;
     }
-  }
-  */
-
-  Future<void> _confirmOrder(AppStateProvider appState) async {
+    if (_quotesEnabled && !_quoteMatches(appState)) {
+      _showMessage('حدّث سعر التوصيل وراجعه ثم أكد الطلب مجددًا', isError: true);
+      return;
+    }
     // التحقق من صحة النموذج أولاً
     if (!_formKey.currentState!.validate()) {
       _showMessage('يرجى تعبئة جميع الحقول المطلوبة بشكل صحيح', isError: true);
@@ -1805,6 +2102,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
 
+      final commercialScope = _discountContext();
       final result = await _orderService.createOrder(
         storeId: storeId,
         storeName: storeName ?? 'المطعم',
@@ -1814,11 +2112,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryAddress: _selectedAddress!,
         paymentMethod: _selectedPaymentMethod,
         deliveryInstructions: _deliveryInstructions.isEmpty ? null : _deliveryInstructions,
-        // TODO: Re-enable promo code and discount later
-        // promoCode: _promoCode.isEmpty ? null : _promoCode,
-        // discount: _discount,
-        promoCode: null,
-        discount: 0.0,
+        deliveryFee: _quotesEnabled ? _quotedCheckout.quote!.fee : 10.0,
+        quoteCheckout: _quotesEnabled ? _quotedCheckout : null,
+        approveCommercial: (proposal) async {
+          if (!mounted || commercialScope != _discountContext()) return false;
+          final scope = commercialScope;
+          String value(String key) => ((proposal[key]['minorAmount'] as int) / 1000).toStringAsFixed(3);
+          final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+            title: const Text('تأكيد إجمالي الطلب'),
+            content: Text('السلع: ${value('goodsGross')} د.ع\nالخصم: ${value('discount')} د.ع\nرسوم الخدمة: ${value('serviceFee')} د.ع\nالتوصيل: ${value('deliveryFee')} د.ع\nالإجمالي: ${value('customerTotal')} د.ع'),
+            actions: [TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('إلغاء')),
+              FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('تأكيد هذا المبلغ'))],
+          ));
+          return mounted && scope == _discountContext() && accepted == true;
+        },
+        promoCode: _appliedPromoCode,
+        discountId: _selectedDiscountId,
+        discount: _effectiveDiscount,
         // إضافة معلومات المستخدم الحقيقية
         userId: userId,
         customerName: customerName,
@@ -1847,6 +2157,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
           ),
         );
+      } else if (result['code'] != null) {
+        _showMessage(result['message'], isError: true);
       } else if (result['statusCode'] == 409 ||
           result['errorType'] == 'ACTIVE_ORDER_CONFLICT') {
         // سياسة الطلب الواحد النشط — عرض قائمة سفلية لطيفة بدل الشريط الأحمر
@@ -1872,10 +2184,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       _showMessage(errorMessage, isError: true);
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) setState(() { _isLoading = false; });
     }
+  }
+
+  Future<void> _resumeQuotedOrder() async {
+    setState(() { _isLoading = true; });
+    try {
+      final response = await _quotedCheckout.confirm(null);
+      if (!mounted) return;
+      final data = jsonDecode(response.body);
+      if ([200, 201].contains(response.statusCode) && data['success'] == true && data['order'] is Map) {
+        final order = OrderModel.fromJson(Map<String, dynamic>.from(data['order']));
+        _orderService.addOrderToList(order);
+        // A restored attempt may belong to a previous cart. Keep today's cart intact.
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => OrderTrackingScreen(
+          orderId: order.id, orderNumber: order.orderNumber)));
+      } else {
+        _showMessage(_quotedCheckout.pending
+            ? 'لم تتأكد النتيجة؛ أعد متابعة التأكيد. لن ننشئ محاولة أخرى'
+            : 'لم يُنشأ الطلب بهذا العرض؛ حدّث السعر وراجعه ثم أكد مجددًا', isError: true);
+      }
+    } catch (_) {
+      if (mounted) _showMessage('تعذر تأكيد النتيجة؛ أعد متابعة التأكيد', isError: true);
+    } finally { if (mounted) setState(() { _isLoading = false; }); }
   }
 
   void _showMessage(String message, {bool isError = false}) {

@@ -1,3 +1,4 @@
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -131,7 +132,7 @@ exports.handler = async (event) => {
             headers: headers,
             body: JSON.stringify({
                 success: true,
-                orders: orders,
+                orders: orders.map(customerOrderView),
                 count: orders.length,
                 lastEvaluatedKey: result.LastEvaluatedKey
             })

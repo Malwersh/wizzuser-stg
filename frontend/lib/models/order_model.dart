@@ -127,9 +127,15 @@ class OrderItem {
       dishName: json['dish_name'] ?? json['productName'] ?? json['name'] ?? 'طبق غير محدد',
       dishDescription: json['dish_description'] ?? json['description'],
       dishImage: json['dish_image'] ?? json['image'],
-      unitPrice: (json['unit_price'] ?? json['price'] ?? 0 as num).toDouble(),
+      unitPrice: json['unit_price'] != null || json['price'] != null
+          ? (json['unit_price'] ?? json['price'] as num).toDouble()
+          : ((json['unitPrice'] ?? 0) as num).toDouble() / 1000,
       quantity: (json['quantity'] ?? 1) as int,
-      totalPrice: (json['total_price'] ?? json['totalPrice'] ?? json['price'] ?? 0 as num).toDouble(),
+      totalPrice: (json['total_price'] ?? json['totalPrice']) != null
+          ? ((json['total_price'] ?? json['totalPrice']) as num).toDouble()
+          : json['unitPrice'] != null && json['unit_price'] == null && json['price'] == null
+              ? (json['unitPrice'] as num).toDouble() / 1000 * ((json['quantity'] ?? 1) as num)
+              : ((json['price'] ?? 0) as num).toDouble(),
       selectedOptions: parsedOptions,
       specialInstructions: json['special_instructions'] ?? json['specialInstructions'],
     );

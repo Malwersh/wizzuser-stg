@@ -19,3 +19,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Bundled from CentralPlatform deliveryQuoteRuntime.ts during release preparation
+backend/src/functions/delivery-quotes/runtime.js
