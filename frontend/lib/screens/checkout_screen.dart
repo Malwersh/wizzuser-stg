@@ -15,6 +15,7 @@ import '../providers/app_state_provider.dart';
 import '../services/address_service.dart';
 import '../services/session_service.dart';
 import '../services/order_service.dart';
+import '../services/pending_offer.dart';
 import '../services/business_status_service.dart';
 import 'order_tracking_screen.dart';
 import 'address_selection_screen.dart';
@@ -52,12 +53,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   
   double get _actualDeliveryFee => _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
   String? _validatedDiscountContext;
+  String? _pendingAttemptContext;
+  bool _applyingPending=false;
+  String? _autoItemContext,_autoItemId;
+  bool _autoItemsEnabled=true;
+  AppStateProvider? _cartListener;
   String _discountContext() {
     final state = context.read<AppStateProvider>();
     return jsonEncode([SessionService.instance.currentUserId, _branchId(state), state.cartItems,
       _selectedAddress?.id, _quotedCheckout.quote?.id, _actualDeliveryFee]);
   }
-  bool get _discountCurrent => (_selectedDiscountId == null && _appliedPromoCode == null) ||
+  bool get _discountCurrent => (_selectedDiscountId == null && _appliedPromoCode == null && _platformDiscountId == null) ||
       (_validatedDiscountContext == _discountContext() && (!_quotesEnabled || _quoteMatches(context.read<AppStateProvider>())));
   double get _effectiveDiscount => _discountCurrent ? _discount : 0;
   DetailedAddress? _selectedAddress;
@@ -77,6 +83,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // Platform promo code
   final TextEditingController _promoCodeController = TextEditingController();
   String? _appliedPromoCode;
+  String? _platformDiscountId;
+  List<dynamic> _discountLines=[];
 
   // Kept separately so a failed switch between discount types
   // restores the previously applied amount instead of wiping it
@@ -113,23 +121,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     // تأخير تهيئة البيانات لتحسين الأداء
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeUserData();
+      _cartListener=context.read<AppStateProvider>();
+      _cartListener!.addListener(_pendingCartChanged);
+      _initializeUserData().then((_)=>_autoApplyOffer());
       _loadStoreDiscounts();
-      _autoApplyPendingPromo();
+      _clearLegacyPendingPromo();
     });
   }
 
   /// If the user tapped a promo code on the home-screen floating card,
   /// it is stored as pending — prefill and apply it automatically here.
-  Future<void> _autoApplyPendingPromo() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final code = prefs.getString('pending_promo_code');
-      if (code == null || code.isEmpty || !mounted) return;
-      _promoCodeController.text = code;
-      await _applyPromoCode();
-      await prefs.remove('pending_promo_code');
-    } catch (_) {}
+  void _pendingCartChanged(){WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_autoApplyOffer();});}
+  Future<void> _autoApplyOffer() async {
+    if(!mounted||_isValidatingDiscount||_applyingPending||_selectedAddress==null)return;
+    final pending=PendingOffer.current;if(pending==null){await _autoApplyItemOffer();return;}
+    final state=context.read<AppStateProvider>();if((pending.merchantId.isNotEmpty&&pending.merchantId!=_branchId(state))||state.cartItems.isEmpty)return;
+    if(_quotesEnabled&&!_quoteMatches(state))return;
+    final key=_discountContext();if(_pendingAttemptContext==key)return;_pendingAttemptContext=key;_applyingPending=true;
+    try{final offer=pending.offer;if(offer['source']=='merchant'){
+      await _selectDiscount(StoreDiscount(discountId:offer['id'],businessId:pending.merchantId,title:offer['title']??'',description:offer['description']??'',type:offer['type']??'percentage',value:(offer['value'] as num?)?.toDouble()??0));
+    }else {_promoCodeController.text=offer['code']??'';await _applyPromoCode();}
+    }finally{_applyingPending=false;if(mounted){setState(()=>_isValidatingDiscount=false);if(key!=_discountContext())_pendingCartChanged();}}
+  }
+  Future<void> _autoApplyItemOffer() async {
+    if(!mounted||!_autoItemsEnabled||_isValidatingDiscount||_applyingPending||_selectedAddress==null||_appliedPromoCode!=null||_platformDiscountId!=null)return;
+    if(_selectedDiscountId!=null&&_selectedDiscountId!=_autoItemId)return;
+    final state=context.read<AppStateProvider>(),branch=_branchId(context.read<AppStateProvider>());
+    if(branch==null||state.cartItems.isEmpty||(_quotesEnabled&&!_quoteMatches(state)))return;
+    final key=_discountContext();if(_autoItemContext==key)return;
+    final candidates=_availableDiscounts.where((d)=>['specificItems','specificCategories'].contains(d.applicability)).toList();
+    if(candidates.isEmpty)return;_autoItemContext=key;_applyingPending=true;setState(()=>_isValidatingDiscount=true);
+    try {StoreDiscount? best;Map<String,dynamic>? bestPreview;double savings=0;
+      for(var offset=0;offset<candidates.length;offset+=4){
+        final group=candidates.skip(offset).take(4).toList();
+        final results=await Future.wait(group.map((d)=>_orderService.validateDiscount(storeId:branch,discountId:d.discountId,orderTotal:state.cartTotal,items:List<Map<String,dynamic>>.from(state.cartItems),deliveryFee:_actualDeliveryFee,addressId:_selectedAddress!.id)));
+        if(!mounted||key!=_discountContext())return;
+        for(var i=0;i<results.length;i++){final amount=(results[i]['discount'] as num?)?.toDouble()??0;if(results[i]['valid']==true&&amount>savings){best=group[i];bestPreview=Map<String,dynamic>.from(results[i]);savings=amount;}}
+      }
+      if(best!=null){_autoItemId=best.discountId;await _selectDiscount(best, preview: bestPreview, previewContext: key);}
+      else if(_selectedDiscountId==_autoItemId){await _selectDiscount(null);}
+    }finally{_applyingPending=false;if(mounted){setState(()=>_isValidatingDiscount=false);if(key!=_discountContext())_pendingCartChanged();}}
+  }
+  Future<void> _clearLegacyPendingPromo() async {
+    // Unscoped legacy selections cannot safely be attached to the current account.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pending_promo_code');
   }
 
   Future<void> _loadStoreDiscounts() async {
@@ -144,20 +180,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _discountLoadError = null;
     });
 
-    final scope = [SessionService.instance.currentUserId, storeId.toString()];
+    final scope = [SessionService.instance.currentUserId, storeId.toString(), _selectedAddress?.id];
     try {
-      final discounts = await _orderService.getStoreDiscounts(storeId.toString());
-      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>())) return;
+      final discounts = await _orderService.getStoreDiscounts(storeId.toString(), addressId:_selectedAddress?.id);
+      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>()) || scope[2] != _selectedAddress?.id) return;
       setState(() { _availableDiscounts = discounts; _isLoadingDiscounts = false; _discountLoadError = null; });
+      await _autoApplyOffer();
     } catch (_) {
-      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>())) return;
+      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>()) || scope[2] != _selectedAddress?.id) return;
       setState(() { _availableDiscounts = []; _isLoadingDiscounts = false; _discountLoadError = 'تعذر تحميل العروض'; });
     }
   }
 
   Future<void> _applyPromoCode() async {
     final code = _promoCodeController.text.trim();
-    if (code.isEmpty) {
+    if(!_applyingPending&&PendingOffer.current?.offer['code']!=code)PendingOffer.clear();
+    final selectedPlatformId=_applyingPending?PendingOffer.current?.offer['id'] as String?:null;
+    if (code.isEmpty&&selectedPlatformId==null) {
       _showMessage('أدخل كود الخصم أولاً', isError: true);
       return;
     }
@@ -177,10 +216,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final validationContext = _discountContext();
     final result = await _orderService.validatePromoCode(
       code: code,
+      platformDiscountId:selectedPlatformId,
       storeId: _branchId(appState) ?? '',
       items: appState.cartItems,
       orderTotal: appState.cartTotal,
       deliveryFee: _actualDeliveryFee,
+      addressId:_selectedAddress?.id,
     );
 
     if (!mounted || attempt != _discountAttempt) return;
@@ -192,16 +233,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isValidatingDiscount = false;
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
-        _appliedPromoCode = code;
+        _discountLines=result['lines'] as List? ?? [];
+        _appliedPromoCode = code.isEmpty?null:code;
+        _platformDiscountId=selectedPlatformId;
         _promoDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
         _discount = _promoDiscountAmount;
         // Only one discount per order: clear any selected merchant discount
         _selectedDiscountId = null;
         _merchantDiscountAmount = 0.0;
-      } else {
-        _appliedPromoCode = null;
-        _promoDiscountAmount = 0.0;
-        _discount = _merchantDiscountAmount;
+      } else if (_appliedPromoCode != null) {
+        _promoCodeController.text = _appliedPromoCode!;
       }
     });
 
@@ -213,19 +254,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _clearPromoCode() {
+    PendingOffer.clear();
     _discountAttempt++;
     setState(() {
+      _isValidatingDiscount = false;
       _appliedPromoCode = null;
+      _platformDiscountId=null;
       _promoCodeController.clear();
       _promoDiscountAmount = 0.0;
       _discount = _merchantDiscountAmount;
     });
   }
 
-  Future<void> _selectDiscount(StoreDiscount? discount) async {
+  Future<void> _selectDiscount(StoreDiscount? discount, {Map<String,dynamic>? preview, String? previewContext}) async {
+    if(!_applyingPending){PendingOffer.clear();_autoItemsEnabled=false;}
     if (discount == null) {
       _discountAttempt++;
       setState(() {
+        _isValidatingDiscount = false;
         _selectedDiscountId = null;
         _merchantDiscountAmount = 0.0;
         _discount = _promoDiscountAmount;
@@ -249,11 +295,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     final attempt = ++_discountAttempt;
     final validationContext = _discountContext();
-    final result = await _orderService.validateDiscount(
+    final result = preview != null && previewContext == validationContext ? preview : await _orderService.validateDiscount(
       storeId: storeId.toString(),
       discountId: discount.discountId,
       orderTotal: appState.cartTotal,
       deliveryFee: _actualDeliveryFee,
+      addressId:_selectedAddress?.id,
       items: appState.cartItems,
     );
 
@@ -266,20 +313,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isValidatingDiscount = false;
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
+        _discountLines=result['lines'] as List? ?? [];
         _selectedDiscountId = discount.discountId;
         _merchantDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
         _discount = _merchantDiscountAmount;
         // Only one discount per order: clear any applied promo code
         _appliedPromoCode = null;
+      _platformDiscountId=null;
         _promoDiscountAmount = 0.0;
         _promoCodeController.clear();
-      } else {
-        // Keep the previously applied promo code and its amount —
-        // only the failed merchant discount is rejected
-        _selectedDiscountId = null;
-        _merchantDiscountAmount = 0.0;
-        _discount = _promoDiscountAmount;
       }
+      // A failed switch leaves the previous validated selection intact.
     });
 
     if (result['valid'] == true) {
@@ -304,6 +348,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _cartListener?.removeListener(_pendingCartChanged);
     _quoteClock?.cancel();
     _quotedCheckout.removeListener(_quoteChanged);
     _quotedCheckout.dispose();
@@ -388,6 +433,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _selectedAddress = addressService.defaultAddress;
         });
         await _loadQuote();
+        await _loadStoreDiscounts();
+        await _autoApplyOffer();
       }
     } catch (e) {
       debugPrint('خطأ في تحميل العنوان: $e');
@@ -1024,7 +1071,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ElevatedButton(
                 onPressed: _isValidatingDiscount
                     ? null
-                    : (_appliedPromoCode != null ? _clearPromoCode : _applyPromoCode),
+                    : (_appliedPromoCode != null || _platformDiscountId != null ? _clearPromoCode : _applyPromoCode),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.secondary,
@@ -1033,12 +1080,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: Text(_appliedPromoCode != null ? 'إزالة' : 'تطبيق'),
+                child: Text(_appliedPromoCode != null || _platformDiscountId != null ? 'إزالة' : 'تطبيق'),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          ..._availableDiscounts.map((discount) {
+          ..._availableDiscounts.where((d)=>!['specificItems','specificCategories'].contains(d.applicability)).map((discount) {
             return RadioListTile<String>(
               value: discount.discountId,
               groupValue: _selectedDiscountId,
@@ -1247,6 +1294,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           if (discount > 0) ...[
+            for(final line in _discountLines)Text('${appState.cartItems.where((i)=>i['id']==line['itemId']).map((i)=>i['name']).firstOrNull??'منتج'}: توفير ${((line['savingsFils'] as num)/1000).toStringAsFixed(3)} د.ع',style:const TextStyle(color:Colors.green)),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1804,6 +1852,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
       if (_quotesEnabled) _quotedCheckout.invalidate();
       await _loadQuote();
+      await _loadStoreDiscounts();
+      await _autoApplyOffer();
     }
   }
 
@@ -2129,6 +2179,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           return mounted && scope == _discountContext() && accepted == true;
         },
         promoCode: _appliedPromoCode,
+        platformDiscountId:_platformDiscountId,
         discountId: _selectedDiscountId,
         discount: _effectiveDiscount,
         // إضافة معلومات المستخدم الحقيقية
@@ -2141,6 +2192,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       print('CheckoutScreen: Order creation result: $result');
 
       if (result['success']) {
+        PendingOffer.clear();
         final order = result['order'] as OrderModel;
         
         // إضافة الطلب للقائمة المحلية في OrderService

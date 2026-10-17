@@ -37,6 +37,10 @@ import '../widgets/custom_bottom_navigation.dart';
 import '../models/platform_promo.dart';
 import '../services/order_service.dart';
 import '../widgets/promo_floating_card.dart';
+import '../widgets/home_slideshow.dart';
+import '../models/home_slide.dart';
+import 'offer_detail_screen.dart';
+import '../services/promo_card_session.dart';
 
 // 🆕 Smart Delivery Address System imports
 import 'package:foodapp_user/services/delivery_address_manager.dart';
@@ -64,6 +68,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // أكواد خصم المنصة (المنصة المركزية)
   PlatformPromo? _visiblePromo;
+  Timer? _promoRefreshTimer;
+  bool _loadingPromos = false;
+  final PromoCardSession _promoSession = PromoCardSession.instance;
 
   // 🛠 تتبع آخر عملية bridge في build() لتجنب إعادة المحاولة بلا نهاية
   int _lastFallbackProviderCount = -1;
@@ -72,16 +79,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // 🛡️ تتبع آخر تحديث للبيانات لتجنب استبدالها ببيانات قديمة
   DateTime _lastDataUpdateTime = DateTime.now();
   DateTime _lastAddressChangeTime = DateTime.now(); // تتبع آخر تغيير للعنوان
-
-  // إعدادات البنر الأوتوماتيكي
-  late final PageController _bannerController;
-  Timer? _bannerTimer;
-  int _bannerPage = 0;
-  final List<String> _bannerImages = const [
-    'assets/images/banner1.png',
-    'assets/images/banner2.png',
-    'assets/images/banner3.png',
-  ];
 
   // التبويب المحدد في BottomNavigationBar
   int _selectedTabIndex = 0;
@@ -124,8 +121,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     NotificationInboxService.instance.load().catchError((Object _) {});
     // مراقبة دورة حياة التطبيق لتفعيل جلب فوري عند العودة للمقدمة
     WidgetsBinding.instance.addObserver(this);
-    _bannerController = PageController();
-    _setupBannerTimer();
     
     // تهيئة نموذج المفضلة
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -145,6 +140,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // جلب أكواد الخصم الفعالة لعرضها في البطاقة العائمة
     _loadActivePromoCodes();
+    _promoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _loadActivePromoCodes();
+      }
+    });
     
     // 🆕 إضافة listener مباشر على RestaurantListProvider لنقل البيانات فوراً
     // MUST be done IMMEDIATELY in initState (not in postFrameCallback) to catch all notifyListeners()
@@ -1226,8 +1226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 🆕 إلغاء اشتراك Delivery Address
     _deliveryAddressSubscription?.cancel();
     
-    _bannerController.dispose();
-    _bannerTimer?.cancel();
+    _promoRefreshTimer?.cancel();
     _storesController.dispose();
     // إيقاف خدمة polling عند مغادرة الشاشة
     _statusPolling.stop();
@@ -1240,6 +1239,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // عند عودة التطبيق للمقدمة، نفذ جلباً فورياً للحالات لتحديث البطاقات مباشرةً
     if (state == AppLifecycleState.resumed) {
+      _loadActivePromoCodes();
       developer.log('Home: ⚡ App resumed — forcing immediate status fetch');
       _updateStatusPollingWatchedIds();
       _statusPolling.forceImmediateFetch();
@@ -1302,19 +1302,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       _isHandlingPendingPush = false;
     }
-  }
-
-  void _setupBannerTimer() {
-    _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_bannerController.hasClients) {
-        _bannerPage = (_bannerPage + 1) % _bannerImages.length;
-        _bannerController.animateToPage(
-          _bannerPage,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
   }
 
   void _scrollListener() {
@@ -1734,38 +1721,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// جلب أكواد الخصم الفعالة من المنصة وعرض أول كود لم يرفضه المستخدم
   Future<void> _loadActivePromoCodes() async {
+    if (_loadingPromos || !mounted) return;
+    _loadingPromos = true;
     try {
       final promos = await OrderService().getActivePromoCodes();
-      if (promos.isEmpty || !mounted) return;
-
-      final prefs = await SharedPreferences.getInstance();
-      final dismissed = prefs.getStringList('dismissed_promo_ids') ?? [];
-
-      final visible = promos.where((p) => !dismissed.contains(p.code)).toList();
-      if (visible.isNotEmpty && mounted) {
-        setState(() {
-          _visiblePromo = visible.first;
-        });
-      }
+      if (!mounted) return;
+      final now = DateTime.now();
+      final visible = promos.where((p) =>
+          !_promoSession.isDismissed(p.code) &&
+          (p.endDate == null || p.endDate!.isAfter(now)));
+      setState(() {
+        // Also clear cards that expired or were deactivated since the last fetch.
+        _visiblePromo = visible.isEmpty ? null : visible.first;
+      });
     } catch (e) {
       debugPrint('خطأ في جلب أكواد الخصم: $e');
+    } finally {
+      _loadingPromos = false;
     }
   }
 
-  Future<void> _dismissPromo() async {
+  void _dismissPromo() {
     final promo = _visiblePromo;
     if (promo == null) return;
 
-    setState(() {
-      _visiblePromo = null;
-    });
+    _promoSession.dismiss(promo.code);
+    setState(() { _visiblePromo = null; });
 
-    final prefs = await SharedPreferences.getInstance();
-    final dismissed = prefs.getStringList('dismissed_promo_ids') ?? [];
-    if (!dismissed.contains(promo.code)) {
-      dismissed.add(promo.code);
-      await prefs.setStringList('dismissed_promo_ids', dismissed);
-    }
   }
 
   @override
@@ -2410,41 +2392,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // الشريط العلوي القابل للتمرير (بدون شريط البحث)
-  Widget _buildBannerSection() {
-    return Container(
-      height: 180,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: PageView.builder(
-        controller: _bannerController,
-        itemCount: _bannerImages.length,
-        onPageChanged: (index) => setState(() => _bannerPage = index),
-        itemBuilder: (context, index) {
-          return Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              image: DecorationImage(
-                image: AssetImage(_bannerImages[index]),
-                fit: BoxFit.cover,
-                onError: (exception, stackTrace) {},
-              ),
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.3),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
+  Widget _buildBannerSection() => HomeSlideshow(onTap: _openHomeSlide);
+
+  Future<void> _openHomeSlide(HomeSlide slide) async {
+    if (slide.actionType == 'campaign') {
+      await Navigator.push(context,MaterialPageRoute(builder:(_)=>OfferDetailScreen(slide:slide,openMerchant:(id)=>_openHomeSlide(HomeSlide(id:slide.id,title:slide.title,imageUrl:slide.imageUrl,imageVersion:slide.imageVersion,actionType:'merchant',targetId:id,endAt:slide.endAt)))));
+      return;
+    }
+    try {
+      final businessId = slide.actionType == 'category' ? slide.merchantId! : slide.targetId;
+      final business = await BusinessService.getBusinessDetails(businessId);
+      if (business == null) throw StateError('Destination unavailable');
+      String? categoryName;
+      if (slide.actionType == 'category') {
+        final categories = await BusinessService.getBusinessCategories(businessId);
+        final matches = categories.where((c) => c.categoryId == slide.targetId);
+        if (matches.isEmpty) throw StateError('Category unavailable');
+        categoryName = matches.first.categoryName;
+      }
+      if (!mounted) return;
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(
+        store: _businessToStore(business), initialCategoryName: categoryName,
+      )));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هذا العرض غير متاح حالياً')));
+    }
   }
 
   Widget _buildStoresSection() {
@@ -2580,6 +2552,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           key: ValueKey(store.id),
                           store: store,
                           isCompact: false,
+                          heroTag: 'store_image_${store.id}',
                           onTap: () {
                             developer.log('🏪 تم النقر على المطعم: ${store.name}');
                             try {
@@ -2671,10 +2644,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (appState.cartItemsCount > 0) 
+            if (appState.cartItemsCount > 0)
               AnimatedCartBar(
                 storeName: _getStoreNameFromCart(appState),
-                isExpanded: false,
+                isExpanded: true,
                 storeId: _getStoreIdFromCart(appState),
                 stores: _allRealBusinesses.map((business) => _businessToStore(business, showDistance: true)).toList(),
               ),

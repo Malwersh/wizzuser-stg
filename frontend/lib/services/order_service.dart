@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'delivery_quote_checkout.dart';
+import 'pending_offer.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
@@ -53,6 +54,7 @@ class OrderService extends ChangeNotifier {
     double discount = 0.0,
     String? deliveryInstructions,
     String? promoCode,
+    String? platformDiscountId,
     String? discountId,
     // معلومات المستخدم الإضافية
     String? userId, // null للضيوف
@@ -166,7 +168,9 @@ class OrderService extends ChangeNotifier {
         'discount': discount,
         'deliveryInstructions': deliveryInstructions,
         'promoCode': promoCode,
+        'platformDiscountId':platformDiscountId,
         'discountId': discountId,
+        'offerSlideId': PendingOffer.current?.merchantId==storeId ? PendingOffer.current?.slideId : null,
         'userId': userId,
         'customerName': customerName,
         'customerPhone': customerPhone,
@@ -584,12 +588,13 @@ class OrderService extends ChangeNotifier {
   Future<List<PlatformPromo>> getActivePromoCodes() async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/promo-codes/active'),
-        headers: const {
+        Uri.parse('$_baseUrl/promo-codes/active').replace(queryParameters: {if(SessionService.instance.isLoggedIn) 'userId':SessionService.instance.currentUserId!}),
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          if(SessionService.instance.isLoggedIn) 'Authorization':'Bearer ${await SessionService.instance.getToken()}',
         },
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
@@ -606,28 +611,46 @@ class OrderService extends ChangeNotifier {
   }
 
   /// التحقق من كود خصم منصة وحساب قيمته من الخادم
+  String _offerMessage(dynamic code) => {
+    'GOODS_UNAVAILABLE':'أحد منتجات السلة غير متاح للطلب حالياً. حدّث السلة أو تواصل مع المتجر.',
+    'GOODS_PRICING_UNSUPPORTED':'تعذر التحقق من سعر أحد منتجات السلة. تواصل مع المتجر.',
+    'GOODS_PRICING_UNAVAILABLE':'تعذر التحقق من أسعار السلة حالياً. أعد المحاولة.',
+    'INVALID_GOODS_SELECTION':'حدّث منتجات السلة وكمياتها ثم أعد المحاولة.',
+    'OFFER_ALREADY_USED':'لقد استخدمت هذا العرض بالفعل أو وصلت إلى الحد المسموح.',
+    'OFFER_FIRST_ORDER_ONLY':'هذا العرض مخصص لأول طلب فقط.',
+    'OFFER_LOGIN_REQUIRED':'سجّل الدخول لاستخدام هذا العرض.',
+    'OFFER_NOT_ELIGIBLE':'هذا العرض غير متاح لحسابك.',
+    'OFFER_WRONG_MERCHANT':'هذا العرض لا يشمل المتجر المحدد.',
+    'OFFER_WRONG_REGION':'هذا العرض لا يشمل عنوان التوصيل المحدد.',
+    'OFFER_ADDRESS_UNAVAILABLE':'حدّث عنوان التوصيل ثم أعد المحاولة.',
+  }[code] ?? 'العرض غير متاح لهذه السلة حالياً. تحقق من المنتجات والحد الأدنى وتاريخ انتهاء العرض.';
   Future<Map<String, dynamic>> validatePromoCode({
     required String code,
+    String? platformDiscountId,
     required double orderTotal,
     required String storeId,
     required List<Map<String, dynamic>> items,
     double deliveryFee = 0,
+    String? addressId,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/promo-codes/validate'),
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+        headers: {
+          'Content-Type':'application/json','Accept':'application/json',
+          if(SessionService.instance.isLoggedIn) 'Authorization':'Bearer ${await SessionService.instance.getToken()}',
         },
         body: jsonEncode({
           'code': code,
+          'platformDiscountId':platformDiscountId,
           'storeId': storeId,
           'items': items,
           'orderTotal': orderTotal,
           'deliveryFee': deliveryFee,
+          'userId':SessionService.instance.currentUserId,
+          'addressId':addressId,
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final responseData = jsonDecode(response.body);
 
@@ -639,12 +662,13 @@ class OrderService extends ChangeNotifier {
           'valid': true,
           'discount': (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
           'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
+          'lines':responseData['lines']??[],
         };
       }
       return {
         'success': false,
         'valid': false,
-        'message': responseData['message'] ?? 'كود الخصم غير صالح',
+        'message': _offerMessage(responseData['message']),
       };
     } catch (e) {
       return {
@@ -656,13 +680,13 @@ class OrderService extends ChangeNotifier {
   }
 
   /// جلب العروض/الخصومات الفعالة لمتجر معين
-  Future<List<StoreDiscount>> getStoreDiscounts(String storeId) async {
+  Future<List<StoreDiscount>> getStoreDiscounts(String storeId, {String? addressId}) async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/business/$storeId/discounts'),
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+        Uri.parse('$_baseUrl/business/$storeId/discounts').replace(queryParameters: {if(SessionService.instance.isLoggedIn) 'userId':SessionService.instance.currentUserId!, if(addressId!=null) 'addressId':addressId}),
+        headers: {
+          'Content-Type':'application/json','Accept':'application/json',
+          if(SessionService.instance.isLoggedIn) 'Authorization':'Bearer ${await SessionService.instance.getToken()}',
         },
       );
 
@@ -686,19 +710,22 @@ class OrderService extends ChangeNotifier {
     required double orderTotal,
     required List<Map<String, dynamic>> items,
     double deliveryFee = 0,
+    String? addressId,
   }) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/promo-codes/apply'),
-        headers: const {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
+        headers: {
+          'Content-Type':'application/json','Accept':'application/json',
+          if(SessionService.instance.isLoggedIn) 'Authorization':'Bearer ${await SessionService.instance.getToken()}',
         },
         body: jsonEncode({
           'businessId': storeId,
           'discountId': discountId,
           'orderTotal': orderTotal,
           'deliveryFee': deliveryFee,
+          'userId':SessionService.instance.currentUserId,
+          'addressId':addressId,
           'items': items.map((item) => {
             'id': item['id'],
             'categoryId': item['categoryId'] ?? item['category_id'],
@@ -706,7 +733,7 @@ class OrderService extends ChangeNotifier {
             'quantity': item['quantity'] ?? 1,
           }).toList(),
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final responseData = jsonDecode(response.body);
 
@@ -718,12 +745,13 @@ class OrderService extends ChangeNotifier {
           'valid': true,
           'discount': (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
           'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
+          'lines':responseData['lines']??[],
         };
       }
       return {
         'success': false,
         'valid': false,
-        'message': responseData['message'] ?? 'الخصم غير صالح',
+        'message': _offerMessage(responseData['message']),
       };
     } catch (e) {
       return {

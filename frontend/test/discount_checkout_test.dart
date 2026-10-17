@@ -5,6 +5,24 @@ import 'package:http/testing.dart';
 import 'package:foodapp_user/services/order_service.dart';
 
 void main() {
+  test('catalog failures explain the basket problem for both promotion sources', () async {
+    for (final platform in [true, false]) {
+      await http.runWithClient(() async {
+        final service = OrderService();
+        final result = platform
+            ? await service.validatePromoCode(code: 'CODE', storeId: 'b1', items: [{'id': 'p1', 'quantity': 1}], orderTotal: 3500)
+            : await service.validateDiscount(storeId: 'b1', discountId: 'd1', items: [{'id': 'p1', 'quantity': 1}], orderTotal: 3500);
+        expect(result['valid'], false);
+        expect(result['message'], contains('أحد منتجات السلة'));
+        expect(result['message'], isNot(contains('العرض غير متاح')));
+      }, () => MockClient((_) async => http.Response(jsonEncode({'valid': false, 'message': 'GOODS_UNAVAILABLE'}), 503)));
+    }
+  });
+  test('platform offers without codes send their platform ID for server validation', () async {
+    await http.runWithClient(() async {
+      final result=await OrderService().validatePromoCode(code:'',platformDiscountId:'platform-id',storeId:'b',items:[{'id':'p','quantity':1}],orderTotal:10000,addressId:'address');expect(result['valid'],true);
+    },()=>MockClient((request)async{final body=jsonDecode(request.body);expect(body['platformDiscountId'],'platform-id');expect(body['addressId'],'address');expect(body['code'],'');return http.Response('{"valid":true,"discountAmount":2000,"lines":[]}',200);}));
+  });
   test(
     'promo preview sends branch, catalog selectors and actual zero delivery fee',
     () async {

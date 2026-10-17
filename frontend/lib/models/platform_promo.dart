@@ -42,8 +42,11 @@ class PlatformPromo {
         return 'خصم ${value.toStringAsFixed(0)}%';
       case 'fixedAmount':
       case 'fixed':
+      case 'fixed_amount':
         return 'خصم ${value.toStringAsFixed(0)} د.ع';
       case 'freeDelivery':
+      case 'free_delivery':
+      case 'free-delivery':
         return 'توصيل مجاني';
       default:
         return title;

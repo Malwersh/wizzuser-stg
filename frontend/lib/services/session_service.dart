@@ -1,3 +1,4 @@
+import 'pending_offer.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -698,6 +699,7 @@ class SessionService extends ChangeNotifier {
     }
 
     _isPerformingLogout = true;
+    PendingOffer.clear();
     
     try {
       developer.log('🚪 بدء عملية تسجيل الخروج الآمن', name: _tag);
