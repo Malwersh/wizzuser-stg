@@ -1,13 +1,14 @@
+const {isTerminalOrderStatus}=require('../shared/legacy-order-policy');
 const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-const { accountGuard } = require('./account-guard');
+const {offerContext} = require('../shared/offer-context');
 const { createStagingQuoteOrder, QuoteOrderError } = require('./quote-runtime/deliveryQuoteOrder');
-const cognito = new (require('aws-sdk').CognitoIdentityServiceProvider)();
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
 const {resolveDiscount} = require('../shared/discount-reservation');
 const {createStagingCommercialSource} = require('./quote-runtime/orderCommercialSource');
+const {createFinanceRollout}=require('./quote-runtime/financeRollout');
 const {moneyFromMinor} = require('./quote-runtime/money');
 const {createStagingOrderGoodsPricing} = require('./quote-runtime/orderGoodsPricing');
 
@@ -15,7 +16,7 @@ const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_
 const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
 
 const client = new DynamoDBClient({});
-const dynamoDb = DynamoDBDocumentClient.from(client, {
+const baseDynamoDb = DynamoDBDocumentClient.from(client, {
     marshallOptions: {
         removeUndefinedValues: true
     }
@@ -297,6 +298,7 @@ function sendOrderToMerchant(order) {
  * Lambda handler for creating a new order
  */
 exports.handler = async (event) => {
+    let dynamoDb=baseDynamoDb;
     console.log('Create order request received', {requestId:event.requestContext?.requestId});
     console.log('TABLE_NAME:', TABLE_NAME);
     console.log('Environment variables:', {
@@ -375,12 +377,13 @@ exports.handler = async (event) => {
         }
 
         const profilesTable = requireEnv('USERS_TABLE');
-        const readAccount = () => accountGuard({event,userId:body.userId,
-            pool:requireEnv('USER_POOL_ID'),clientId:requireEnv('USER_POOL_CLIENT_ID'),profilesTable,
-            getUser:token=>cognito.getUser({AccessToken:token}).promise(),
-            getProfile:async userId=>(await dynamoDb.send(new GetCommand({TableName:profilesTable,Key:{userId},ConsistentRead:true}))).Item});
-        const guardedAccount = await readAccount();
-        const userSub = guardedAccount.sub;
+        requireEnv('USER_POOL_ID');
+        requireEnv('USER_POOL_CLIENT_ID');
+        const readOfferContext = () => offerContext(dynamoDb,event,body);
+        const currentOffers = await readOfferContext();
+        // Quote revalidation receives the same live profile/audience fences.
+        const readAccount = async () => (await readOfferContext()).guarded;
+        const userSub = currentOffers.identity?.sub || null;
 
         // Validate items array
         if (!Array.isArray(body.items) || body.items.length === 0) {
@@ -406,6 +409,7 @@ exports.handler = async (event) => {
         if (body.action !== undefined && body.action !== 'preview_commercial') throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
         if (commercialMode==='OFF' && (body.action==='preview_commercial'||body.commercialConsent!==undefined))
             throw Object.assign(Error('COMMERCIAL_NOT_ENABLED'),{statusCode:409});
+        if(quoteMode==='REQUIRED'){const rollout=createFinanceRollout({db:dynamoDb});rollout.customer(body.storeId,userSub);if(body.action==='preview_commercial')rollout.admit(body.storeId,userSub);dynamoDb=rollout.db;}
         let quotedOrder = null;
         const quotedResponse = (saved, replayed) => ({statusCode: replayed ? 200 : 201, headers,
             body: JSON.stringify({success: true, message: replayed ? 'Order already created' : 'Order created successfully',
@@ -440,14 +444,6 @@ exports.handler = async (event) => {
                 // heading_to_customer, ...) are treated as active by default.
                 // This enforces the "one active order per user" rule and reduces
                 // fraud (important for cash-on-delivery markets).
-                const terminalStatuses = ['delivered', 'cancelled', 'failed', 'expired', 'rejected'];
-                const isTerminalStatus = (status) => {
-                    if (!status) return false; // unknown/missing status => treat as active (safe side)
-                    const s = String(status).toLowerCase();
-                    if (s.startsWith('canceled_by_') || s.startsWith('cancelled_by_')) return true;
-                    return terminalStatuses.includes(s);
-                };
-                
                 // Query user's orders using GSI_User
                 const queryCommand = {
                     TableName: TABLE_NAME,
@@ -465,7 +461,7 @@ exports.handler = async (event) => {
                 if (result.Items && result.Items.length > 0) {
                     // Check if any order is active (not in a terminal/completed state)
                     const activeOrder = result.Items.find(order => 
-                        !isTerminalStatus(order.status)
+                        !isTerminalOrderStatus(order.status)
                     );
                     
                     if (activeOrder) {
@@ -558,22 +554,31 @@ exports.handler = async (event) => {
         const tip = Math.round((body.tip || 0) * 1000);
         const rounding = Math.round((body.rounding || 0) * 1000);
 
-        const discountOperations = [];
-        if (body.discountId || body.promoCode) {
+        const {orderOperation,catalogItems} = require('../shared/offer-eligibility');
+        const accountOrder = await orderOperation(currentOffers.customer);
+        const discountOperations = [
+            ...(currentOffers.guarded.condition ? [currentOffers.guarded.condition] : []),
+            ...(accountOrder ? [accountOrder] : []),
+            ...(currentOffers.addressCondition ? [currentOffers.addressCondition] : [])
+        ];
+        let discountItems = [];
+        if (body.discountId || body.promoCode || body.platformDiscountId) {
             if (processedItems.some(i=>i.modifiers.length)) throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
             const catalog = await createStagingOrderGoodsPricing({db:dynamoDb}).price({branchId:body.storeId,
                 items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity}))});
             if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some(l=>
                 processedItems.find(i=>i.itemId===l.productId)?.unitPrice !== l.unitPrice.minorAmount))
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
-            // Specific item/category campaigns remain unavailable until catalog category scope is resolved.
+            discountItems = catalogItems(catalog);
             discountOperations.push(...catalog.conditions);
         }
         const resolvedDiscount = await resolveDiscount({db:dynamoDb,branchId:body.storeId,discountId:body.discountId,
-            promoCode:body.promoCode,subtotal:goodsSubtotal,items:[],deliveryFee});
-        discountOperations.push(...resolvedDiscount.operations);
+            promoCode:body.promoCode,platformDiscountId:body.platformDiscountId,subtotal:goodsSubtotal,
+            items:discountItems,deliveryFee,...currentOffers});
+        discountOperations.push(...resolvedDiscount.operations,
+            ...await require('../shared/offer-attribution').attribution(dynamoDb,body.offerSlideId,resolvedDiscount.snapshot));
         const discountFils = resolvedDiscount.amount;
-        if ((body.discountId || body.promoCode) &&
+        if (resolvedDiscount.snapshot &&
             (typeof body.discount !== 'number' || !Number.isFinite(body.discount) || Math.round(body.discount*1000) !== discountFils))
             throw Object.assign(Error('DISCOUNT_PREVIEW_CHANGED'),{statusCode:409});
         // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discount
@@ -595,7 +600,7 @@ exports.handler = async (event) => {
             if(body.action==='preview_commercial') return {statusCode:200,headers,body:JSON.stringify({success:true,
                 commercial:{schemaVersion:1,quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
                     customerTotal:commercial.calculation.customerTotal,goodsGross:commercial.calculation.allocationInput.goodsGross,
-                    serviceFee:commercial.calculation.serviceFee.amount,discount:moneyFromMinor(discountFils),deliveryFee:moneyFromMinor(deliveryFee)}})};
+                    serviceFee:commercial.calculation.serviceFee.amount,discount:moneyFromMinor(discountFils),deliveryFee:moneyFromMinor(deliveryFee),driverTip:moneyFromMinor(tip)}})};
             if(body.commercialConsent?.digest!==commercial.digest ||
                 body.commercialConsent?.customerTotalMinor!==commercial.calculation.customerTotal.minorAmount)
                 throw Object.assign(Error('COMMERCIAL_CONSENT_REQUIRED'),{statusCode:409});
@@ -838,8 +843,10 @@ exports.handler = async (event) => {
             },
 
             // Applied merchant discount (if any)
-            discountId: body.discountId || null,
-            promoCode: body.promoCode || null,
+            discountId: resolvedDiscount.snapshot?.source === 'MERCHANT' ? resolvedDiscount.snapshot.discountId : null,
+            promoCode: resolvedDiscount.snapshot?.source === 'PLATFORM' ? resolvedDiscount.campaign?.code || null : null,
+            offerSnapshot: resolvedDiscount.snapshot,
+            offerSlideId: body.offerSlideId || null,
             
             // Payment (ز)
             paymentMethod: body.paymentMethod || 'cod',
@@ -943,7 +950,6 @@ exports.handler = async (event) => {
                 if (saved.replayed) return quotedResponse(saved.order, true);
                 Object.assign(order, saved.order);
             } else await dynamoDb.send(new TransactWriteCommand({TransactItems: [
-                ...(guardedAccount.condition ? [guardedAccount.condition] : []),
                 ...businessFences,
                 ...discountOperations,
                 {Put: {TableName: TABLE_NAME, Item: order, ConditionExpression: 'attribute_not_exists(orderId)'}},
@@ -1043,7 +1049,7 @@ exports.handler = async (event) => {
                 message: error.message,
                 errorName: error.name,
                 ...(error instanceof QuoteOrderError ? {code: error.code} :
-                    ['QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
+                    ['FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
                 success: false
             })
         };

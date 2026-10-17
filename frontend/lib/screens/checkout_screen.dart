@@ -1266,9 +1266,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'المجموع الكلي',
-                style: TextStyle(
+              Text(
+                ApiConfig.commercialPricingEnabled
+                    ? 'المجموع قبل رسوم الخدمة'
+                    : 'المجموع الكلي',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1335,7 +1337,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                   )
                 : Text(
-                    pending ? 'متابعة تأكيد الطلب السابق' : _quotesEnabled && !_quoteMatches(appState) ? 'حدّث سعر التوصيل أولًا' : 'تأكيد الطلب • ${total.toStringAsFixed(3)} د.ع',
+                    pending ? 'متابعة تأكيد الطلب السابق' : _quotesEnabled && !_quoteMatches(appState) ? 'حدّث سعر التوصيل أولًا' : ApiConfig.commercialPricingEnabled ? 'مراجعة إجمالي الطلب' : 'تأكيد الطلب • ${total.toStringAsFixed(3)} د.ع',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -2120,7 +2122,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           String value(String key) => ((proposal[key]['minorAmount'] as int) / 1000).toStringAsFixed(3);
           final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
             title: const Text('تأكيد إجمالي الطلب'),
-            content: Text('السلع: ${value('goodsGross')} د.ع\nالخصم: ${value('discount')} د.ع\nرسوم الخدمة: ${value('serviceFee')} د.ع\nالتوصيل: ${value('deliveryFee')} د.ع\nالإجمالي: ${value('customerTotal')} د.ع'),
+            content: Text('السلع: ${value('goodsGross')} د.ع\nالخصم: ${value('discount')} د.ع\nرسوم الخدمة: ${value('serviceFee')} د.ع\nالتوصيل: ${value('deliveryFee')} د.ع${proposal.containsKey('driverTip') ? '\nالإكرامية: ${value('driverTip')} د.ع' : ''}\nالإجمالي: ${value('customerTotal')} د.ع'),
             actions: [TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('إلغاء')),
               FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('تأكيد هذا المبلغ'))],
           ));

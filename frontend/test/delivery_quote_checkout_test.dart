@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:foodapp_user/services/scoped_checkout_attempt.dart';
 import 'package:foodapp_user/services/order_service.dart';
 import 'package:foodapp_user/models/address_model.dart';
 import 'package:foodapp_user/models/order_model.dart';
@@ -86,6 +87,94 @@ void main() {
     await checkout.restore();
   });
   tearDown(() => checkout.dispose());
+  test(
+    'scoped test uses approved confirmation and restores it after lost reply',
+    () async {
+      final attempt = ScopedCheckoutAttempt.parse(
+        jsonEncode({
+          'schemaVersion': 1,
+          'userId': 'u1',
+          'branchId': 'b1',
+          'requestId': '11111111-1111-4111-8111-111111111111',
+        }),
+        environment: 'staging',
+        quotesEnabled: true,
+        commercialEnabled: true,
+        apiUrl:
+            'https://4jut6787c8.execute-api.us-east-1.amazonaws.com/staging',
+      );
+      final scoped = DeliveryQuoteCheckout(
+        account: () => account,
+        token: () => 'access',
+        now: () => clock,
+        scopedAttempt: attempt,
+        read: (key) async => storage[key],
+        write: (key, value) async {
+          storage[key] = value;
+        },
+        remove: (key) async {
+          storage.remove(key);
+        },
+        client: MockClient((r) async {
+          requests.add(r);
+          if (r.url.path.endsWith('/delivery-quotes')) {
+            return http.Response(
+              jsonEncode({'success': true, 'quote': quote()}),
+              200,
+            );
+          }
+          expect(jsonDecode(r.body)['idempotencyKey'], attempt!.requestId);
+          throw http.ClientException('lost');
+        }),
+      );
+      addTearDown(scoped.dispose);
+      await scoped.restore();
+      await scoped.load('foreign', 'a1');
+      expect(scoped.error, contains('خارج عينة الاختبار'));
+      expect(requests, isEmpty);
+      await scoped.load('b1', 'a1');
+      await expectLater(scoped.confirm(content), throwsException);
+      final saved = storage.values.single;
+      expect(jsonDecode(saved)['idempotencyKey'], attempt!.requestId);
+      final restored = make();
+      addTearDown(restored.dispose);
+      await restored.restore();
+      orders = (r) async {
+        expect(r.body, saved);
+        return success(r, 200);
+      };
+      await restored.confirm(null);
+      expect(storage, isEmpty);
+    },
+  );
+  test(
+    'test build binding rejects production missing gates malformed IDs and extra keys',
+    () {
+      final row = {
+        'schemaVersion': 1,
+        'userId': 'u1',
+        'branchId': 'b1',
+        'requestId': '11111111-1111-4111-8111-111111111111',
+      };
+      ScopedCheckoutAttempt? parse(
+        Map value, {
+        String env = 'staging',
+        bool enabled = true,
+      }) => ScopedCheckoutAttempt.parse(
+        jsonEncode(value),
+        environment: env,
+        quotesEnabled: enabled,
+        commercialEnabled: true,
+        apiUrl:
+            'https://4jut6787c8.execute-api.us-east-1.amazonaws.com/staging',
+      );
+      expect(() => parse(row, env: 'production'), throwsFormatException);
+      expect(() => parse(row, enabled: false), throwsFormatException);
+      expect(() => parse({...row, 'requestId': '*'}), throwsFormatException);
+      expect(() => parse({...row, 'extra': true}), throwsFormatException);
+      expect(() => parse(row)!.check('u2', 'b1'), throwsStateError);
+    },
+  );
   test(
     'rate limit explains cooldown, makes no fallback order, and keeps attempt on retry',
     () async {
@@ -256,6 +345,23 @@ void main() {
       expect(checkout.pending, true);
       expect(storage.values.single, saved);
       expect(requests.length, 2);
+    },
+  );
+  test(
+    'scope denial preserves unresolved confirmation for reconciliation',
+    () async {
+      await checkout.load('b1', 'a1');
+      orders = (_) async => throw http.ClientException('reply lost');
+      await expectLater(checkout.confirm(content), throwsException);
+      final pending = storage.values.single;
+      orders =
+          (_) async => http.Response(
+            '{"success":false,"code":"FINANCE_ROLLOUT_OUT_OF_SCOPE"}',
+            403,
+          );
+      await checkout.confirm(null);
+      expect(checkout.pending, true);
+      expect(storage.values.single, pending);
     },
   );
   test(

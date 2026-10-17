@@ -1,3 +1,5 @@
+const {isFinancialOrder,LEGACY_ONLY}=require('../shared/legacy-order-policy');
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -164,6 +166,7 @@ exports.handler = async (event) => {
         }
 
         const currentOrder = getResult.Item;
+        if (isFinancialOrder(currentOrder)) return {statusCode:409,headers,body:JSON.stringify({success:false,code:'FINANCIAL_ORDER_WORKFLOW_REQUIRED'})};
         const currentRev = currentOrder.rev || 1;
         const newRev = currentRev + 1;
         const now = new Date().toISOString();
@@ -319,7 +322,7 @@ exports.handler = async (event) => {
             UpdateExpression: updateExpression,
             ExpressionAttributeNames: expressionAttributeNames,
             ExpressionAttributeValues: expressionAttributeValues,
-            ConditionExpression: '#rev = :currentRev', // Optimistic locking
+            ConditionExpression: '('+LEGACY_ONLY+') AND #rev = :currentRev', // Optimistic locking
             ReturnValues: 'ALL_NEW'
         });
 
@@ -375,7 +378,7 @@ exports.handler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 message: 'Order status updated successfully',
-                order: result.Attributes
+                order: customerOrderView(result.Attributes)
             })
         };
 

@@ -155,10 +155,21 @@ function calculateBuyXGetYDiscount(discount, items) {
 // usage/currentUsage, minOrderAmount/minOrderValue, ...). Unify them here.
 function normalizePlatformPromo(d) {
     if (!d) return d;
-    const rawType = d.type || d.discountType;
+    const rawType = String(d.type || d.discountType || 'percentage').trim().toLowerCase();
+    let normalizedType = 'percentage';
+    if (rawType === 'fixed_amount' || rawType === 'fixed' || rawType === 'fixedamount') {
+        normalizedType = 'fixedAmount';
+    } else if (rawType === 'free_delivery' || rawType === 'free-delivery' || rawType === 'freedelivery') {
+        normalizedType = 'freeDelivery';
+    } else if (rawType === 'percentage') {
+        normalizedType = 'percentage';
+    } else {
+        normalizedType = d.type || d.discountType || 'percentage';
+    }
+
     return {
         ...d,
-        type: rawType === 'fixed_amount' ? 'fixedAmount' : (rawType === 'fixed' ? 'fixedAmount' : rawType),
+        type: normalizedType,
         value: Number(d.value ?? d.discountValue),
         usageCount: d.usage ?? d.currentUsage ?? 0,
         usageLimit: (d.usageLimit ?? d.limit ?? null) === 0 ? null : (d.usageLimit ?? d.limit ?? null),
@@ -202,6 +213,7 @@ function validatePlatformPromo(promo, orderTotalFils) {
 }
 
 module.exports = {
+    decimalThousand,
     normalizeDiscount,
     validateDiscount,
     calculateDiscountAmount,

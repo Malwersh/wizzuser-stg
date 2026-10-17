@@ -1,7 +1,7 @@
 'use strict';
 const { accountGuard } = require('../create-order/account-guard');
 const { createStagingDeliveryQuoteRateLimiter, createStagingDeliveryQuotes, createStagingSecretDeliveryRouting, DynamoDBClient,
-  DynamoDBDocumentClient, GetCommand, SecretsManagerClient, CognitoIdentityProviderClient, GetUserCommand } = require('./runtime');
+  createFinanceRollout, DynamoDBDocumentClient, GetCommand, SecretsManagerClient, CognitoIdentityProviderClient, GetUserCommand, readDeliveryOperations } = require('./runtime');
 const cognito = new CognitoIdentityProviderClient({});
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 const secrets = new SecretsManagerClient({});
@@ -32,8 +32,12 @@ exports.handler = async event => {
       return { userId: selected, subjectId: guarded.sub, condition: guarded.condition };
     };
     await authenticateCustomer();
-    const limiter = createStagingDeliveryQuoteRateLimiter({ db, maxPerMinute: Number(env.DELIVERY_QUOTE_MAX_PER_MINUTE) });
-    const service = createStagingDeliveryQuotes({ db, authenticateCustomer, beforeCalculate: c => limiter.reserve(c),
+    const rollout=createFinanceRollout({db});
+    const service = createStagingDeliveryQuotes({ db:rollout.db, authenticateCustomer, beforeCalculate: async (c,selection) => {
+      rollout.admit(selection.branchId,c.subjectId);
+      const operating=await readDeliveryOperations(db,env);
+      await createStagingDeliveryQuoteRateLimiter({db,maxPerMinute:operating.values.quoteMaxPerCustomerPerMinute,policyCondition:operating.condition}).reserve(c);
+    },
       createRouter: guardedDb => createStagingSecretDeliveryRouting({ db: guardedDb, secrets,
         secretArn: env.MAPBOX_SECRET_ARN, profile: 'driving', ttlSeconds: 120, timeoutMs: 8000, credentialTimeoutMs: 2000 }) });
     let quote;
@@ -54,7 +58,7 @@ exports.handler = async event => {
       const seconds = Number.isInteger(error.retryAfterSeconds) && error.retryAfterSeconds >= 1 && error.retryAfterSeconds <= 60 ? error.retryAfterSeconds : 60;
       return { ...reply(429, { success: false, code, retryAfterSeconds: seconds }), headers: { ...headers, 'Retry-After': String(seconds) } };
     }
-    const status = { AUTH_REQUIRED: 401, ACCOUNT_MISMATCH: 403, ACCOUNT_UNAVAILABLE: error.statusCode || 409,
+    const status = { FINANCE_ROLLOUT_OUT_OF_SCOPE:403, FINANCE_ROLLOUT_ADMISSION_CLOSED:403, FINANCE_ROLLOUT_NOT_CONFIGURED:503, AUTH_REQUIRED: 401, ACCOUNT_MISMATCH: 403, ACCOUNT_UNAVAILABLE: error.statusCode || 409,
       INVALID_QUOTE_REQUEST: 400, QUOTE_EXPIRED: 409, QUOTE_INVALIDATED: 409, QUOTE_CONSUMED: 409,
       QUOTE_REQUEST_CONFLICT: 409, QUOTE_UNAVAILABLE: 404, CUSTOMER_UNAVAILABLE: 403 }[code];
     return reply(status || 503, { success: false, code: status ? code : 'QUOTE_SERVICE_UNAVAILABLE' });

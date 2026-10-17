@@ -1,0 +1,4 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {customerOrderView}=require('../src/functions/shared/customer-order-view');
+test('search review is visible without leaking internal data or turning ready into cancellation',()=>{const x=customerOrderView({status:'ready_for_pickup',dispatchStatus:'no_driver_available',financialSearch:{status:'no_driver_available',reviewStatus:'REQUIRED',secret:'never expose'},financialSnapshot:{amount:999}});assert.equal(x.driverSearchUnavailable,true);assert.equal(x.status,'ready_for_pickup');assert.equal(x.financialSearch,undefined);assert.equal(x.financialSnapshot,undefined);});
+test('old orders and active search are not marked as failed',()=>{assert.deepEqual(customerOrderView({status:'confirmed'}),{status:'confirmed'});assert.equal(customerOrderView({dispatchStatus:'searching',financialSearch:{status:'no_driver_available'}}).driverSearchUnavailable,undefined);});

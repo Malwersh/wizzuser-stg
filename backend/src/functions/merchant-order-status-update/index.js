@@ -1,3 +1,4 @@
+const {isFinancialOrder,LEGACY_ONLY}=require('../shared/legacy-order-policy');
 /**
  * Merchant Order Status Update Handler
  * Allows merchants to update order status and triggers notifications to customers
@@ -107,6 +108,7 @@ exports.handler = async (event) => {
         }
 
         const order = currentOrder.Item;
+        if(isFinancialOrder(order))return {statusCode:409,headers,body:JSON.stringify({success:false,code:'FINANCIAL_ORDER_WORKFLOW_REQUIRED'})};
         console.log('🏪 Found order:', order.orderId, 'for business:', order.storeId);
 
         // Update order in DynamoDB
@@ -139,6 +141,7 @@ exports.handler = async (event) => {
                 PK: `ORDER#${orderId}`,
                 SK: `ORDER#${orderId}`
             },
+            ConditionExpression: LEGACY_ONLY,
             UpdateExpression: updateExpression,
             ExpressionAttributeNames: expressionAttributeNames,
             ExpressionAttributeValues: expressionAttributeValues,

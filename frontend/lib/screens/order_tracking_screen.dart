@@ -529,6 +529,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           ConnectionStatusWidget(showDetailed: false),
           const SizedBox(height: 16),
           _buildOrderHeader(),
+          if (_order?.driverSearchUnavailable == true) const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('تعذر العثور على سائق حاليًا. طلبك ما زال قائمًا ويحتاج متابعة من المنصة.'),
+          ),
           // إخفاء قسم تتبع الطلب عندما يكون الطلب ملغياً
           if (_order!.status != OrderStatus.cancelled &&
               _order!.status != OrderStatus.rejected &&
