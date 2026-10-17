@@ -1047,19 +1047,11 @@ class AuthService {
   /// حذف الحساب
   static Future<Map<String, dynamic>> deleteAccount({
     required String password,
-  }) async {
-    try {
-      return {
-        "success": true,
-        "message": "تم حذف الحساب بنجاح"
-      };
-    } catch (e) {
-      return {
-        "success": false,
-        "message": "خطأ في حذف الحساب: $e"
-      };
-    }
-  }
+  }) async => {
+    'success': false,
+    'code': 'DELETION_FLOW_NOT_CONFIGURED',
+    'message': 'لم يتم حذف الحساب؛ خدمة الحذف الجديدة قيد التجهيز',
+  };
 
   /// تحديث البريد الإلكتروني مع التحقق من كلمة المرور وإرسال رمز التحقق
   static Future<Map<String, dynamic>> changeEmailWithPasswordVerification({

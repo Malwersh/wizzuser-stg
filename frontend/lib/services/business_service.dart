@@ -213,10 +213,6 @@ class BusinessService {
               // 2) fallback: اسم الفئة الحقيقي عبر categoryId
               categoryName = categoryNameById[rawCategoryId]!;
               productsWithCategory++;
-            } else if (rawCategoryId.isNotEmpty && !_looksLikeOpaqueId(rawCategoryId)) {
-              // 3) fallback أخير للمعرّفات القابلة للقراءة فقط
-              categoryName = _formatCategoryId(rawCategoryId);
-              productsWithCategory++;
             } else {
               // 4) إذا كان المعرّف UUID/opaque أو مفقوداً، نستخدم اسم آمن للعرض.
               categoryName = 'منتجات أخرى';
@@ -288,22 +284,6 @@ class BusinessService {
       'Accept': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
     };
-  }
-
-  /// تنسيق categoryId ليكون أكثر قابلية للقراءة
-  /// مثال: "burgers" -> "Burgers", "main_dishes" -> "Main Dishes"
-  static String _formatCategoryId(String categoryId) {
-    if (categoryId.isEmpty) return 'منتجات أخرى';
-    
-    // استبدال الشرطات السفلية بمسافات
-    String formatted = categoryId.replaceAll('_', ' ').replaceAll('-', ' ');
-    
-    // تحويل أول حرف من كل كلمة إلى حرف كبير
-    formatted = formatted.split(' ')
-        .map((word) => word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1).toLowerCase())
-        .join(' ');
-    
-    return formatted;
   }
 
   /// التحقق إن كان النص يشبه معرفاً خاماً (UUID أو token طويل) وليس اسماً مناسباً للعرض.

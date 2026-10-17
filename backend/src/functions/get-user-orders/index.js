@@ -1,3 +1,5 @@
+const {customerStatusFilter}=require('../shared/legacy-order-policy');
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -77,38 +79,11 @@ exports.handler = async (event) => {
 
         // Add status filter if provided
         if (status) {
-            if (status === 'active') {
-                // Active orders (currently being processed)
-                // Include both unified and legacy statuses for compatibility
-                queryCommand.FilterExpression = '#status IN (:pending, :confirmed, :preparing, :ready, :onTheWay, :inKitchen, :outForDelivery)';
-                queryCommand.ExpressionAttributeNames = { '#status': 'status' };
-                queryCommand.ExpressionAttributeValues = {
-                    ...queryCommand.ExpressionAttributeValues,
-                    ':pending': 'pending',
-                    ':confirmed': 'confirmed', 
-                    ':preparing': 'preparing',
-                    ':ready': 'ready',
-                    ':onTheWay': 'on_the_way',
-                    // Legacy support
-                    ':inKitchen': 'in_kitchen',
-                    ':outForDelivery': 'out_for_delivery'
-                };
-            } else if (status === 'completed') {
-                // Completed orders (including all final states)
-                queryCommand.FilterExpression = '#status IN (:delivered, :cancelled, :failed, :rejected, :expired, :canceledByUser, :canceledByStore, :canceledBySystem)';
-                queryCommand.ExpressionAttributeNames = { '#status': 'status' };
-                queryCommand.ExpressionAttributeValues = {
-                    ...queryCommand.ExpressionAttributeValues,
-                    ':delivered': 'delivered',
-                    ':cancelled': 'cancelled',
-                    ':failed': 'failed',
-                    ':rejected': 'rejected',
-                    ':expired': 'expired',
-                    // Legacy support
-                    ':canceledByUser': 'canceled_by_user',
-                    ':canceledByStore': 'canceled_by_store',
-                    ':canceledBySystem': 'canceled_by_system'
-                };
+            if (['active','completed'].includes(status)) {
+                const filter=customerStatusFilter(status);
+                queryCommand.FilterExpression=filter.expression;
+                queryCommand.ExpressionAttributeNames={...queryCommand.ExpressionAttributeNames,...filter.names};
+                queryCommand.ExpressionAttributeValues={...queryCommand.ExpressionAttributeValues,...filter.values};
             } else {
                 // Single status filter
                 queryCommand.FilterExpression = '#status = :status';
@@ -131,7 +106,7 @@ exports.handler = async (event) => {
             headers: headers,
             body: JSON.stringify({
                 success: true,
-                orders: orders,
+                orders: orders.map(customerOrderView),
                 count: orders.length,
                 lastEvaluatedKey: result.LastEvaluatedKey
             })

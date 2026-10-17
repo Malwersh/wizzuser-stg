@@ -127,9 +127,15 @@ class OrderItem {
       dishName: json['dish_name'] ?? json['productName'] ?? json['name'] ?? 'طبق غير محدد',
       dishDescription: json['dish_description'] ?? json['description'],
       dishImage: json['dish_image'] ?? json['image'],
-      unitPrice: (json['unit_price'] ?? json['price'] ?? 0 as num).toDouble(),
+      unitPrice: json['unit_price'] != null || json['price'] != null
+          ? (json['unit_price'] ?? json['price'] as num).toDouble()
+          : ((json['unitPrice'] ?? 0) as num).toDouble() / 1000,
       quantity: (json['quantity'] ?? 1) as int,
-      totalPrice: (json['total_price'] ?? json['totalPrice'] ?? json['price'] ?? 0 as num).toDouble(),
+      totalPrice: (json['total_price'] ?? json['totalPrice']) != null
+          ? ((json['total_price'] ?? json['totalPrice']) as num).toDouble()
+          : json['unitPrice'] != null && json['unit_price'] == null && json['price'] == null
+              ? (json['unitPrice'] as num).toDouble() / 1000 * ((json['quantity'] ?? 1) as num)
+              : ((json['price'] ?? 0) as num).toDouble(),
       selectedOptions: parsedOptions,
       specialInstructions: json['special_instructions'] ?? json['specialInstructions'],
     );
@@ -188,6 +194,7 @@ class OrderModel {
   final OrderStatus status;
   final PaymentMethod paymentMethod;
   final String? paymentStatus;
+  final bool driverSearchUnavailable;
   final DetailedAddress deliveryAddress;
   final String? deliveryInstructions;
   final String? customerPhone;
@@ -223,6 +230,7 @@ class OrderModel {
     required this.status,
     required this.paymentMethod,
     this.paymentStatus,
+    this.driverSearchUnavailable = false,
     required this.deliveryAddress,
     this.deliveryInstructions,
     this.customerPhone,
@@ -281,6 +289,7 @@ class OrderModel {
       status: OrderStatus.fromString(json['status'] ?? 'pending'),
       paymentMethod: PaymentMethod.fromString(json['payment_method'] ?? json['paymentMethod'] ?? 'cash'),
       paymentStatus: json['payment_status'] ?? json['paymentStatus'],
+      driverSearchUnavailable: json['driverSearchUnavailable'] == true,
       deliveryAddress: DetailedAddress.fromJson(json['deliveryAddress'] ?? json['delivery_address'] ?? {}),
       deliveryInstructions: json['delivery_instructions'] ?? json['deliveryInstructions'],
       customerPhone: json['customer_phone'] ?? json['customerPhone'],
@@ -322,6 +331,7 @@ class OrderModel {
       'user_id': userId,
       'store_id': storeId,
       'store_name': storeName,
+      'driverSearchUnavailable': driverSearchUnavailable,
       'items': items.map((item) => item.toJson()).toList(),
       'subtotal': subtotal,
       'delivery_fee': deliveryFee,
@@ -424,6 +434,7 @@ class OrderModel {
       status: status ?? this.status,
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      driverSearchUnavailable: driverSearchUnavailable,
       deliveryAddress: deliveryAddress,
       deliveryInstructions: deliveryInstructions,
       customerPhone: customerPhone,

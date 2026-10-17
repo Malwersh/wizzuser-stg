@@ -1,3 +1,5 @@
+const {isFinancialOrder}=require('../shared/legacy-order-policy');
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, UpdateCommand, GetCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
@@ -38,7 +40,7 @@ const SERVICE_TOKEN = process.env.SERVICE_TOKEN;
  * - Updating order status
  * - Sending notifications
  */
-async function callOrderService(orderId, reason, userId) {
+async function callOrderService(orderId, reason, userId, authorization, guestToken) {
     if (!ORDER_SERVICE_URL) {
         throw new Error('Missing required environment variable: ORDER_SERVICE_URL');
     }
@@ -48,7 +50,8 @@ async function callOrderService(orderId, reason, userId) {
             orderId: orderId,
             canceledBy: 'customer',
             reason: reason,
-            requestedBy: userId  // Send userId without prefix
+            requestedBy: userId,
+            ...(guestToken ? {guestToken} : {})
         });
 
         const url = new URL('/order/cancel', ORDER_SERVICE_URL);
@@ -62,7 +65,7 @@ async function callOrderService(orderId, reason, userId) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(postData),
-                ...(SERVICE_TOKEN ? { 'x-service-token': SERVICE_TOKEN } : {})
+                ...(authorization ? {Authorization:authorization} : {})
             }
         };
 
@@ -145,7 +148,7 @@ async function sendWebSocketNotification({ userId, orderId, type, order }) {
         const notificationData = {
             type: type,
             orderId: orderId,
-            order: order,
+            order: customerOrderView(order),
             timestamp: new Date().toISOString()
         };
 
@@ -393,6 +396,7 @@ exports.handler = async (event) => {
         }
 
         const currentOrder = currentOrderResult.Item;
+        if (isFinancialOrder(currentOrder)) return {statusCode:409,headers,body:JSON.stringify({success:false,code:'FINANCIAL_ORDER_WORKFLOW_REQUIRED'})};
         const userId = currentOrder.customerId || currentOrder.userId;
 
         // Check if order can be cancelled based on current status
@@ -421,7 +425,7 @@ exports.handler = async (event) => {
         
         let orderServiceResponse;
         try {
-            orderServiceResponse = await callOrderService(orderId, reason, userId);
+            orderServiceResponse = await callOrderService(orderId, reason, userId,event.headers?.Authorization||event.headers?.authorization,body.guestToken);
         } catch (orderServiceError) {
             console.error('❌ Order Service call failed:', orderServiceError);
             
@@ -456,7 +460,7 @@ exports.handler = async (event) => {
                 userId: userId,
                 orderId: orderId,
                 type: 'order_cancelled',
-                order: updatedOrder
+                order: customerOrderView(updatedOrder)
             });
             console.log('✅ WebSocket notification sent to user for order cancellation');
         } catch (wsError) {
@@ -472,7 +476,7 @@ exports.handler = async (event) => {
                 type: 'ORDER_STATUS_UPDATE',
                 status: updatedOrder.status,
                 cancelReason: reason,
-                order: updatedOrder
+                order: customerOrderView(updatedOrder)
             });
             console.log('✅ WebSocket notification sent to merchant for order cancellation');
         } catch (merchantWsError) {
@@ -490,7 +494,7 @@ exports.handler = async (event) => {
                 message: orderServiceResponse.holdReleased 
                     ? 'تم إلغاء الطلب وإعادة المبلغ المحجوز إلى محفظة السائق'
                     : 'تم إلغاء الطلب بنجاح',
-                order: updatedOrder,
+                order: customerOrderView(updatedOrder),
                 orderId: orderId,
                 status: updatedOrder.status,
                 holdReleased: orderServiceResponse.holdReleased || false

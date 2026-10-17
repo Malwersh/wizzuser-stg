@@ -47,6 +47,7 @@ dependencies:
   geolocator: ^14.0.1
   geocoding: ^4.0.0
   # google_places_flutter: ^2.0.9  # ❌ Removed - has null pointer bug, using custom implementation
+  uuid: ^4.4.2
   shared_preferences: ^2.5.3
   cached_network_image: ^3.3.1
   flutter_cache_manager: ^3.3.1

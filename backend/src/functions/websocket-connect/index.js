@@ -43,7 +43,7 @@ const handler = async (event) => {
         }
 
         console.log(`🔌 Universal WebSocket connection request: ${connectionId}`);
-        console.log('📋 Connection params:', queryParams);
+        console.log('Connection type requested', {userType:queryParams.userType,entityType:queryParams.entityType});
 
         // Enhanced connection detection - determine entity type intelligently
         let detectedEntityType = 'customer'; // default

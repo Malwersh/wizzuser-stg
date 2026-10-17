@@ -25,6 +25,10 @@ class ApiConfig {
   static const String cognitoRegion =
     String.fromEnvironment('COGNITO_REGION', defaultValue: 'us-east-1');
   
+  // Coordinated rollout only after Quote API, deletion, policy and scoped IAM are ready.
+  static const bool commercialPricingEnabled = bool.fromEnvironment('COMMERCIAL_PRICING_ENABLED', defaultValue: false);
+  static const bool deliveryQuotesEnabled = bool.fromEnvironment('DELIVERY_QUOTES_ENABLED', defaultValue: false);
+
   // 📡 API Endpoints
   static const String healthEndpoint = '/health';
   static const String authEndpoint = '/auth';

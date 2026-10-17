@@ -7,6 +7,12 @@ const client = new client_dynamodb_1.DynamoDBClient({});
 const docClient = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE || 'WhizzMerchants_Products';
 const GLOBAL_PRODUCTS_TABLE = 'WhizzMerchants_GlobalProducts';
+const LEGACY_CATEGORY_IDS = Object.freeze({
+  'fb-main-courses-002': '4d3e103e-a8e7-4361-88ca-11219ed884b5',
+  'fb-desserts-003': 'd7438f4e-9dda-4915-bbf3-29327101ae7d',
+  'fb-beverages-004': '4cccf116-24fe-46f0-a10f-e7d0ebc44cf1',
+});
+const categoryReference = id => LEGACY_CATEGORY_IDS[id] || id;
 const CATEGORIES_TABLE = 'WhizzMerchants_Categories'; // 🔥 إضافة جدول الفئات
 const handler = async (event) => {
     const headers = {
@@ -121,7 +127,7 @@ const handler = async (event) => {
         let categoriesMap = new Map();
         
         if (uniqueCategoryIds.length > 0) {
-            const categoryKeys = uniqueCategoryIds.map(id => ({ categoryId: id }));
+            const categoryKeys = [...new Set(uniqueCategoryIds.map(categoryReference))].map(id => ({ categoryId: id }));
             
             // Split into chunks of 100 for BatchGetItem limit
             const categoryChunks = [];
@@ -154,12 +160,12 @@ const handler = async (event) => {
         // Priority: Use data from Products table first, fallback to GlobalProducts if null/missing
         const products = productsResult.Items.map(product => {
             const globalProduct = globalProductsMap.get(product.globalProductId) || {};
-            const category = categoriesMap.get(product.categoryId) || {};
+            const category = categoriesMap.get(categoryReference(product.categoryId)) || {};
             
             return {
                 productId: product.productId,
                 categoryId: product.categoryId || globalProduct.categoryId || '',
-                categoryName: category.categoryName || category.name || '', // 🔥 إضافة اسم الفئة
+                categoryName: category.name_ar || category.categoryName || category.name || '', // 🔥 إضافة اسم الفئة
                 businessId: product.businessId,
                 // Use product-specific name first, fallback to canonical name from global
                 name: product.name || globalProduct.canonicalName || '',
