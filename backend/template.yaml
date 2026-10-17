@@ -17,11 +17,6 @@ Parameters:
     AllowedValues: ['false', 'true']
     Description: Staging commercial writer; requires coordinated Quote activation and approved source records.
 
-  DeliveryQuoteMapboxSecretArn:
-    Type: String
-    Default: ''
-    Description: Full staging Mapbox secret ARN; provision separately before coordinated activation.
-
   CentralNotificationsBaseUrl:
     Type: String
     Default: "https://x066k4dftk.execute-api.us-east-1.amazonaws.com/staging"
@@ -69,13 +64,14 @@ Conditions:
     - !Equals [!Ref 'AWS::AccountId', '699561669180']
     - !Equals [!Ref 'AWS::Region', us-east-1]
   IsCommercialStaging: !And [!Condition IsQuoteStaging, !Equals [!Ref EnableCommercialPricing, 'true']]
-  HasQuoteSecret: !Not [!Equals [!Ref DeliveryQuoteMapboxSecretArn, '']]
 
 Resources:
   # API Gateway
   WizzUserFoodAppApi:
     Type: AWS::Serverless::Api
     Properties:
+      # Delivery quotes and preview belong to the dedicated staging quote stack.
+      Mode: merge
       StageName: !Ref Environment
       Name: !Sub "WizzUser-API-${Environment}"
       Cors:
@@ -1425,39 +1421,6 @@ Resources:
                 uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetGuestOrdersFunction.Arn}/invocations"
             post:
               security: []
-              x-amazon-apigateway-integration:
-                type: aws_proxy
-                httpMethod: POST
-                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateOrderFunction.Arn}/invocations"
-            options:
-              security: []
-              x-amazon-apigateway-integration:
-                type: mock
-                requestTemplates:
-                  application/json: '{"statusCode": 200}'
-                responses:
-                  "200":
-                    statusCode: "200"
-                    responseParameters:
-                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
-                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
-                      method.response.header.Access-Control-Allow-Origin: "'*'"
-                    responseTemplates:
-                      application/json: ''
-              responses:
-                "200":
-                  description: "200 response"
-                  headers:
-                    Access-Control-Allow-Origin:
-                      type: string
-                    Access-Control-Allow-Headers:
-                      type: string
-                    Access-Control-Allow-Methods:
-                      type: string
-          /orders/commercial-preview:
-            post:
-              security:
-                - CognitoAuthorizer: [aws.cognito.signin.user.admin]
               x-amazon-apigateway-integration:
                 type: aws_proxy
                 httpMethod: POST
@@ -3833,76 +3796,6 @@ Resources:
             TableName: !Ref FavoritesTable
 
   # Order Management Functions
-  DeliveryQuotesFunction:
-    Condition: IsQuoteStaging
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Handler: functions/delivery-quotes/index.handler
-      FunctionName: !Sub "WizzUser-DeliveryQuotes-${Environment}"
-      Environment:
-        Variables:
-          DELIVERY_QUOTES_ENABLED: 'false'
-          # Explicit deployment value required (1..120); no operational quota inferred.
-          DELIVERY_QUOTE_MAX_PER_MINUTE: ''
-          MAPBOX_SECRET_ARN: !Ref DeliveryQuoteMapboxSecretArn
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action: [cognito-idp:GetUser]
-              Resource: '*'
-            - Effect: Allow
-              Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
-              Resource:
-                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging
-                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging
-                - arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Businesses
-                - arn:aws:dynamodb:us-east-1:699561669180:table/staging-MerchantPlatform
-                - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
-                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions
-                - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging
-            - Effect: Allow
-              Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
-              Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
-              Condition:
-                ForAllValues:StringEquals:
-                  dynamodb:LeadingKeys: [OPERATIONAL_SETTINGS#DELIVERY_PRICING]
-            - Effect: Allow
-              Action: [dynamodb:Query]
-              Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionIndex_staging/index/h3-index
-            - Effect: Allow
-              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:ConditionCheckItem]
-              Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-DeliveryQuotes
-              Condition:
-                ForAllValues:StringLike:
-                  dynamodb:LeadingKeys: ['CUSTOMER#*']
-        - !If
-          - HasQuoteSecret
-          - Statement:
-              - Effect: Allow
-                Action: [secretsmanager:GetSecretValue]
-                Resource: !Ref DeliveryQuoteMapboxSecretArn
-          - !Ref 'AWS::NoValue'
-      Events:
-        CreateQuote:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WizzUserFoodAppApi
-            Path: /delivery-quotes
-            Method: POST
-        ReadQuote:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WizzUserFoodAppApi
-            Path: /delivery-quotes
-            Method: GET
-        QuoteOptions:
-          Type: Api
-          Properties:
-            RestApiId: !Ref WizzUserFoodAppApi
-            Path: /delivery-quotes
-            Method: OPTIONS
-
   CreateOrderFunction:
     Type: AWS::Serverless::Function
     Properties:

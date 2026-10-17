@@ -194,6 +194,7 @@ class OrderModel {
   final OrderStatus status;
   final PaymentMethod paymentMethod;
   final String? paymentStatus;
+  final bool driverSearchUnavailable;
   final DetailedAddress deliveryAddress;
   final String? deliveryInstructions;
   final String? customerPhone;
@@ -229,6 +230,7 @@ class OrderModel {
     required this.status,
     required this.paymentMethod,
     this.paymentStatus,
+    this.driverSearchUnavailable = false,
     required this.deliveryAddress,
     this.deliveryInstructions,
     this.customerPhone,
@@ -287,6 +289,7 @@ class OrderModel {
       status: OrderStatus.fromString(json['status'] ?? 'pending'),
       paymentMethod: PaymentMethod.fromString(json['payment_method'] ?? json['paymentMethod'] ?? 'cash'),
       paymentStatus: json['payment_status'] ?? json['paymentStatus'],
+      driverSearchUnavailable: json['driverSearchUnavailable'] == true,
       deliveryAddress: DetailedAddress.fromJson(json['deliveryAddress'] ?? json['delivery_address'] ?? {}),
       deliveryInstructions: json['delivery_instructions'] ?? json['deliveryInstructions'],
       customerPhone: json['customer_phone'] ?? json['customerPhone'],
@@ -328,6 +331,7 @@ class OrderModel {
       'user_id': userId,
       'store_id': storeId,
       'store_name': storeName,
+      'driverSearchUnavailable': driverSearchUnavailable,
       'items': items.map((item) => item.toJson()).toList(),
       'subtotal': subtotal,
       'delivery_fee': deliveryFee,
@@ -430,6 +434,7 @@ class OrderModel {
       status: status ?? this.status,
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      driverSearchUnavailable: driverSearchUnavailable,
       deliveryAddress: deliveryAddress,
       deliveryInstructions: deliveryInstructions,
       customerPhone: customerPhone,

@@ -1,6 +1,8 @@
 'use strict';
 const { GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
-const {normalizeDiscount, normalizePlatformPromo, validateDiscount, validatePlatformPromo, calculateDiscountAmount} = require('./discount-engine');
+const {decimalThousand,normalizeDiscount, normalizePlatformPromo, validateDiscount, validatePlatformPromo, calculateDiscountAmount} = require('./discount-engine');
+const {validVersion}=require('./campaign-version');
+const {eligibility,catalogItems}=require('./offer-eligibility');
 const fail = () => {throw Object.assign(Error('DISCOUNT_UNAVAILABLE'), {statusCode:409});};
 const merchantTable = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
 const platformTable = process.env.PLATFORM_DISCOUNTS_TABLE || 'WizzCentral_Platform_Discounts';
@@ -8,11 +10,14 @@ const fields = ['discountId','businessId','code','status','isActive','type','dis
  'applicability','applicable_item_ids','applicable_category_ids','conditionalParameters','conditional_parameters',
  'validFrom','validTo','valid_from','valid_to','startDate','endDate','minimumOrderAmount','minimum_order_amount',
  'minOrderAmount','minOrderValue','usageCount','usage_count','usage','currentUsage','usageLimit','usage_limit','limit',
- 'version','updatedAt','updated_at','funding','merchantShare','platformShare','maxDiscount','maxDiscountAmount',
+ 'version','fundingPolicyId','fundingPolicyVersion','updatedAt','updated_at','funding','merchantShare','platformShare','maxDiscount','maxDiscountAmount',
  'allowedBusinessIds','businessIds','customerIds','firstOrderOnly','perCustomerLimit',
- 'isDeleted','deletedAt','deletionStatus','target','targetRestaurants','targetSegments','customerSegments','occasions','singleUse','applicableToAll'];
+ 'isDeleted','deletedAt','deletionStatus','target','targetRestaurants','targetSegments','customerSegments','occasions','singleUse','applicableToAll',
+ // Live audience constraints must be pinned even when absent at preview time.
+ 'targetRegionIds','campaignType'];
 // Pin all observed fields plus absence of known constraints: concurrent edits or usage invalidate the order.
 function reserve(raw, table, platform) {
+ validVersion(raw);
  const names={},values={},conditions=[];
  for(const [i,f] of [...new Set([...fields,...Object.keys(raw)])].entries()) {
   names['#r'+i]=f;
@@ -37,33 +42,34 @@ async function readPromo(db,code) {
  const raw=(await db.send(new GetCommand({TableName:platformTable,Key:{discountId:matches.Items[0].discountId},ConsistentRead:true}))).Item;
  if(!raw||raw.code!==code.trim())fail(); return raw;
 }
-async function resolveDiscount({db,branchId,discountId,promoCode,subtotal,items,deliveryFee}) {
- if(discountId&&promoCode)fail();
+async function resolveDiscount({db,branchId,discountId,promoCode,platformDiscountId,subtotal,items,deliveryFee,identity,customer,regionIds=[]}) {
+ if(discountId&&(promoCode||platformDiscountId))fail();
  if (discountId !== undefined && discountId !== null && (typeof discountId !== 'string' || !/^[A-Za-z0-9_-]{1,150}$/.test(discountId))) fail();
- if(!discountId&&!promoCode)return {amount:0,operations:[],snapshot:null};
- const platform=!!promoCode;
- const raw=platform?await readPromo(db,promoCode):(await db.send(new GetCommand({TableName:merchantTable,Key:{discountId},ConsistentRead:true}))).Item;
+ if(!discountId&&!promoCode&&!platformDiscountId)return {amount:0,operations:[],snapshot:null};
+ const platform=!!(promoCode||platformDiscountId);
+ if(platformDiscountId&&(typeof platformDiscountId!=='string'||!/^[-\w]{1,150}$/.test(platformDiscountId)))fail();
+ const raw=platform?(platformDiscountId?(await db.send(new GetCommand({TableName:platformTable,Key:{discountId:platformDiscountId},ConsistentRead:true}))).Item:await readPromo(db,promoCode)):(await db.send(new GetCommand({TableName:merchantTable,Key:{discountId},ConsistentRead:true}))).Item;
  if(!raw||raw.isDeleted===true||raw.deletedAt!=null||raw.deletionStatus!=null||raw.isActive===false||(!platform&&(raw.discountId!==discountId||raw.businessId!==branchId)))fail();
+ if(platformDiscountId&&promoCode&&raw.code!==promoCode)fail();
  if (platform && raw.type !== undefined && raw.discountType !== undefined && normalizePlatformPromo({type:raw.type}).type !== normalizePlatformPromo({type:raw.discountType}).type) fail();
  const aliases=platform?[['value','discountValue'],['usage','currentUsage'],['usageLimit','limit'],['minOrderAmount','minOrderValue'],['validFrom','startDate'],['validTo','endDate']]:
   [['usageCount','usage_count'],['usageLimit','usage_limit'],['minimumOrderAmount','minimum_order_amount'],['validFrom','valid_from'],['validTo','valid_to']];
  if(aliases.some(([a,b])=>raw[a]!==undefined&&raw[a]!==''&&raw[b]!==undefined&&raw[b]!==''&&raw[a]!==raw[b]))fail();
- // These contracts require dedicated eligibility/funding adapters, never a fallback to all-items.
- if(['maxDiscount','maxDiscountAmount','allowedBusinessIds','businessIds','customerIds','firstOrderOnly','perCustomerLimit']
-  .some(k=>raw[k]!==undefined))fail();
- if (platform) {
-  if ((raw.businessId !== undefined && raw.businessId !== branchId) ||
-      (raw.targetRestaurants?.length && !raw.targetRestaurants.includes(branchId)) ||
-      (raw.customerSegments !== undefined && (!Array.isArray(raw.customerSegments) || raw.customerSegments.some(x=>x!=='all'))) ||
-      raw.targetSegments?.length || raw.occasions?.length || raw.singleUse === true || raw.applicableToAll === false ||
-      (raw.target && raw.target !== 'all')) fail();
- }
+ const eligible=await eligibility(db,raw,{identity,customer,regionIds,branchId,source:platform?'platform':'merchant'});
  const d=platform?normalizePlatformPromo(raw):normalizeDiscount(raw);
- if (!['allItems','minimumOrder',undefined].includes(d.applicability)) fail();
+ if (!['allItems','minimumOrder','specificItems','specificCategories',undefined].includes(d.applicability)) fail();
+ if(d.applicability==='specificItems'&&(!Array.isArray(d.applicable_item_ids)||!d.applicable_item_ids.length))fail();
+ if(d.applicability==='specificCategories'&&(!Array.isArray(d.applicable_category_ids)||!d.applicable_category_ids.length))fail();
  if(!(platform?validatePlatformPromo(d,subtotal):validateDiscount(d,subtotal)).valid)fail();
- const amount=Math.round(calculateDiscountAmount(d,subtotal,items,deliveryFee));
+ const eligibleItems=(items||[]).filter(i=>d.applicability==='specificItems'?d.applicable_item_ids.includes(i.itemId||i.id):d.applicability==='specificCategories'?d.applicable_category_ids.includes(i.categoryId):true);
+ if(['specificItems','specificCategories'].includes(d.applicability)&&!eligibleItems.length)fail();
+ let amount=Math.round(calculateDiscountAmount(d,subtotal,items,deliveryFee));
+ const cap=raw.maxDiscountAmount??raw.maxDiscount;if(cap!=null){if(typeof cap!=='number'||!Number.isFinite(cap)||cap<0)fail();if(raw.maxDiscount!=null&&raw.maxDiscountAmount!=null&&raw.maxDiscount!==raw.maxDiscountAmount)fail();try{amount=Math.min(amount,decimalThousand(cap));}catch{fail();}}
+ if((d.applicability==='specificItems'||d.applicability==='specificCategories')&&amount===0)fail();
  if(!Number.isSafeInteger(amount)||amount<0||amount>(d.type==='freeDelivery'?deliveryFee:subtotal))fail();
- return {amount,campaign:raw,expiresAt:d.validTo?Date.parse(d.validTo):null,operations:[reserve(raw,platform?platformTable:merchantTable,platform)],
+ const lines=[];let remaining=amount;const basis=eligibleItems.reduce((sum,i)=>sum+i.price*i.quantity,0);
+ if(d.type!=='freeDelivery'&&basis>0){for(let n=0;n<eligibleItems.length;n++){const i=eligibleItems[n],gross=i.price*i.quantity,saving=n===eligibleItems.length-1?remaining:Number(BigInt(amount)*BigInt(gross)/BigInt(basis));remaining-=saving;lines.push({itemId:i.itemId||i.id,grossFils:gross,savingsFils:saving,netFils:gross-saving});}}
+ return {amount,lines,campaign:raw,expiresAt:d.validTo?Date.parse(d.validTo):null,operations:[reserve(raw,platform?platformTable:merchantTable,platform),...(eligible.redemption?[eligible.redemption]:[])],
   snapshot:{discountId:raw.discountId,source:platform?'PLATFORM':'MERCHANT',type:d.type,target:d.type==='freeDelivery'?'DELIVERY':'GOODS',
    amount,version:raw.version??null,updatedAt:raw.updatedAt??raw.updated_at??null,
    // Explicitly a legacy checkout snapshot, not a commercial funding or settlement proof.

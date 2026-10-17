@@ -4,6 +4,46 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
+import 'scoped_checkout_attempt.dart';
+
+void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
+  const fields = [
+    'customerTotal',
+    'goodsGross',
+    'serviceFee',
+    'discount',
+    'deliveryFee',
+  ];
+  for (final key in [
+    ...fields,
+    if (proposal.containsKey('driverTip')) 'driverTip',
+  ]) {
+    final money = proposal[key];
+    if (money is! Map ||
+        money['currency'] != 'IQD' ||
+        money['scale'] != 1000 ||
+        money['moneySchemaVersion'] != 1 ||
+        money['minorAmount'] is! int ||
+        money['minorAmount'] < 0 ||
+        money['minorAmount'] > 9007199254740991 ||
+        money['minorAmount'] % 1000 != 0) {
+      throw const FormatException('INVALID_COMMERCIAL_PREVIEW');
+    }
+  }
+  BigInt amount(String key) => BigInt.from(proposal[key]['minorAmount'] as int);
+  final tip =
+      proposal.containsKey('driverTip') ? amount('driverTip') : BigInt.zero;
+  if (proposal['deliveryFee']['minorAmount'] != quotedFeeMinor ||
+      amount('discount') > amount('goodsGross') ||
+      amount('goodsGross') -
+              amount('discount') +
+              amount('serviceFee') +
+              amount('deliveryFee') +
+              tip !=
+          amount('customerTotal')) {
+    throw const FormatException('INCONSISTENT_COMMERCIAL_PREVIEW');
+  }
+}
 
 class DeliveryQuote {
   final String id, branchId, addressId;
@@ -39,6 +79,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
   final Future<void> Function(String, String) write;
   final Future<void> Function(String) remove;
   final DateTime Function() now;
+  final ScopedCheckoutAttempt? scopedAttempt;
   DeliveryQuote? quote;
   String? error;
   bool busy = false, ready = false;
@@ -72,7 +113,9 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     Future<void> Function(String, String)? write,
     Future<void> Function(String)? remove,
     DateTime Function()? now,
-  }) : client = client ?? http.Client(),
+    ScopedCheckoutAttempt? scopedAttempt,
+  }) : scopedAttempt = scopedAttempt ?? ScopedCheckoutAttempt.fromBuild(),
+       client = client ?? http.Client(),
        read = read ?? ((key) => _storage.read(key: key)),
        write =
            write ?? ((key, value) => _storage.write(key: key, value: value)),
@@ -140,6 +183,14 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
 
   Future<void> load(String branch, String address, {bool renew = false}) async {
     if (!ready || busy || pending) return;
+    try {
+      scopedAttempt?.check(_owner!, branch);
+    } on StateError {
+      quote = null;
+      error = 'هذا الحساب أو النشاط خارج عينة الاختبار المعتمدة';
+      _emit();
+      return;
+    }
     if (_quoteRetryAt != null && now().isBefore(_quoteRetryAt!)) {
       final seconds =
           (_quoteRetryAt!.difference(now()).inMilliseconds / 1000).ceil();
@@ -224,7 +275,10 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     _emit();
   }
 
-  Future<http.Response> confirm(Map<String, dynamic>? content, {Future<bool> Function(Map<String,dynamic>)? approveCommercial}) async {
+  Future<http.Response> confirm(
+    Map<String, dynamic>? content, {
+    Future<bool> Function(Map<String, dynamic>)? approveCommercial,
+  }) async {
     if (busy || !ready || _owner == null) {
       throw StateError('تعذر تأكيد الطلب الآن');
     }
@@ -249,48 +303,66 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
             content['userId'] != owner) {
           throw StateError('انتهى عرض التوصيل؛ حدّث السعر ثم أكد مجددًا');
         }
+        scopedAttempt?.check(owner, content['storeId']);
         final saved =
             jsonDecode(
                   jsonEncode({
                     ...content,
                     'quoteId': quote!.id,
-                    'idempotencyKey': const Uuid().v4(),
+                    'idempotencyKey':
+                        scopedAttempt?.requestId ?? const Uuid().v4(),
                     'deliveryFee': quote!.fee,
                   }),
                 )
                 as Map<String, dynamic>;
         if (ApiConfig.commercialPricingEnabled) {
-          if (approveCommercial == null) throw StateError('يلزم تأكيد إجمالي الطلب');
-          final previewResponse = await client.post(
-            Uri.parse(ApiConfig.buildUrl('${ApiConfig.ordersEndpoint}/commercial-preview')), headers: _headers(owner),
-            body: jsonEncode({...saved, 'action':'preview_commercial'}),
-          ).timeout(ApiConfig.apiTimeout);
+          if (approveCommercial == null) {
+            throw StateError('يلزم تأكيد إجمالي الطلب');
+          }
+          final previewResponse = await client
+              .post(
+                Uri.parse(
+                  ApiConfig.buildUrl(
+                    '${ApiConfig.ordersEndpoint}/commercial-preview',
+                  ),
+                ),
+                headers: _headers(owner),
+                body: jsonEncode({...saved, 'action': 'preview_commercial'}),
+              )
+              .timeout(ApiConfig.apiTimeout);
           _check(owner, generation);
           final data = jsonDecode(previewResponse.body);
           final proposal = data['commercial'];
-          if (previewResponse.statusCode != 200 || data['success'] != true || proposal is! Map ||
-              proposal['schemaVersion'] != 1 || proposal['digest'] is! String ||
+          if (previewResponse.statusCode != 200 ||
+              data['success'] != true ||
+              proposal is! Map ||
+              proposal['schemaVersion'] != 1 ||
+              proposal['digest'] is! String ||
               !RegExp(r'^[a-f0-9]{64}$').hasMatch(proposal['digest']) ||
-              proposal['quoteId'] != saved['quoteId'] || proposal['requestId'] != saved['idempotencyKey'] ||
+              proposal['quoteId'] != saved['quoteId'] ||
+              proposal['requestId'] != saved['idempotencyKey'] ||
               proposal['expiresAt'] is! String ||
               DateTime.tryParse(proposal['expiresAt']) == null ||
               DateTime.parse(proposal['expiresAt']).isAfter(quote!.expiresAt) ||
               !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
-            throw StateError('تعذر إعداد السعر التجاري؛ حدّث السعر وأعد المحاولة');
+            throw StateError(
+              'تعذر إعداد السعر التجاري؛ حدّث السعر وأعد المحاولة',
+            );
           }
-          for (final key in ['customerTotal','goodsGross','serviceFee','discount','deliveryFee']) {
-            final money = proposal[key];
-            if (money is! Map || money['currency'] != 'IQD' || money['scale'] != 1000 ||
-                money['moneySchemaVersion'] != 1 || money['minorAmount'] is! int ||
-                money['minorAmount'] < 0 || money['minorAmount'] > 9007199254740991) {
-              throw const FormatException('INVALID_COMMERCIAL_PREVIEW');
-            }
-          }
-          final accepted = await approveCommercial(Map<String,dynamic>.from(proposal));
+          validateCommercialCheckoutAmounts(proposal, quote!.feeMinor);
+          final accepted = await approveCommercial(
+            Map<String, dynamic>.from(proposal),
+          );
           _check(owner, generation);
           if (!accepted) throw StateError('أُلغي تأكيد السعر');
-          if (!valid || !now().isBefore(DateTime.parse(proposal['expiresAt']))) throw StateError('انتهى السعر؛ حدّثه وأكد مجددًا');
-          saved['commercialConsent'] = {'digest':proposal['digest'], 'customerTotalMinor':proposal['customerTotal']['minorAmount']};
+          if (!valid ||
+              !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
+            throw StateError('انتهى السعر؛ حدّثه وأكد مجددًا');
+          }
+          saved['commercialConsent'] = {
+            'digest': proposal['digest'],
+            'customerTotalMinor': proposal['customerTotal']['minorAmount'],
+          };
         }
         await write(
           _key(owner),

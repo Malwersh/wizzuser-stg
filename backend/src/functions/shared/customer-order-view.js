@@ -2,6 +2,6 @@
 // Commercial terms and funding/ledger references are internal server data.
 exports.customerOrderView = order => {
     if (!order || typeof order !== 'object') return order;
-    const {financialSnapshot, commercialPricing, ...view} = order;
-    return view;
+    const {financeRollout, financialSnapshot, commercialPricing, financialAcceptance, codFinancialEvidence, financialSearch, ...view} = order;
+    return {...view, ...(financialSearch?.status==='no_driver_available' && order.dispatchStatus==='no_driver_available' ? {driverSearchUnavailable:true} : {})};
 };

@@ -1,3 +1,4 @@
+const {isFinancialOrder}=require('../shared/legacy-order-policy');
 const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, UpdateCommand, GetCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
@@ -395,6 +396,7 @@ exports.handler = async (event) => {
         }
 
         const currentOrder = currentOrderResult.Item;
+        if (isFinancialOrder(currentOrder)) return {statusCode:409,headers,body:JSON.stringify({success:false,code:'FINANCIAL_ORDER_WORKFLOW_REQUIRED'})};
         const userId = currentOrder.customerId || currentOrder.userId;
 
         // Check if order can be cancelled based on current status

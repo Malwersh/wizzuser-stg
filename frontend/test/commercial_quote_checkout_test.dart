@@ -47,7 +47,7 @@ void main() {
       },
       client: MockClient((request) async {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        if (request.url.path.endsWith('/delivery-quotes'))
+        if (request.url.path.endsWith('/delivery-quotes')) {
           return http.Response(
             jsonEncode({
               'success': true,
@@ -63,6 +63,7 @@ void main() {
             }),
             200,
           );
+        }
         posts.add(body);
         if (body['action'] == 'preview_commercial') {
           final proposal = {
@@ -105,6 +106,21 @@ void main() {
     await checkout.load('b1', 'a1');
   });
   tearDown(() => checkout.dispose());
+  test(
+    'scoped build binds the same approved attempt to preview consent and order',
+    () async {
+      const raw = String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT');
+      final binding = jsonDecode(raw);
+      await checkout.confirm(content(), approveCommercial: (_) async => true);
+      expect(posts, hasLength(2));
+      expect(posts.first['idempotencyKey'], binding['requestId']);
+      expect(posts.last['idempotencyKey'], binding['requestId']);
+      expect(posts.last['commercialConsent']['customerTotalMinor'], 4000000);
+    },
+    skip:
+        !enabled ||
+        const String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT').isEmpty,
+  );
   test(
     'cancel commercial amount sends no order and persists no attempt',
     () async {
