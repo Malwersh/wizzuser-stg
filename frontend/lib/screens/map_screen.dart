@@ -408,7 +408,7 @@ class _MapScreenState extends State<MapScreen> {
       isOpen: isBusinessOpen,
       fee: '${business.deliveryFee} د.ع',
       rating: '${business.rating}',
-      reviews: '${(business.rating * 50).round()}',
+      reviews: business.reviewCount?.toString() ?? '',
       distance: _calculateDistance(business),
       time: business.deliveryTime,
       address: business.address,

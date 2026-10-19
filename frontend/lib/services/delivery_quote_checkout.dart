@@ -16,6 +16,7 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   ];
   for (final key in [
     ...fields,
+    if (proposal['schemaVersion'] == 2) 'referenceDeliveryFee',
     if (proposal.containsKey('driverTip')) 'driverTip',
   ]) {
     final money = proposal[key];
@@ -33,7 +34,11 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   BigInt amount(String key) => BigInt.from(proposal[key]['minorAmount'] as int);
   final tip =
       proposal.containsKey('driverTip') ? amount('driverTip') : BigInt.zero;
-  if (proposal['deliveryFee']['minorAmount'] != quotedFeeMinor ||
+  final funded = proposal['schemaVersion'] == 2;
+  if ((funded
+          ? proposal['referenceDeliveryFee']['minorAmount'] != quotedFeeMinor ||
+              proposal['deliveryFee']['minorAmount'] >= quotedFeeMinor
+          : proposal['deliveryFee']['minorAmount'] != quotedFeeMinor) ||
       amount('discount') > amount('goodsGross') ||
       amount('goodsGross') -
               amount('discount') +
@@ -71,6 +76,11 @@ class DeliveryQuote {
 
 /// A saved confirmation is immutable until the server establishes its outcome.
 /// Storage is scoped by account; account changes invalidate all in-flight UI results.
+class ActiveCheckoutOrder implements Exception {
+  final Map<String, dynamic> details;
+  const ActiveCheckoutOrder(this.details);
+}
+
 class DeliveryQuoteCheckout extends ChangeNotifier {
   final String? Function() account;
   final String? Function() token;
@@ -85,9 +95,11 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
   bool busy = false, ready = false;
   Map<String, dynamic>? _pending;
   String? _owner, _quoteAttempt, _scope;
-  DateTime? _quoteRetryAt;
+  DateTime? _quoteRetryAt, _nextAutomaticAt;
   int _generation = 0;
   bool _disposed = false;
+  Future<void>? _loadingQuote;
+  String? _loadingQuoteScope;
   void _emit() {
     if (!_disposed) notifyListeners();
   }
@@ -181,8 +193,41 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     _emit();
   }
 
-  Future<void> load(String branch, String address, {bool renew = false}) async {
-    if (!ready || busy || pending) return;
+  Future<void> load(String branch, String address, {bool renew = false}) {
+    final running = _loadingQuote;
+    final requestedScope = '$branch/$address';
+    if (running != null) {
+      if (_loadingQuoteScope == requestedScope) return running;
+      final generation = _generation, owner = account();
+      return running.then((_) {
+        if (_generation == generation && account() == owner)
+          return load(branch, address, renew: renew);
+      });
+    }
+    _loadingQuoteScope = requestedScope;
+    final task = _load(branch, address, renew: renew);
+    _loadingQuote = task;
+    return task.whenComplete(() {
+      if (identical(_loadingQuote, task)) _loadingQuote = null;
+    });
+  }
+
+  Future<void> ensureFresh(String branch, String address) async {
+    await _loadingQuote;
+    if (pending) return;
+    if (matches(branch, address) &&
+        quote!.expiresAt.difference(now()) >= const Duration(seconds: 45))
+      return;
+    await load(branch, address, renew: quote != null);
+  }
+
+  Future<void> _load(
+    String branch,
+    String address, {
+    bool renew = false,
+    bool duringConfirmation = false,
+  }) async {
+    if (!ready || (busy && !duringConfirmation) || pending) return;
     try {
       scopedAttempt?.check(_owner!, branch);
     } on StateError {
@@ -204,7 +249,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     if (renew || _scope != scope) _quoteAttempt = null;
     _scope = scope;
     _quoteAttempt ??= const Uuid().v4();
-    quote = null;
+    if (quote?.branchId != branch || quote?.addressId != address) quote = null;
     error = null;
     busy = true;
     _emit();
@@ -259,10 +304,23 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
       }
     } finally {
       if (generation == _generation) {
-        busy = false;
+        busy = duringConfirmation;
         _emit();
       }
     }
+  }
+
+  /// Refresh as one request before expiry; never touch an already submitted attempt.
+  Future<void> refreshIfNeeded(String branch, String address) async {
+    if (_disposed || !ready || busy || pending || _owner != account()) return;
+    final at = now();
+    if (_quoteRetryAt != null && at.isBefore(_quoteRetryAt!)) return;
+    if (_nextAutomaticAt != null && at.isBefore(_nextAutomaticAt!)) return;
+    if (matches(branch, address) &&
+        quote!.expiresAt.difference(at) > const Duration(seconds: 20))
+      return;
+    _nextAutomaticAt = at.add(const Duration(seconds: 15));
+    await load(branch, address, renew: quote != null);
   }
 
   void invalidate() {
@@ -270,6 +328,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     ++_generation;
     quote = null;
     _scope = null;
+    _nextAutomaticAt = null;
     _quoteAttempt = null;
     busy = false;
     _emit();
@@ -279,10 +338,23 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     Map<String, dynamic>? content, {
     Future<bool> Function(Map<String, dynamic>)? approveCommercial,
   }) async {
+    if (_loadingQuote != null) await _loadingQuote;
+    if (content != null && !pending && ready) {
+      if (quote != null &&
+          (quote!.branchId != content['storeId'] ||
+              quote!.addressId != content['deliveryAddress']['id'])) {
+        throw StateError('تغير عنوان التوصيل؛ راجع الطلب مجددًا');
+      }
+      await ensureFresh(
+        content['storeId'] as String,
+        content['deliveryAddress']['id'] as String,
+      );
+    }
     if (busy || !ready || _owner == null) {
       throw StateError('تعذر تأكيد الطلب الآن');
     }
-    final owner = _owner!, generation = _generation;
+    final owner = _owner!;
+    var generation = _generation;
     if (!_confirmingAccounts.add(owner)) {
       throw StateError('توجد محاولة تأكيد قيد التنفيذ');
     }
@@ -319,50 +391,130 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
           if (approveCommercial == null) {
             throw StateError('يلزم تأكيد إجمالي الطلب');
           }
-          final previewResponse = await client
-              .post(
-                Uri.parse(
-                  ApiConfig.buildUrl(
-                    '${ApiConfig.ordersEndpoint}/commercial-preview',
-                  ),
-                ),
-                headers: _headers(owner),
-                body: jsonEncode({...saved, 'action': 'preview_commercial'}),
-              )
-              .timeout(ApiConfig.apiTimeout);
-          _check(owner, generation);
-          final data = jsonDecode(previewResponse.body);
-          final proposal = data['commercial'];
-          if (previewResponse.statusCode != 200 ||
-              data['success'] != true ||
-              proposal is! Map ||
-              proposal['schemaVersion'] != 1 ||
-              proposal['digest'] is! String ||
-              !RegExp(r'^[a-f0-9]{64}$').hasMatch(proposal['digest']) ||
-              proposal['quoteId'] != saved['quoteId'] ||
-              proposal['requestId'] != saved['idempotencyKey'] ||
-              proposal['expiresAt'] is! String ||
-              DateTime.tryParse(proposal['expiresAt']) == null ||
-              DateTime.parse(proposal['expiresAt']).isAfter(quote!.expiresAt) ||
-              !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
-            throw StateError(
-              'تعذر إعداد السعر التجاري؛ حدّث السعر وأعد المحاولة',
+          Map<String, dynamic>? approvedProposal;
+          bool prepared = false;
+          Future<void> renewForConfirmation() async {
+            await _load(
+              saved['storeId'] as String,
+              saved['deliveryAddress']['id'] as String,
+              renew: true,
+              duringConfirmation: true,
             );
+            if (account() != owner ||
+                !matches(saved['storeId'], saved['deliveryAddress']['id'])) {
+              throw StateError(
+                'تعذر مراجعة إجمالي الطلب؛ تحقق من الاتصال وأعد المحاولة',
+              );
+            }
+            generation = _generation;
+            saved['quoteId'] = quote!.id;
+            saved['deliveryFee'] = quote!.fee;
           }
-          validateCommercialCheckoutAmounts(proposal, quote!.feeMinor);
-          final accepted = await approveCommercial(
-            Map<String, dynamic>.from(proposal),
+
+          bool sameAmounts(Map a, Map b) => [
+            'goodsGross',
+            'discount',
+            'serviceFee',
+            'deliveryFee',
+            'driverTip',
+            'customerTotal',
+          ].every(
+            (k) =>
+                (a[k] as Map?)?['minorAmount'] ==
+                (b[k] as Map?)?['minorAmount'],
           );
-          _check(owner, generation);
-          if (!accepted) throw StateError('أُلغي تأكيد السعر');
-          if (!valid ||
-              !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
-            throw StateError('انتهى السعر؛ حدّثه وأكد مجددًا');
+          for (var round = 0; round < 3; round++) {
+            final previewResponse = await client
+                .post(
+                  Uri.parse(
+                    ApiConfig.buildUrl(
+                      '${ApiConfig.ordersEndpoint}/commercial-preview',
+                    ),
+                  ),
+                  headers: _headers(owner),
+                  body: jsonEncode({...saved, 'action': 'preview_commercial'}),
+                )
+                .timeout(ApiConfig.apiTimeout);
+            _check(owner, generation);
+            final data = jsonDecode(previewResponse.body);
+            if (data is Map && data['code'] == 'MINIMUM_ORDER_NOT_MET')
+              throw StateError(
+                'قيمة الأصناف أقل من الحد الأدنى للمطعم. ارجع إلى السلة وأضف أصنافًا.',
+              );
+            if (previewResponse.statusCode == 409 &&
+                data is Map &&
+                data['activeOrder'] is Map) {
+              throw ActiveCheckoutOrder(
+                Map<String, dynamic>.from(data['activeOrder']),
+              );
+            }
+            if (data is Map &&
+                [
+                  'QUOTE_EXPIRED',
+                  'COMMERCIAL_QUOTE_EXPIRED',
+                ].contains(data['code']) &&
+                round < 2) {
+              await renewForConfirmation();
+              continue;
+            }
+            final proposal = data['commercial'];
+            final previewExpiry =
+                proposal is Map && proposal['expiresAt'] is String
+                    ? DateTime.tryParse(proposal['expiresAt'])
+                    : null;
+            if (previewExpiry != null &&
+                !now().isBefore(previewExpiry) &&
+                round < 2) {
+              await renewForConfirmation();
+              continue;
+            }
+            if (previewResponse.statusCode != 200 ||
+                data['success'] != true ||
+                proposal is! Map ||
+                ![1, 2].contains(proposal['schemaVersion']) ||
+                proposal['digest'] is! String ||
+                !RegExp(r'^[a-f0-9]{64}$').hasMatch(proposal['digest']) ||
+                proposal['quoteId'] != saved['quoteId'] ||
+                proposal['requestId'] != saved['idempotencyKey'] ||
+                proposal['expiresAt'] is! String ||
+                DateTime.tryParse(proposal['expiresAt']) == null ||
+                DateTime.parse(
+                  proposal['expiresAt'],
+                ).isAfter(quote!.expiresAt) ||
+                !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
+              throw StateError(
+                'تعذر تحميل الإجمالي النهائي الآن؛ أعد المحاولة',
+              );
+            }
+            validateCommercialCheckoutAmounts(proposal, quote!.feeMinor);
+            final currentProposal = Map<String, dynamic>.from(proposal);
+            final accepted =
+                approvedProposal != null &&
+                        sameAmounts(approvedProposal, currentProposal)
+                    ? true
+                    : await approveCommercial(currentProposal);
+            _check(owner, generation);
+            if (!accepted) throw StateError('أُلغي تأكيد السعر');
+            if (!valid ||
+                !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
+              approvedProposal = currentProposal;
+              if (round < 2) {
+                await renewForConfirmation();
+                continue;
+              }
+              throw StateError(
+                'تعذر مراجعة إجمالي الطلب؛ تحقق من الاتصال وأعد المحاولة',
+              );
+            }
+            saved['commercialConsent'] = {
+              'digest': proposal['digest'],
+              'customerTotalMinor': proposal['customerTotal']['minorAmount'],
+            };
+            prepared = true;
+            break;
           }
-          saved['commercialConsent'] = {
-            'digest': proposal['digest'],
-            'customerTotalMinor': proposal['customerTotal']['minorAmount'],
-          };
+          if (!prepared)
+            throw StateError('تعذر مراجعة إجمالي الطلب؛ أعد المحاولة');
         }
         await write(
           _key(owner),

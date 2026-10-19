@@ -7,6 +7,8 @@ const { createStagingQuoteOrder, QuoteOrderError } = require('./quote-runtime/de
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
 const {resolveDiscount} = require('../shared/discount-reservation');
+const {createStagingDeliveryPromotionSelection}=require('./quote-runtime/deliveryPromotionSelection');
+const {deliveryPromotionCustomerFacts}=require('./quote-runtime/deliveryPromotionCustomer');
 const {createStagingCommercialSource} = require('./quote-runtime/orderCommercialSource');
 const {createFinanceRollout}=require('./quote-runtime/financeRollout');
 const {moneyFromMinor} = require('./quote-runtime/money');
@@ -404,6 +406,9 @@ exports.handler = async (event) => {
         const commercialMode = process.env.COMMERCIAL_PRICING_MODE || 'OFF';
         if (!['OFF','REQUIRED'].includes(commercialMode) || (commercialMode==='REQUIRED' && quoteMode!=='REQUIRED'))
             throw Object.assign(Error('COMMERCIAL_NOT_CONFIGURED'),{statusCode:503});
+        const deliveryPromotionMode=process.env.DELIVERY_PROMOTION_MODE||'OFF';
+        if(!['OFF','REQUIRED'].includes(deliveryPromotionMode)||(deliveryPromotionMode==='REQUIRED'&&commercialMode!=='REQUIRED'))
+            throw Object.assign(Error('DELIVERY_PROMOTION_NOT_CONFIGURED'),{statusCode:503});
         const previewRoute = event.resource === '/orders/commercial-preview';
         if ((body.action==='preview_commercial') !== previewRoute) throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
         if (body.action !== undefined && body.action !== 'preview_commercial') throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
@@ -419,7 +424,7 @@ exports.handler = async (event) => {
                 TABLE_NAME !== 'WizzOrders' || BUSINESSES_TABLE !== 'WhizzMerchants_Businesses') {
                 throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
             }
-            const service = createStagingQuoteOrder({db: dynamoDb, authenticateCustomer: async () => {
+            const service = createStagingQuoteOrder({db: dynamoDb, enableDeliveryFunding:deliveryPromotionMode==='REQUIRED', authenticateCustomer: async () => {
                 const live = await readAccount();
                 return {userId: body.userId, subjectId: live.sub, condition: live.condition};
             }});
@@ -501,6 +506,7 @@ exports.handler = async (event) => {
         const orderNumber = `ORD${timestamp}`;
         const tripNumber = `TRP${timestamp}`;
         const createdAt = new Date().toISOString();
+        let merchantResponseBranch = null;
 
         // Helper function to generate bucket (b0-b9) from orderId hash for GSI distribution
         const generateBucket = (id) => {
@@ -547,9 +553,11 @@ exports.handler = async (event) => {
             return sum + itemTotal + modifiersTotal;
         }, 0);
         
+        const minimumPolicy=require('../shared/branch-minimum-order');
+        const minimumBranch=await minimumPolicy.read(dynamoDb,body.storeId);
         let serviceFee = Math.round((body.serviceFee || 0) * 1000);
         const packagingFee = Math.round((body.packagingFee || 0) * 1000);
-        const deliveryFee = quotedOrder ? quotedOrder.deliveryFeeMinor : Math.round((body.deliveryFee ?? 10) * 1000); // Legacy only while quote mode is OFF
+        let deliveryFee = quotedOrder ? quotedOrder.deliveryFeeMinor : Math.round((body.deliveryFee ?? 10) * 1000); // Legacy only while quote mode is OFF
         const tax = Math.round((body.tax || 0) * 1000);
         const tip = Math.round((body.tip || 0) * 1000);
         const rounding = Math.round((body.rounding || 0) * 1000);
@@ -562,13 +570,14 @@ exports.handler = async (event) => {
             ...(currentOffers.addressCondition ? [currentOffers.addressCondition] : [])
         ];
         let discountItems = [];
-        if (body.discountId || body.promoCode || body.platformDiscountId) {
+        if (body.discountId || body.promoCode || body.platformDiscountId || minimumPolicy.minimumOrderIqd(minimumBranch)!==null) {
             if (processedItems.some(i=>i.modifiers.length)) throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
             const catalog = await createStagingOrderGoodsPricing({db:dynamoDb}).price({branchId:body.storeId,
                 items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity}))});
             if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some(l=>
                 processedItems.find(i=>i.itemId===l.productId)?.unitPrice !== l.unitPrice.minorAmount))
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            minimumPolicy.assertMinimumOrder(minimumBranch,catalog.goodsGross.minorAmount);
             discountItems = catalogItems(catalog);
             discountOperations.push(...catalog.conditions);
         }
@@ -589,7 +598,10 @@ exports.handler = async (event) => {
             if (!['cod','cash','cash_on_delivery'].includes(String(body.paymentMethod).toLowerCase()) ||
                 processedItems.some(i=>i.modifiers.length) || packagingFee!==0 || tax!==0 || rounding!==0)
                 throw Object.assign(Error('COMMERCIAL_ORDER_UNSUPPORTED'),{statusCode:409});
-            commercial = await createStagingCommercialSource({db:dynamoDb}).prepare({orderId,branchId:body.storeId,
+            const deliveryPromotion=deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:dynamoDb,
+                pricingRequest:quotedOrder.deliveryPromotionPricingRequest(),
+                customerFacts:()=>deliveryPromotionCustomerFacts(currentOffers,accountOrder)}):undefined;
+            commercial = await createStagingCommercialSource({db:dynamoDb,deliveryPromotion}).prepare({orderId,branchId:body.storeId,
                 items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity})),
                 quote:{createdAt:quotedOrder.createdAt,expiresAt:quotedOrder.expiresAt,deliveryFeeMinor:deliveryFee,
                     origin:quotedOrder.origin,destination:quotedOrder.destination,destinationRegionId:quotedOrder.destinationRegionId},
@@ -597,8 +609,9 @@ exports.handler = async (event) => {
                 tip:moneyFromMinor(tip)});
             if(commercial.calculation.allocationInput.goodsGross.minorAmount!==goodsSubtotal || commercial.goodsLines.some(l=>processedItems.find(i=>i.itemId===l.productId)?.unitPrice!==l.unitPrice.minorAmount))
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            deliveryFee=commercial.calculation.allocationInput.customerDeliveryFee.minorAmount;
             if(body.action==='preview_commercial') return {statusCode:200,headers,body:JSON.stringify({success:true,
-                commercial:{schemaVersion:1,quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
+                commercial:{schemaVersion:commercial.deliveryFunding?2:1,...(commercial.deliveryFunding?{referenceDeliveryFee:moneyFromMinor(quotedOrder.deliveryFeeMinor)}:{}),quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
                     customerTotal:commercial.calculation.customerTotal,goodsGross:commercial.calculation.allocationInput.goodsGross,
                     serviceFee:commercial.calculation.serviceFee.amount,discount:moneyFromMinor(discountFils),deliveryFee:moneyFromMinor(deliveryFee),driverTip:moneyFromMinor(tip)}})};
             if(body.commercialConsent?.digest!==commercial.digest ||
@@ -699,6 +712,7 @@ exports.handler = async (event) => {
             
             if (businessResult && businessResult.Item) {
                 const business = businessResult.Item;
+                merchantResponseBranch = business;
 
                 // 🆕 Merchant push targeting
                 // Central Notifications stores device tokens keyed by a separate `subjectId`.
@@ -927,8 +941,16 @@ exports.handler = async (event) => {
         if (commercial) {
             order.merchantId=commercial.merchantId;
             order.financialSnapshot=commercial.financialSnapshot;
-            order.commercialPricing={schemaVersion:1,digest:commercial.digest,agreement:commercial.agreement,
+            order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
                 calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
+        }
+
+        const receptionEnabled=process.env.MERCHANT_RESPONSE_MODE==='REQUIRED'&&!order.scheduled&&!order.scheduledAt;
+        if(receptionEnabled){
+            if(!merchantResponseBranch)throw Object.assign(Error('MERCHANT_RESPONSE_POLICY_UNAVAILABLE'),{statusCode:503});
+            if(merchantResponseBranch.ordersPausedUntil&&Date.parse(merchantResponseBranch.ordersPausedUntil)>Date.now())throw Object.assign(Error('BUSINESS_TEMPORARILY_PAUSED'),{statusCode:409});
+            const receptionPlatform=(await baseDynamoDb.send(new GetCommand({TableName:'staging-PlatformStaff',Key:{pk:'OPERATIONAL_SETTINGS#ORDER_RECEPTION',sk:'CURRENT'},ConsistentRead:true}))).Item;
+            Object.assign(order,require('../shared/merchant-response-policy').pendingFields(order,merchantResponseBranch,receptionPlatform));
         }
         console.log('Creating order', {orderId});
 
@@ -941,12 +963,25 @@ exports.handler = async (event) => {
             {ConditionCheck: {TableName: 'staging-AccountDeletion', Key: {pk: 'BUSINESS_LIFECYCLE#MERCHANT#' + body.storeId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}},
             {ConditionCheck: {TableName: BUSINESSES_TABLE, Key: {businessId: body.storeId}, ConditionExpression: 'attribute_exists(businessId) AND attribute_not_exists(deletionRequestId) AND isActive=:merchantActive AND (#merchantStatus=:merchantApproved OR #merchantStatus=:merchantLive) AND (attribute_not_exists(onboardingSchemaVersion) OR (onboardingComplete=:merchantActive AND acceptingOrders=:merchantActive)) AND (attribute_not_exists(platformSuspended) OR platformSuspended=:merchantBlocked) AND (attribute_not_exists(ordersBlocked) OR ordersBlocked=:merchantBlocked)', ExpressionAttributeNames: {'#merchantStatus':'status'}, ExpressionAttributeValues: {':merchantActive':true,':merchantApproved':'approved',':merchantLive':'active',':merchantBlocked':false}}},
         ];
+        minimumPolicy.guard(businessFences[1].ConditionCheck,minimumBranch);
+        if(receptionEnabled){
+            const p=order.merchantResponsePolicy;
+            const due=p.autoAccept?Date.parse(createdAt):Date.parse(order.merchantAcceptanceDeadlineAt);
+            discountOperations.push({Put:{TableName:'staging-WalletLifecycle',Item:{operationId:'MERCHANT_RESPONSE#'+orderId,kind:'MERCHANT_RESPONSE',merchantResponseSchemaVersion:1,orderId,branchId:order.storeId,ownerId:merchantResponseBranch.ownerId,status:'PENDING',queuePartition:'MERCHANT_RESPONSE',nextAttemptAt:Math.floor(due/1000),createdAt},ConditionExpression:'attribute_not_exists(operationId)'}});
+            const condition={TableName:BUSINESSES_TABLE,Key:{businessId:order.storeId},ConditionExpression:'attribute_not_exists(#mrPaused)',ExpressionAttributeNames:{'#mrPaused':'ordersPausedUntil','#mrSettings':'orderReceptionSettings'},ExpressionAttributeValues:{}};
+            if(merchantResponseBranch.ordersPausedUntil!==undefined){condition.ConditionExpression='#mrPaused=:mrPaused AND #mrPaused<=:mrNow';Object.assign(condition.ExpressionAttributeValues,{':mrPaused':merchantResponseBranch.ordersPausedUntil,':mrNow':createdAt});}
+            if(merchantResponseBranch.orderReceptionSettings===undefined)condition.ConditionExpression+=' AND attribute_not_exists(#mrSettings)';
+            else {condition.ConditionExpression+=' AND #mrSettings=:mrSettings';condition.ExpressionAttributeValues[':mrSettings']=merchantResponseBranch.orderReceptionSettings;}
+            if(!Object.keys(condition.ExpressionAttributeValues).length)delete condition.ExpressionAttributeValues;
+            if(quotedOrder)discountOperations.push({ConditionCheck:condition});
+            else {const c=businessFences[1].ConditionCheck;c.ConditionExpression+=' AND ('+condition.ConditionExpression+')';Object.assign(c.ExpressionAttributeNames,condition.ExpressionAttributeNames);Object.assign(c.ExpressionAttributeValues,condition.ExpressionAttributeValues||{});}
+        }
         try {
             if (commercial && Date.now() >= Date.parse(commercial.expiresAt)) throw Object.assign(Error('COMMERCIAL_QUOTE_EXPIRED'),{statusCode:409});
             if (resolvedDiscount.expiresAt !== null && resolvedDiscount.expiresAt !== undefined && Date.now() >= resolvedDiscount.expiresAt)
                 throw Object.assign(Error('DISCOUNT_EXPIRED'), {statusCode:409});
             if (quotedOrder) {
-                const saved = await quotedOrder.commit(order, discountOperations);
+                const saved = await quotedOrder.commit(order, discountOperations, commercial?.deliveryFunding);
                 if (saved.replayed) return quotedResponse(saved.order, true);
                 Object.assign(order, saved.order);
             } else await dynamoDb.send(new TransactWriteCommand({TransactItems: [
@@ -1049,7 +1084,7 @@ exports.handler = async (event) => {
                 message: error.message,
                 errorName: error.name,
                 ...(error instanceof QuoteOrderError ? {code: error.code} :
-                    ['FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
+                    ['MINIMUM_ORDER_NOT_MET','INVALID_MINIMUM_ORDER','FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
                 success: false
             })
         };

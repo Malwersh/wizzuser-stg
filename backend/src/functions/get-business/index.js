@@ -1,3 +1,4 @@
+const {storefrontFacts}=require('../shared/storefront-facts-170');
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = void 0;
@@ -112,9 +113,9 @@ const handler = async (event) => {
             business_type: result.Item.businessType || result.Item.business_type,
             phone: result.Item.phoneNumber || result.Item.phone_number,
             email: result.Item.email,
-            rating: result.Item.rating || 4.2,
-            delivery_time: result.Item.delivery_time || '30-45 دقيقة',
-            delivery_fee: result.Item.delivery_fee || '5000',
+            ...storefrontFacts(result.Item),
+
+
             minimum_order: result.Item.minimum_order || 0,
             is_active: result.Item.is_active !== false,
             created_at: result.Item.createdAt || result.Item.created_at,

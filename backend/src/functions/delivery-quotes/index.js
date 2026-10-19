@@ -1,6 +1,6 @@
 'use strict';
 const { accountGuard } = require('../create-order/account-guard');
-const { createStagingDeliveryQuoteRateLimiter, createStagingDeliveryQuotes, createStagingSecretDeliveryRouting, DynamoDBClient,
+const { createStagingStorefrontPreview, createStagingDeliveryQuoteRateLimiter, createStagingDeliveryQuotes, createStagingSecretDeliveryRouting, DynamoDBClient,
   createFinanceRollout, DynamoDBDocumentClient, GetCommand, SecretsManagerClient, CognitoIdentityProviderClient, GetUserCommand, readDeliveryOperations } = require('./runtime');
 const cognito = new CognitoIdentityProviderClient({});
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
@@ -42,9 +42,17 @@ exports.handler = async event => {
         secretArn: env.MAPBOX_SECRET_ARN, profile: 'driving', ttlSeconds: 120, timeoutMs: 8000, credentialTimeoutMs: 2000 }) });
     let quote;
     if (event.httpMethod === 'POST') {
-      if (event.isBase64Encoded || typeof event.body !== 'string' || Buffer.byteLength(event.body) > 2048 ||
+      if (event.isBase64Encoded || typeof event.body !== 'string' || Buffer.byteLength(event.body) > 12000 ||
           Object.keys(event.queryStringParameters || {}).length) return reply(400, { success: false, code: 'INVALID_QUOTE_REQUEST' });
       let input; try { input = JSON.parse(event.body); } catch { return reply(400, { success: false, code: 'INVALID_QUOTE_REQUEST' }); }
+      if(input?.action==='storefront_preview'){
+        const {action,...selection}=input;
+        const preview=await createStagingStorefrontPreview({db,authenticateCustomer,
+          beforeCalculate:async(c)=>{const operating=await readDeliveryOperations(db,env);await createStagingDeliveryQuoteRateLimiter({db,maxPerMinute:Math.min(120,operating.values.quoteMaxPerCustomerPerMinute*4),policyCondition:operating.condition,preview:true}).reserve(c);},
+          createRouter:guardedDb=>createStagingSecretDeliveryRouting({db:guardedDb,secrets,secretArn:env.MAPBOX_SECRET_ARN,profile:'driving',ttlSeconds:120,timeoutMs:8000,credentialTimeoutMs:2000})}).preview(selection);
+        console.info('STOREFRONT_PREVIEW_READY',{branchId:preview.branchId,addressId:preview.addressId,feeMinor:preview.customerDeliveryFee.minorAmount,pricingMode:preview.pricingMode,preparationMinutes:preview.preparationMinutes,roadDistanceMeters:preview.roadDistanceMeters});
+        return reply(200,{success:true,preview});
+      }
       quote = await service.create(input);
     } else {
       const query = event.queryStringParameters || {};
@@ -59,7 +67,7 @@ exports.handler = async event => {
       return { ...reply(429, { success: false, code, retryAfterSeconds: seconds }), headers: { ...headers, 'Retry-After': String(seconds) } };
     }
     const status = { FINANCE_ROLLOUT_OUT_OF_SCOPE:403, FINANCE_ROLLOUT_ADMISSION_CLOSED:403, FINANCE_ROLLOUT_NOT_CONFIGURED:503, AUTH_REQUIRED: 401, ACCOUNT_MISMATCH: 403, ACCOUNT_UNAVAILABLE: error.statusCode || 409,
-      INVALID_QUOTE_REQUEST: 400, QUOTE_EXPIRED: 409, QUOTE_INVALIDATED: 409, QUOTE_CONSUMED: 409,
+      INVALID_STOREFRONT_REQUEST:400, INVALID_QUOTE_REQUEST: 400, QUOTE_EXPIRED: 409, QUOTE_INVALIDATED: 409, QUOTE_CONSUMED: 409,
       QUOTE_REQUEST_CONFLICT: 409, QUOTE_UNAVAILABLE: 404, CUSTOMER_UNAVAILABLE: 403 }[code];
     return reply(status || 503, { success: false, code: status ? code : 'QUOTE_SERVICE_UNAVAILABLE' });
   }

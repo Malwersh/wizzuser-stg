@@ -66,4 +66,29 @@ void main() {
       validateCommercialCheckoutAmounts(p, 2750000);
     },
   );
+  test(
+    'delivery promotion binds the original tariff and reduced customer amount',
+    () {
+      final p = {
+        ...preview(),
+        'schemaVersion': 2,
+        'referenceDeliveryFee': money(2750000),
+        'deliveryFee': money(1500000),
+        'customerTotal': money(5249000),
+      };
+      validateCommercialCheckoutAmounts(p, 2750000);
+      for (final patch in [
+        {'referenceDeliveryFee': money(3000000)},
+        {'referenceDeliveryFee': null},
+        {'schemaVersion': 1},
+        {'deliveryFee': money(3000000), 'customerTotal': money(6749000)},
+        {'customerTotal': money(6499000)},
+      ]) {
+        expect(
+          () => validateCommercialCheckoutAmounts({...p, ...patch}, 2750000),
+          throwsFormatException,
+        );
+      }
+    },
+  );
 }

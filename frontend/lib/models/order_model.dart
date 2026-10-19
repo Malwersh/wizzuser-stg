@@ -202,8 +202,12 @@ class OrderModel {
   final String? customerEmail;
   final bool isGuestOrder;
   final DateTime createdAt;
+  final DateTime? updatedAt;
   final DateTime? confirmedAt;
   final DateTime? estimatedDeliveryTime;
+  final Map<String, dynamic>? deliveryEstimate;
+  final DateTime? estimatedReadyAt;
+  final int? estimatedPreparationTime;
   final DateTime? actualDeliveryTime;
   final String? cancelReason;
   final Map<String, dynamic>? metadata;
@@ -238,8 +242,12 @@ class OrderModel {
     this.customerEmail,
     this.isGuestOrder = false,
     required this.createdAt,
+    this.updatedAt,
     this.confirmedAt,
     this.estimatedDeliveryTime,
+    this.deliveryEstimate,
+    this.estimatedReadyAt,
+    this.estimatedPreparationTime,
     this.actualDeliveryTime,
     this.cancelReason,
     this.metadata,
@@ -296,6 +304,7 @@ class OrderModel {
       customerName: json['customer_name'] ?? json['customerName'],
       customerEmail: json['customer_email'] ?? json['customerEmail'],
       isGuestOrder: json['is_guest_order'] ?? json['isGuestOrder'] ?? false,
+      updatedAt: DateTime.tryParse((json['updatedAt']??json['updated_at']??'').toString()),
       createdAt: DateTime.tryParse(json['created_at'] ?? json['createdAt'] ?? json['orderDate'] ?? '') ?? DateTime.now(),
       confirmedAt: (json['confirmed_at'] ?? json['confirmedAt']) != null
           ? DateTime.tryParse(json['confirmed_at'] ?? json['confirmedAt'])
@@ -303,6 +312,9 @@ class OrderModel {
       estimatedDeliveryTime: (json['estimated_delivery_time'] ?? json['estimatedDeliveryTime']) != null
           ? DateTime.tryParse(json['estimated_delivery_time'] ?? json['estimatedDeliveryTime'])
           : null,
+      deliveryEstimate: json['deliveryEstimate'] is Map ? Map<String,dynamic>.from(json['deliveryEstimate']) : null,
+      estimatedReadyAt: DateTime.tryParse(json['estimatedReadyAt']?.toString() ?? ''),
+      estimatedPreparationTime: (json['estimatedPreparationTime'] as num?)?.toInt(),
       actualDeliveryTime: (json['actual_delivery_time'] ?? json['actualDeliveryTime']) != null
           ? DateTime.tryParse(json['actual_delivery_time'] ?? json['actualDeliveryTime'])
           : null,
@@ -350,6 +362,9 @@ class OrderModel {
       'created_at': createdAt.toIso8601String(),
       'confirmed_at': confirmedAt?.toIso8601String(),
       'estimated_delivery_time': estimatedDeliveryTime?.toIso8601String(),
+      'deliveryEstimate': deliveryEstimate,
+      'estimatedReadyAt': estimatedReadyAt?.toIso8601String(),
+      'estimatedPreparationTime': estimatedPreparationTime,
       'actual_delivery_time': actualDeliveryTime?.toIso8601String(),
       'cancel_reason': cancelReason,
       'metadata': metadata,
@@ -405,7 +420,7 @@ class OrderModel {
       customerPhone: customerPhone,
       customerName: customerName,
       createdAt: now,
-      estimatedDeliveryTime: now.add(const Duration(minutes: 30)),
+      estimatedDeliveryTime: null,
     );
   }
 
@@ -440,8 +455,19 @@ class OrderModel {
       customerPhone: customerPhone,
       customerName: customerName,
       createdAt: createdAt,
+      updatedAt: updatedAt,
       confirmedAt: confirmedAt ?? this.confirmedAt,
       estimatedDeliveryTime: estimatedDeliveryTime ?? this.estimatedDeliveryTime,
+      deliveryEstimate: deliveryEstimate,
+      estimatedReadyAt: estimatedReadyAt,
+      estimatedPreparationTime: estimatedPreparationTime,
+      customerEmail: customerEmail,
+      isGuestOrder: isGuestOrder,
+      driverId: driverId,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      vehicleType: vehicleType,
+      vehiclePlate: vehiclePlate,
       actualDeliveryTime: actualDeliveryTime ?? this.actualDeliveryTime,
       cancelReason: cancelReason ?? this.cancelReason,
       metadata: metadata ?? this.metadata,

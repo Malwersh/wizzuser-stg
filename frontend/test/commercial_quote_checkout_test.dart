@@ -25,14 +25,18 @@ void main() {
   late Map<String, String> saved;
   late List<Map<String, dynamic>> posts;
   late String owner;
+  late int quoteFee;
   late bool failOrder;
+  late bool activeConflict;
   late DeliveryQuoteCheckout checkout;
   late void Function(Map<String, dynamic>) mutatePreview;
   setUp(() async {
     saved = {};
     posts = [];
     owner = 'u1';
+    quoteFee = 0;
     failOrder = false;
+    activeConflict = false;
     mutatePreview = (_) {};
     checkout = DeliveryQuoteCheckout(
       account: () => owner,
@@ -58,7 +62,7 @@ void main() {
                 'branchId': 'b1',
                 'addressId': 'a1',
                 'expiresAt': expires.toIso8601String(),
-                'customerDeliveryFee': money(0),
+                'customerDeliveryFee': money(quoteFee),
               },
             }),
             200,
@@ -66,6 +70,17 @@ void main() {
         }
         posts.add(body);
         if (body['action'] == 'preview_commercial') {
+          if (activeConflict)
+            return http.Response(
+              jsonEncode({
+                'success': false,
+                'activeOrder': {
+                  'orderId': 'existing',
+                  'status': 'ready_for_pickup',
+                },
+              }),
+              409,
+            );
           final proposal = {
             'schemaVersion': 1,
             'digest': 'a' * 64,
@@ -156,6 +171,7 @@ void main() {
       });
       final attempt = jsonEncode(posts.last);
       failOrder = false;
+      activeConflict = false;
       await checkout.confirm(null);
       expect(posts.length, 3);
       expect(jsonEncode(posts.last), attempt);
@@ -201,6 +217,47 @@ void main() {
       );
       expect(saved, isEmpty);
       expect(posts.length, 1);
+    },
+    skip: !enabled,
+  );
+  test(
+    'active order at preview retains its real reason and sends no new order',
+    () async {
+      activeConflict = true;
+      await expectLater(
+        checkout.confirm(content(), approveCommercial: (_) async => true),
+        throwsA(isA<ActiveCheckoutOrder>()),
+      );
+      expect(posts, hasLength(1));
+      expect(saved, isEmpty);
+      expect(checkout.pending, false);
+    },
+    skip: !enabled,
+  );
+
+  test(
+    'reduced delivery preview reaches approval and submits the same consent',
+    () async {
+      quoteFee = 3100000;
+      await checkout.load('b1', 'a1', renew: true);
+      mutatePreview = (p) {
+        p['schemaVersion'] = 2;
+        p['referenceDeliveryFee'] = money(3100000);
+        p['deliveryFee'] = money(1500000);
+        p['customerTotal'] = money(5500000);
+      };
+      int? displayed;
+      await checkout.confirm(
+        content(),
+        approveCommercial: (p) async {
+          displayed = p['deliveryFee']['minorAmount'];
+          return true;
+        },
+      );
+      expect(displayed, 1500000);
+      expect(posts, hasLength(2));
+      expect(posts.last['commercialConsent']['customerTotalMinor'], 5500000);
+      expect(saved, isEmpty);
     },
     skip: !enabled,
   );

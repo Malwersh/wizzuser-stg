@@ -1,3 +1,5 @@
+import '../services/storefront_pricing.dart';
+import '../widgets/storefront_value.dart';
 import 'dart:developer' as developer;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -114,6 +116,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_){if(mounted){final items=context.read<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();unawaited(StorefrontPricing.instance.load(widget.store.id,items,force:true));}});
     developer.log('🏗️ StoreDetailScreen initState');
     
     // تهيئة SubscriptionManager
@@ -479,6 +482,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                 color: Colors.white, // خلفية بيضاء صريحة
                 child: Column(
                   children: [
+                    Padding(padding:const EdgeInsets.symmetric(horizontal:20,vertical:8),child:Row(children:[
+                      const Icon(Icons.restaurant_menu,size:18),const SizedBox(width:8),const Text('وقت التحضير: '),
+                      Expanded(child:StorefrontValue(branchId:widget.store.id,field:StorefrontField.preparation,initialPreparationMinutes:widget.store.averagePreparationMinutes)),
+                    ])),
                     // قسم معلومات التوصيل والاستلام - تصميم compact
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -489,13 +496,14 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                       ),
                       child: Row(
                         children: [
+                          StorefrontMinimum(branchId:widget.store.id),
                           // معلومات التوصيل
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 Text(
-                                  'التوصيل',
+                                  'الوصول المتوقع',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
@@ -503,8 +511,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  widget.store.time,
+                                StorefrontValue(branchId:widget.store.id,field:StorefrontField.arrival,
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey.shade600,
@@ -535,8 +542,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                                   ),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  widget.store.fee,
+                                StorefrontValue(branchId:widget.store.id,field:StorefrontField.fee,
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey.shade600,
@@ -1069,8 +1075,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                         const SizedBox(height: 8),
                         
                         // التقييم والمراجعات بتصميم بسيط
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                        Wrap(
                           children: [
                             Icon(
                               Icons.star,
@@ -1079,7 +1084,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              widget.store.rating,
+                              _ratingText,
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.normal,
@@ -1129,13 +1134,13 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                         // معلومات سريعة محسنة (وقت التوصيل، المسافة، والرسوم)
                         Row(
                           children: [
-                            _buildEnhancedQuickInfo(Icons.access_time, widget.store.time, 'دقيقة'),
-                            const SizedBox(width: 16),
-                            if (widget.store.distance.isNotEmpty) ...[
-                              _buildEnhancedQuickInfo(Icons.location_on, widget.store.distance, ''),
+
+                            if (widget.store.id.isNotEmpty) ...[
+                              const Icon(Icons.route,color:Colors.white,size:14),const SizedBox(width:4),
+                              StorefrontValue(branchId:widget.store.id,field:StorefrontField.distance,style:const TextStyle(color:Colors.white,fontSize:13)),
                               const SizedBox(width: 16),
                             ],
-                            _buildEnhancedQuickInfo(Icons.delivery_dining, widget.store.fee, ''),
+
                           ],
                         ),
                       ],
@@ -1396,10 +1401,14 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     );
   }
 
+  // Legacy store delivery fields are not a quote for the selected address.
+
+  String get _ratingText => widget.store.ratingValue>0 ? widget.store.rating : int.tryParse(widget.store.reviews)==0 ? 'لا تقييمات بعد' : 'التقييم غير متاح';
+
   /// نص المراجعات
   String _getReviewsText() {
-    // يمكن ربطها بالبيانات الفعلية لاحقاً
-    return '100+ مراجعة';
+    final count = int.tryParse(widget.store.reviews);
+    return count == null || count < 0 ? 'المراجعات غير متاحة' : '$count مراجعة';
   }
 
   /// عرض معلومات إضافية عن المطعم
@@ -1449,13 +1458,20 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                       const SizedBox(height: 20),
                       
                       // معلومات تفصيلية
-                      _buildInfoRow(Icons.star, 'التقييم', widget.store.rating),
-                      _buildInfoRow(Icons.access_time, 'وقت التوصيل', widget.store.time),
-                      _buildInfoRow(Icons.delivery_dining, 'رسوم التوصيل', widget.store.fee),
+                      _buildInfoRow(Icons.star, 'التقييم', _ratingText),
+                      _buildInfoRow(Icons.timer_outlined, 'وقت التحضير', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.preparation,initialPreparationMinutes:widget.store.averagePreparationMinutes)),
+                      _buildInfoRow(Icons.access_time, 'الوصول المتوقع', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.arrival)),
+                      _buildInfoRow(Icons.delivery_dining, 'رسوم التوصيل', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.fee)),
+                      _buildInfoRow(Icons.route_outlined, 'المسافة', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.distance)),
+                      ListenableBuilder(listenable:StorefrontPricing.instance,builder:(context,_){
+                        final items=context.watch<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();
+                        final minimum=StorefrontPricing.instance.peek(widget.store.id,items)?.minimumOrderAmountIqd;
+                        return minimum==null?const SizedBox.shrink():_buildInfoRow(Icons.shopping_basket_outlined,'الحد الأدنى للطلب','$minimum د.ع');
+                      }),
                       if (widget.store.address.isNotEmpty)
                         _buildInfoRow(Icons.location_on, 'العنوان', widget.store.address),
                       if (widget.store.category != null)
-                        _buildInfoRow(Icons.restaurant_menu, 'الفئة', widget.store.category!),
+                        _buildInfoRow(Icons.restaurant_menu, 'الفئة', widget.store.category=='restaurant'?'مطعم':widget.store.category!),
                       
                       const SizedBox(height: 24),
                       
@@ -1475,7 +1491,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   }
 
   /// صف معلومات في Bottom Sheet
-  Widget _buildInfoRow(IconData icon, String label, String value) {
+  Widget _buildInfoRow(IconData icon, String label, String value, {Widget? content}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -1495,7 +1511,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
             ),
           ),
           Expanded(
-            child: Text(
+            child: content ?? Text(
               value,
               style: TextStyle(
                 fontSize: 14,
@@ -2152,7 +2168,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       currentStatusText = isWithinWorkingHours == true 
           ? _getWorkingHoursStatusText() 
           : 'مغلق حالياً';
-    } else if (_workingHours != null) {
+    } else if (_workingHours?.hasWorkingHours == true) {
       final statusInfo = _workingHours!.statusInfo;
       isWithinWorkingHours = statusInfo['isOpen'] as bool;
       currentStatusText = statusInfo['text'] as String;
@@ -2548,6 +2564,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       );
     }
 
+    if(_availabilityStatus==null||_availabilityStatus!.reasonUnavailable?.contains('خطأ')==true){
+      return _buildProminentStatusBadge(text:'حالة التوفر غير متاحة',icon:Icons.info_outline,backgroundColor:Colors.grey.shade100,textColor:Colors.grey.shade600,borderColor:Colors.grey.shade300,iconColor:Colors.grey.shade500);
+    }
+
     if (_availabilityStatus != null) {
       final isAvailable = _availabilityStatus!.isAvailable;
       final acceptingOrders = _availabilityStatus!.acceptingOrders;
@@ -2645,7 +2665,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     } else {
       // حالة افتراضية - بادج رمادية
       return _buildProminentStatusBadge(
-        text: 'جاري التحقق...',
+        text: 'حالة التوفر غير متاحة',
         icon: Icons.refresh,
         backgroundColor: Colors.grey.shade100,
         textColor: Colors.grey.shade600,
@@ -2734,20 +2754,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       if (mounted) {
         setState(() {
           _loadingBusinessStatus = false;
-          // إنشاء حالة افتراضية متاحة عند الخطأ (بدلاً من غير متاحة)
-          // هذا يضمن أن المطاعم تبقى قابلة للطلب حتى عند فشل تحميل الحالة
-          _availabilityStatus = RestaurantAvailabilityStatus(
-            businessId: widget.store.id,
-            isAvailable: true, // افتراضياً متاح
-            acceptingOrders: true, // افتراضياً يقبل طلبات
-            isWithinWorkingHours: true, // افتراضياً مفتوح
-            workingHours: {},
-            checkedAt: DateTime.now(),
-            reasonUnavailable: '', // لا يوجد سبب لعدم التوفر
-          );
+          _availabilityStatus = null;
         });
         
-        developer.log('⚠️ تم استخدام حالة افتراضية متاحة بسبب فشل تحميل حالة المطعم');
+        developer.log('⚠️ حالة التوفر غير معروفة بعد فشل التحقق');
       }
     }
   }

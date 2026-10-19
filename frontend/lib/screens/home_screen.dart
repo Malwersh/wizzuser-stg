@@ -1,3 +1,4 @@
+import '../services/storefront_pricing.dart';
 import 'notifications_screen.dart';
 import '../services/notification_inbox_service.dart';
 import 'dart:developer' as developer;
@@ -121,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    StorefrontPricing.instance.addListener(_storefrontUpdated);
     NotificationInboxService.instance.load().catchError((Object _) {});
     // مراقبة دورة حياة التطبيق لتفعيل جلب فوري عند العودة للمقدمة
     WidgetsBinding.instance.addObserver(this);
@@ -1199,6 +1201,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     developer.log('═══════════════════════════════════════════════════');
   }
 
+  void _storefrontUpdated(){if(mounted)setState((){});}
+
   @override
   void dispose() {
     // إلغاء اشتراك WebSocket
@@ -1226,6 +1230,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 🆕 إلغاء اشتراك Delivery Address
     _deliveryAddressSubscription?.cancel();
     
+    StorefrontPricing.instance.removeListener(_storefrontUpdated);
     _bannerController.dispose();
     _bannerTimer?.cancel();
     _storesController.dispose();
@@ -1696,17 +1701,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     developer.log('    - Status message: "$statusMessage"');
 
+    final pricing=StorefrontPricing.instance;
+    // Warm only a bounded first screen; opening another store loads it on demand.
+    if (_allRealBusinesses.take(4).any((b)=>b.id==business.id)) {
+      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)pricing.load(business.id,const[]);});
+    }
+    final preview=pricing.peek(business.id,const[]);
     final store = Store(
       id: business.id,
       name: correctedBusinessName, // استخدام الاسم المصحح
       image: finalImageUrl,
       logoUrl: finalImageUrl,
       isOpen: isRestaurantAvailable, // Use comprehensive status check
-      fee: business.deliveryFee.isNotEmpty ? business.deliveryFee : '5 آلاف',
+      fee: preview?.feeText ?? '',
+      averagePreparationMinutes:business.averagePreparationMinutes,
       rating: business.rating.toStringAsFixed(1),
-      reviews: '${(business.rating * 50).round()}', // تقدير عدد المراجعات
+      reviews: business.reviewCount?.toString() ?? '',
       distance: distanceText ?? '', // استخدام المسافة المحسوبة أو فارغة
-      time: business.deliveryTime.isNotEmpty ? business.deliveryTime : '30 دقيقة',
+      time:preview?.arrivalText ?? '',
       address: business.address,
       category: business.businessType,
       sponsored: business.metadata?['sponsored'] == true,

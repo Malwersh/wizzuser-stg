@@ -81,17 +81,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         
         // تحويل DetailedAddress إلى DeliveryAddress
         final userAddresses = addressService.detailedAddresses.map((detailedAddr) {
-          return DeliveryAddress(
-            label: detailedAddr.name, // استخدم 'name' من DetailedAddress
-            formattedAddress: detailedAddr.fullAddress,
-            latitude: detailedAddr.latitude ?? 0,
-            longitude: detailedAddr.longitude ?? 0,
-            regionId: detailedAddr.regionId, // استخدم region_id الموجود
-            city: detailedAddr.province, // province = المحافظة
-            source: AddressSource.saved,
-            isDefault: detailedAddr.isDefault,
-            timestamp: DateTime.now(),
-          );
+          return DeliveryAddress.fromSavedAddress(detailedAddr);
         }).toList();
         
         print('📍 تم جلب ${userAddresses.length} عنوان للمستخدم من Database');
@@ -484,10 +474,14 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                 isDefault: address.isDefault,
                 timestamp: DateTime.now(),
               );
+            } else {
+              _showErrorSnackBar(addressService.error ?? 'تعذر حفظ عنوان التوصيل. أعد المحاولة.');
+              return;
             }
           } catch (e) {
             print('⚠️ تعذّر حفظ العنوان في قاعدة البيانات: $e');
-            // نكمل حتى لو فشل الحفظ (يبقى العنوان نشطاً للجلسة الحالية)
+            _showErrorSnackBar(context.read<EnhancedAddressService>().error ?? 'تعذر حفظ عنوان التوصيل. أعد المحاولة.');
+            return;
           }
         } else {
           print('ℹ️ عنوان محفوظ مسبقاً - لا حاجة لإعادة الحفظ في قاعدة البيانات');
@@ -1045,17 +1039,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         );
         
         if (regionId != null) {
-          address = DeliveryAddress(
-            label: address.label,
-            formattedAddress: address.formattedAddress,
-            latitude: address.latitude,
-            longitude: address.longitude,
-            regionId: regionId,
-            city: address.city,
-            source: address.source,
-            isDefault: address.isDefault,
-            timestamp: DateTime.now(),
-          );
+          address = address.copyWith(regionId:regionId);
         }
       }
       

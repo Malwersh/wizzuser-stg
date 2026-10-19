@@ -1,3 +1,4 @@
+import 'live_activity_service.dart';
 // lib/services/order_service_v2.dart
 
 import 'dart:convert';
@@ -350,9 +351,7 @@ class OrderServiceV2 extends ChangeNotifier {
           customerEmail: customerEmail,
           isGuestOrder: userId == null,
           createdAt: DateTime.now(),
-          estimatedDeliveryTime: DateTime.now().add(
-            const Duration(minutes: 30),
-          ),
+          estimatedDeliveryTime: DateTime.tryParse(orderInfo['estimatedDeliveryTime']?.toString() ?? ''),
         );
 
         _currentOrder = order;
@@ -1071,6 +1070,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// مسح البيانات عند تسجيل الخروج
   void clearData() {
+    unawaited(LiveActivityService.endAll());
     _orders.clear();
     _currentOrder = null;
     _clearError();
@@ -1079,6 +1079,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// مسح جميع الطلبات (عند تغيير المستخدم أو تسجيل الخروج)
   void clearOrders() {
+    unawaited(LiveActivityService.endAll());
     final oldCount = _orders.length;
     _orders.clear();
     _currentOrder = null;
@@ -1091,6 +1092,7 @@ class OrderServiceV2 extends ChangeNotifier {
   void updateOrderFromWebSocket(Map<String, dynamic> orderData) {
     try {
       final updatedOrder = OrderModel.fromJson(orderData);
+      unawaited(LiveActivityService.syncOrder(updatedOrder));
       final index = _orders.indexWhere((o) => o.id == updatedOrder.id);
 
       if (index != -1) {
@@ -1332,7 +1334,8 @@ class OrderServiceV2 extends ChangeNotifier {
   void setGuestToken(String? token) {
     _guestToken = token;
     _saveGuestTokenToStorage(token); // Save guest token to storage
-    print('OrderService: Guest token updated: $token');
+    if(token!=null) unawaited(LiveActivityService.setGuestToken(token));
+    debugPrint('OrderService: Guest session updated');
   }
 
   /// مسح guestToken
@@ -1351,6 +1354,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// تحديث طلب في القائمة المحلية (للتحديثات الفورية)
   void updateOrderInList(OrderModel updatedOrder) {
+    unawaited(LiveActivityService.syncOrder(updatedOrder));
     final index = _orders.indexWhere((order) => order.id == updatedOrder.id);
     if (index != -1) {
       final oldStatus = _orders[index].status;

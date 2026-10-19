@@ -13,6 +13,7 @@ class Store {
   final String reviews;   // عدد المراجعات
   final String distance;  // المسافة
   final String time;      // وقت التوصيل/العمل
+  final int? averagePreparationMinutes;
   final String address;   // عنوان المتجر
 
   // خصائص إضافية للتوافق مع الشاشات
@@ -58,6 +59,7 @@ class Store {
     required this.distance,
     required this.time,
     required this.address,
+    this.averagePreparationMinutes,
     this.promo,
     this.tag,
     this.category,

@@ -98,6 +98,7 @@ exports.handler = async (event) => {
         // Get order from DynamoDB using new PK/SK structure
         const getCommand = new GetCommand({
             TableName: TABLE_NAME,
+            ConsistentRead: true,
             Key: {
                 PK: `ORDER#${orderId}`,
                 SK: 'META'

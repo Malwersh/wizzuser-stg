@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import 'session_service.dart';
+import 'android_order_tracking.dart';
 import 'notification_inbox_service.dart';
 import 'notification_navigation.dart';
 import '../constants/app_colors.dart';
@@ -23,6 +24,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // ignore
   }
   await NotificationInboxService.recordPush(message);
+  await AndroidOrderTracking.fromPush(message.data);
 }
 
 class PushNotificationsService {
@@ -102,6 +104,7 @@ class PushNotificationsService {
     });
 
     FirebaseMessaging.onMessage.listen((message) async {
+      await AndroidOrderTracking.fromPush(message.data);
       final item = await NotificationInboxService.recordPush(message);
       if (item == null) return;
       NotificationNavigation.messengerKey.currentState?.showSnackBar(SnackBar(
@@ -201,6 +204,7 @@ class PushNotificationsService {
     final payload = <String, dynamic>{
       'token': token,
       'platform': _platform(),
+      'orderTrackingVersion': 1,
       'app': 'user',
       'env': ApiConfig.environment,
       if (deviceId != null && deviceId.isNotEmpty) 'deviceId': deviceId,
@@ -360,6 +364,7 @@ class PushNotificationsService {
     final payload = <String, dynamic>{
       'token': fcmToken,
       'platform': _platform(),
+      'orderTrackingVersion': 1,
       'guestToken': guestToken,
       'env': ApiConfig.environment,
       if (deviceId != null && deviceId.isNotEmpty) 'deviceId': deviceId,

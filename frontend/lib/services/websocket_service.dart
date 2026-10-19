@@ -1022,19 +1022,9 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
       final order = await orderService.getOrderDetails(orderId);
       
       if (order != null) {
-        // Parse estimatedDeliveryTime if provided
-        DateTime? parsedDeliveryTime;
-        if (estimatedDeliveryTime != null && estimatedDeliveryTime.isNotEmpty) {
-          try {
-            parsedDeliveryTime = DateTime.parse(estimatedDeliveryTime);
-          } catch (e) {
-            debugPrint('WebSocket: خطأ في تحويل وقت التوصيل: $e');
-          }
-        }
-        
         final updatedOrder = order.copyWith(
-          status: newStatus,
-          estimatedDeliveryTime: parsedDeliveryTime,
+          status: order.status,
+          estimatedDeliveryTime: order.estimatedDeliveryTime,
         );
         
         _orderStreams[streamKey]!.add(updatedOrder);
@@ -1059,22 +1049,10 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
       if (order != null) {
         debugPrint('WebSocket: ✅ تم جلب بيانات الطلب $orderId بنجاح');
         
-        // Parse estimatedDeliveryTime string to DateTime if provided
-        DateTime? parsedDeliveryTime;
-        if (estimatedDeliveryTime != null && estimatedDeliveryTime.isNotEmpty) {
-          try {
-            parsedDeliveryTime = DateTime.parse(estimatedDeliveryTime);
-            debugPrint('WebSocket: تم تحويل وقت التوصيل المتوقع: $parsedDeliveryTime');
-          } catch (e) {
-            debugPrint('WebSocket: خطأ في تحويل وقت التوصيل المتوقع: $e');
-            parsedDeliveryTime = null;
-          }
-        }
-        
-        // Update the order status - Force the new status from WebSocket
+        // A fresh server read takes precedence over a delayed notification.
         final updatedOrder = order.copyWith(
-          status: newStatus, // Always use the status from WebSocket
-          estimatedDeliveryTime: parsedDeliveryTime,
+          status: order.status, // Canonical read wins over a delayed notification hint
+          estimatedDeliveryTime: order.estimatedDeliveryTime,
         );
         
         debugPrint('WebSocket: 📤 إرسال الطلب المحدث للمستمعين - ID: ${updatedOrder.id}, Status: ${updatedOrder.status.arabicName}');

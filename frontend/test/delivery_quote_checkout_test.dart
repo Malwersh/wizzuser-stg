@@ -308,13 +308,25 @@ void main() {
       restored.dispose();
     },
   );
-  test('expiry blocks a fresh confirmation without sending order', () async {
-    await checkout.load('b1', 'a1');
-    clock = clock.add(const Duration(minutes: 3));
-    await expectLater(checkout.confirm(content), throwsStateError);
-    expect(requests.length, 1);
-    expect(storage, isEmpty);
-  });
+  test(
+    'expiry refreshes internally before sending a fresh confirmation',
+    () async {
+      await checkout.load('b1', 'a1');
+      clock = clock.add(const Duration(minutes: 3));
+      final response = await checkout.confirm(content);
+      expect(response.statusCode, 201);
+      expect(
+        requests.where((r) => r.url.path.endsWith('/delivery-quotes')).length,
+        2,
+      );
+      expect(
+        requests.where((r) => !r.url.path.endsWith('/delivery-quotes')).length,
+        1,
+      );
+      expect(storage, isEmpty);
+    },
+  );
+
   test(
     'server invalidation releases attempt and requires a new displayed quote',
     () async {
@@ -536,4 +548,42 @@ void main() {
     row['customerDeliveryFee']['currency'] = 'SAR';
     expect(() => DeliveryQuote.fromJson(row), throwsFormatException);
   });
+  test(
+    'automatic refresh renews before expiry once without submitting an order',
+    () async {
+      await checkout.load('b1', 'a1');
+      final firstRequest = jsonDecode(requests.single.body)['requestId'];
+      await checkout.refreshIfNeeded('b1', 'a1');
+      expect(requests.length, 1);
+      clock = clock.add(const Duration(seconds: 101));
+      await Future.wait([
+        checkout.refreshIfNeeded('b1', 'a1'),
+        checkout.refreshIfNeeded('b1', 'a1'),
+      ]);
+      expect(requests.length, 2);
+      expect(jsonDecode(requests.last.body)['requestId'], isNot(firstRequest));
+      expect(checkout.valid, true);
+      expect(storage, isEmpty);
+      expect(
+        requests.every((r) => r.url.path.endsWith('/delivery-quotes')),
+        true,
+      );
+    },
+  );
+  test(
+    'automatic refresh recovers expiry and ignores a changed account',
+    () async {
+      await checkout.load('b1', 'a1');
+      clock = clock.add(const Duration(minutes: 3));
+      expect(checkout.valid, false);
+      await checkout.refreshIfNeeded('b1', 'a1');
+      expect(checkout.valid, true);
+      expect(requests.length, 2);
+      account = 'another-user';
+      clock = clock.add(const Duration(minutes: 3));
+      await checkout.refreshIfNeeded('b1', 'a1');
+      expect(requests.length, 2);
+      expect(checkout.valid, false);
+    },
+  );
 }

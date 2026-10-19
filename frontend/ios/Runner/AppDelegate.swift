@@ -14,6 +14,10 @@ import GoogleMaps
     GMSServices.provideAPIKey("AIzaSyDrvzgil3g2SwE8zl_44IGM35n7khAyoVI")
 
     GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    if #available(iOS 16.1, *), let controller = window?.rootViewController as? FlutterViewController {
+      LiveActivityChannel.shared.register(with: controller)
+    }
+    return result
   }
 }

@@ -1,7 +1,12 @@
+import '../services/storefront_pricing.dart';
+import '../services/delivery_address_manager.dart';
+import '../models/delivery_address.dart';
+import '../widgets/storefront_value.dart';
 // lib/screens/checkout_screen.dart
 import '../constants/app_colors.dart';
 import '../config/api_config.dart';
 import '../services/delivery_quote_checkout.dart';
+import '../widgets/commercial_confirmation_sheet.dart';
 import 'dart:convert';
 
 import 'dart:async';
@@ -23,11 +28,7 @@ class CheckoutScreen extends StatefulWidget {
   final String? storeId;
   final String? storeName;
 
-  const CheckoutScreen({
-    super.key,
-    this.storeId,
-    this.storeName,
-  });
+  const CheckoutScreen({super.key, this.storeId, this.storeName});
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -36,34 +37,75 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final OrderService _orderService = OrderService();
   late final DeliveryQuoteCheckout _quotedCheckout;
-  Timer? _quoteClock;
+  StreamSubscription<DeliveryAddress?>? _activeAddressUpdates;
   bool get _quotesEnabled => ApiConfig.deliveryQuotesEnabled;
-  String? _branchId(AppStateProvider state) => widget.storeId ??
-      (state.cartItems.isEmpty ? null : state.cartItems.first['store_id'] as String?);
-  void _quoteChanged() { if (mounted) setState(() {}); }
+  String? _branchId(AppStateProvider state) =>
+      widget.storeId ??
+      (state.cartItems.isEmpty
+          ? null
+          : state.cartItems.first['store_id'] as String?);
+  void _quoteChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncActiveAddress() async {
+    final a=_selectedAddress;if(a==null||a.latitude==null||a.longitude==null)return;
+    final current=DeliveryAddressManager.instance.activeAddress;
+    if(current?.addressId==a.id&&current?.latitude==a.latitude&&current?.longitude==a.longitude)return;
+    await DeliveryAddressManager.instance.setActiveAddress(DeliveryAddress.fromJson({
+      'addressId':a.id,'userId':a.userId,'formattedAddress':a.fullAddress,'latitude':a.latitude,'longitude':a.longitude,
+      'label':a.name,'city':a.district,'regionId':a.regionId,'source':'saved','timestamp':a.updatedAt.toIso8601String(),
+    }));
+  }
+  StorefrontPreview? _preview(AppStateProvider state){
+    final b=_branchId(state);if(b==null||_selectedAddress?.id!=DeliveryAddressManager.instance.activeAddress?.addressId)return null;
+    return StorefrontPricing.instance.peek(b,state.cartItems,hasGoodsDiscount:_effectiveDiscount>0);
+  }
   Future<void> _loadQuote({bool renew = false}) async {
     if (!_quotesEnabled || !mounted || _selectedAddress == null) return;
-    final branch = _branchId(context.read<AppStateProvider>());
-    if (branch != null) await _quotedCheckout.load(branch, _selectedAddress!.id, renew: renew);
+    await SessionService.instance.getToken();
+    if(!mounted)return;
+    await _syncActiveAddress();
+    final state=context.read<AppStateProvider>();
+    final branch = _branchId(state);
+    if(branch!=null)await StorefrontPricing.instance.load(branch,state.cartItems,hasGoodsDiscount:_effectiveDiscount>0,force:renew);
+    // A binding quote is requested only for discount validation or final review,
+    // not repeatedly while the customer browses the checkout.
   }
-  bool _quoteMatches(AppStateProvider state) => _selectedAddress != null &&
-      _branchId(state) != null && _quotedCheckout.matches(_branchId(state)!, _selectedAddress!.id);
 
-  
-  double get _actualDeliveryFee => _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+  Future<void> _ensureQuoteFresh(String branch,String address)async{
+    await SessionService.instance.getToken();
+    await _quotedCheckout.ensureFresh(branch,address);
+  }
+
+  bool _quoteMatches(AppStateProvider state) =>
+      _selectedAddress != null &&
+      _branchId(state) != null &&
+      _quotedCheckout.matches(_branchId(state)!, _selectedAddress!.id);
+
+  double get _actualDeliveryFee =>
+      _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
   String? _validatedDiscountContext;
   String _discountContext() {
     final state = context.read<AppStateProvider>();
-    return jsonEncode([SessionService.instance.currentUserId, _branchId(state), state.cartItems,
-      _selectedAddress?.id, _quotedCheckout.quote?.id, _actualDeliveryFee]);
+    return jsonEncode([
+      SessionService.instance.currentUserId,
+      _branchId(state),
+      state.cartItems,
+      _selectedAddress?.id,
+      _actualDeliveryFee,
+    ]);
   }
-  bool get _discountCurrent => (_selectedDiscountId == null && _appliedPromoCode == null) ||
-      (_validatedDiscountContext == _discountContext() && (!_quotesEnabled || _quoteMatches(context.read<AppStateProvider>())));
+
+  bool get _discountCurrent =>
+      (_selectedDiscountId == null && _appliedPromoCode == null) ||
+      (_validatedDiscountContext == _discountContext());
   double get _effectiveDiscount => _discountCurrent ? _discount : 0;
   DetailedAddress? _selectedAddress;
   PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
   String _deliveryInstructions = '';
   bool _isLoading = false;
+  bool _preparingReview = false;
 
   // Merchant discounts
   List<StoreDiscount> _availableDiscounts = [];
@@ -82,19 +124,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   // restores the previously applied amount instead of wiping it
   double _promoDiscountAmount = 0.0;
   double _merchantDiscountAmount = 0.0;
-  
+
   // User information for checkout
   bool _isGuestUser = false;
   String _guestName = '';
   String _guestPhone = '';
   String _guestEmail = '';
-  
+
   // User login type detection
   bool _isLoggedInWithEmail = false;
   bool _isLoggedInWithPhone = false;
   String _userExistingEmail = '';
   String _userExistingPhone = '';
-  
+
   final TextEditingController _instructionsController = TextEditingController();
   final TextEditingController _guestNameController = TextEditingController();
   final TextEditingController _guestPhoneController = TextEditingController();
@@ -104,12 +146,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    StorefrontPricing.instance.addListener(_quoteChanged);
     _quotedCheckout = DeliveryQuoteCheckout(
       account: () => SessionService.instance.currentUserId,
-      token: () => SessionService.instance.accessToken)..addListener(_quoteChanged);
+      token: () => SessionService.instance.accessToken,
+    )..addListener(_quoteChanged);
+    _activeAddressUpdates=DeliveryAddressManager.instance.addressStream.listen((address){
+      if(!mounted||address==null||_selectedAddress==null||_quotedCheckout.pending)return;
+      if(address.addressId==_selectedAddress!.id&&address.latitude==_selectedAddress!.latitude&&address.longitude==_selectedAddress!.longitude)return;
+      _discountAttempt++;_quotedCheckout.invalidate();
+      unawaited(_loadUserAddress());
+    });
     if (_quotesEnabled) {
-      _quotedCheckout.restore().then((_) { if (mounted) _loadQuote(); });
-      _quoteClock = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
+      _quotedCheckout.restore().then((_) {
+        if (mounted) _loadQuote();
+      });
     }
     // تأخير تهيئة البيانات لتحسين الأداء
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -134,8 +185,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _loadStoreDiscounts() async {
     final appState = Provider.of<AppStateProvider>(context, listen: false);
-    final storeId = widget.storeId ??
-        (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
+    final storeId =
+        widget.storeId ??
+        (appState.cartItems.isNotEmpty
+            ? appState.cartItems.first['store_id']
+            : null);
     if (storeId == null || storeId.toString().isEmpty) return;
 
     setState(() {
@@ -146,12 +200,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final scope = [SessionService.instance.currentUserId, storeId.toString()];
     try {
-      final discounts = await _orderService.getStoreDiscounts(storeId.toString());
-      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>())) return;
-      setState(() { _availableDiscounts = discounts; _isLoadingDiscounts = false; _discountLoadError = null; });
+      final discounts = await _orderService.getStoreDiscounts(
+        storeId.toString(),
+      );
+      if (!mounted ||
+          scope[0] != SessionService.instance.currentUserId ||
+          scope[1] != _branchId(context.read<AppStateProvider>()))
+        return;
+      setState(() {
+        _availableDiscounts = discounts;
+        _isLoadingDiscounts = false;
+        _discountLoadError = null;
+      });
     } catch (_) {
-      if (!mounted || scope[0] != SessionService.instance.currentUserId || scope[1] != _branchId(context.read<AppStateProvider>())) return;
-      setState(() { _availableDiscounts = []; _isLoadingDiscounts = false; _discountLoadError = 'تعذر تحميل العروض'; });
+      if (!mounted ||
+          scope[0] != SessionService.instance.currentUserId ||
+          scope[1] != _branchId(context.read<AppStateProvider>()))
+        return;
+      setState(() {
+        _availableDiscounts = [];
+        _isLoadingDiscounts = false;
+        _discountLoadError = 'تعذر تحميل العروض';
+      });
     }
   }
 
@@ -168,9 +238,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isValidatingDiscount = true;
     });
 
-    if (_quotedCheckout.pending || (_quotesEnabled && !_quoteMatches(appState))) {
-      setState(() { _isValidatingDiscount = false; });
-      _showMessage('حدّث سعر التوصيل أولًا أو تابع محاولة الطلب السابقة', isError: true);
+    if (_quotesEnabled &&
+        !_quotedCheckout.pending &&
+        _selectedAddress != null) {
+      final branch = _branchId(appState);
+      if (branch != null)
+        await _ensureQuoteFresh(branch, _selectedAddress!.id);
+      if (!mounted) return;
+    }
+    if (_quotedCheckout.pending ||
+        (_quotesEnabled && !_quoteMatches(appState))) {
+      setState(() {
+        _isValidatingDiscount = false;
+      });
+      _showMessage(
+        _quotedCheckout.pending
+            ? 'تابع محاولة تأكيد الطلب السابقة أولًا'
+            : 'تعذر التحقق من الخصم؛ تحقق من الاتصال وأعد المحاولة',
+        isError: true,
+      );
       return;
     }
     final attempt = ++_discountAttempt;
@@ -185,7 +271,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     if (!mounted || attempt != _discountAttempt) return;
     if (validationContext != _discountContext()) {
-      setState(() { _isValidatingDiscount = false; });
+      setState(() {
+        _isValidatingDiscount = false;
+      });
       return;
     }
     setState(() {
@@ -234,17 +322,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
 
     final appState = Provider.of<AppStateProvider>(context, listen: false);
-    final storeId = widget.storeId ??
-        (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
+    final storeId =
+        widget.storeId ??
+        (appState.cartItems.isNotEmpty
+            ? appState.cartItems.first['store_id']
+            : null);
     if (storeId == null) return;
 
     setState(() {
       _isValidatingDiscount = true;
     });
 
-    if (_quotedCheckout.pending || (_quotesEnabled && !_quoteMatches(appState))) {
-      setState(() { _isValidatingDiscount = false; });
-      _showMessage('حدّث سعر التوصيل أولًا أو تابع محاولة الطلب السابقة', isError: true);
+    if (_quotesEnabled &&
+        !_quotedCheckout.pending &&
+        _selectedAddress != null) {
+      final branch = _branchId(appState);
+      if (branch != null)
+        await _ensureQuoteFresh(branch, _selectedAddress!.id);
+      if (!mounted) return;
+    }
+    if (_quotedCheckout.pending ||
+        (_quotesEnabled && !_quoteMatches(appState))) {
+      setState(() {
+        _isValidatingDiscount = false;
+      });
+      _showMessage(
+        _quotedCheckout.pending
+            ? 'تابع محاولة تأكيد الطلب السابقة أولًا'
+            : 'تعذر التحقق من الخصم؛ تحقق من الاتصال وأعد المحاولة',
+        isError: true,
+      );
       return;
     }
     final attempt = ++_discountAttempt;
@@ -259,7 +366,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     if (!mounted || attempt != _discountAttempt) return;
     if (validationContext != _discountContext()) {
-      setState(() { _isValidatingDiscount = false; });
+      setState(() {
+        _isValidatingDiscount = false;
+      });
       return;
     }
     setState(() {
@@ -267,7 +376,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
         _selectedDiscountId = discount.discountId;
-        _merchantDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
+        _merchantDiscountAmount =
+            (result['discount'] as num?)?.toDouble() ?? 0.0;
         _discount = _merchantDiscountAmount;
         // Only one discount per order: clear any applied promo code
         _appliedPromoCode = null;
@@ -294,8 +404,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.storeId != widget.storeId) {
       _discountAttempt++;
-      _selectedDiscountId = null; _appliedPromoCode = null;
-      _discount = 0; _merchantDiscountAmount = 0; _promoDiscountAmount = 0;
+      _selectedDiscountId = null;
+      _appliedPromoCode = null;
+      _discount = 0;
+      _merchantDiscountAmount = 0;
+      _promoDiscountAmount = 0;
       _validatedDiscountContext = null;
       _isValidatingDiscount = false;
       _loadStoreDiscounts();
@@ -304,7 +417,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
-    _quoteClock?.cancel();
+    _activeAddressUpdates?.cancel();
+    StorefrontPricing.instance.removeListener(_quoteChanged);
     _quotedCheckout.removeListener(_quoteChanged);
     _quotedCheckout.dispose();
     _instructionsController.dispose();
@@ -323,16 +437,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       // Check if user is logged in
       final sessionService = SessionService.instance;
-      
+
       if (sessionService.isLoggedIn && sessionService.currentUser != null) {
         // Logged in user - determine login method and load their info
         _isGuestUser = false;
         final currentUser = sessionService.currentUser!;
-        
+
         // Detect login method based on user data
-        final userEmail = currentUser['email'] ?? currentUser['userEmail'] ?? '';
-        final userPhone = currentUser['phone'] ?? currentUser['userPhone'] ?? '';
-        
+        final userEmail =
+            currentUser['email'] ?? currentUser['userEmail'] ?? '';
+        final userPhone =
+            currentUser['phone'] ?? currentUser['userPhone'] ?? '';
+
         if (userEmail.isNotEmpty && userPhone.isNotEmpty) {
           // User has both - need to determine primary login method
           // For now, assume email is primary if it exists
@@ -350,14 +466,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _userExistingPhone = userPhone;
           _guestPhoneController.text = userPhone;
         }
-        
+
         // Set user name if available
         final userName = currentUser['name'] ?? currentUser['userName'] ?? '';
         if (userName.isNotEmpty) {
           _guestNameController.text = userName;
           _guestName = userName;
         }
-        
+
         // Load user address asynchronously without blocking UI
         _loadUserAddress();
       } else {
@@ -378,14 +494,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _loadUserAddress() async {
     try {
-      final addressService = Provider.of<EnhancedAddressService>(context, listen: false);
-      
+      final addressService = Provider.of<EnhancedAddressService>(
+        context,
+        listen: false,
+      );
+
       // تحميل العناوين بشكل غير متزامن لعدم حجب واجهة المستخدم
       await addressService.fetchAddresses();
-      
-      if (mounted && addressService.defaultAddress != null) {
+
+      if (mounted && addressService.detailedAddresses.isNotEmpty) {
         setState(() {
-          _selectedAddress = addressService.defaultAddress;
+          final activeId=DeliveryAddressManager.instance.activeAddress?.addressId;
+          final matches=addressService.detailedAddresses.where((a)=>a.id==activeId);
+          _selectedAddress=matches.isNotEmpty?matches.first:addressService.defaultAddress??addressService.detailedAddresses.first;
         });
         await _loadQuote();
       }
@@ -416,84 +537,95 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: _isLoading
-          ? _buildLoadingWidget()
-          : Consumer<AppStateProvider>(
-              builder: (context, appState, child) {
-                if (appState.cartItems.isEmpty) {
-                  return const Center(
-                    child: Text('السلة فارغة'),
-                  );
-                }
+      body:
+          _isLoading
+              ? _buildLoadingWidget()
+              : Consumer<AppStateProvider>(
+                builder: (context, appState, child) {
+                  if (appState.cartItems.isEmpty) {
+                    return const Center(child: Text('السلة فارغة'));
+                  }
 
-                return Column(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(), // تحسين الأداء
-                        padding: const EdgeInsets.all(16),
-                        child: Form( // إضافة Form widget
-                          key: _formKey,
-                          child: RepaintBoundary( // تجنب إعادة رسم غير ضرورية
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                              // قسم معلومات الطلب - مع تحسين الأداء
-                              RepaintBoundary(
-                                child: _buildOrderSummary(appState),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              // قسم معلومات المستخدم - مع تحسين الأداء
-                              RepaintBoundary(
-                                child: _isGuestUser 
-                                    ? _buildGuestInfoSection()
-                                    : _buildLoggedInUserInfoSection(),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              // قسم العنوان
-                              RepaintBoundary(
-                                child: _buildAddressSection(),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              // قسم طريقة الدفع
-                              RepaintBoundary(
-                                child: _buildPaymentSection(),
-                              ),
-                              const SizedBox(height: 16),
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics:
+                              const ClampingScrollPhysics(), // تحسين الأداء
+                          padding: const EdgeInsets.all(16),
+                          child: Form(
+                            // إضافة Form widget
+                            key: _formKey,
+                            child: RepaintBoundary(
+                              // تجنب إعادة رسم غير ضرورية
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // قسم معلومات الطلب - مع تحسين الأداء
+                                  RepaintBoundary(
+                                    child: _buildOrderSummary(appState),
+                                  ),
+                                  const SizedBox(height: 16),
 
-                              // قسم العروض والخصومات
-                              RepaintBoundary(
-                                child: _buildDiscountsSection(),
+                                  // قسم معلومات المستخدم - مع تحسين الأداء
+                                  RepaintBoundary(
+                                    child:
+                                        _isGuestUser
+                                            ? _buildGuestInfoSection()
+                                            : _buildLoggedInUserInfoSection(),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // قسم العنوان
+                                  RepaintBoundary(
+                                    child: _buildAddressSection(),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // قسم طريقة الدفع
+                                  RepaintBoundary(
+                                    child: _buildPaymentSection(),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // قسم العروض والخصومات
+                                  RepaintBoundary(
+                                    child: _buildDiscountsSection(),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // قسم تعليمات التوصيل
+                                  RepaintBoundary(
+                                    child: _buildInstructionsSection(),
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // ملخص السعر
+                                  RepaintBoundary(
+                                    child: Column(
+                                      children: [
+                                        if (_quotesEnabled)
+                                          _buildQuoteStatus(appState),
+                                        _buildPriceSummary(appState),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(
+                                    height: 100,
+                                  ), // مساحة للزر السفلي
+                                ],
                               ),
-                              const SizedBox(height: 16),
-                              
-                              // قسم تعليمات التوصيل
-                              RepaintBoundary(
-                                child: _buildInstructionsSection(),
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              // ملخص السعر
-                              RepaintBoundary(
-                                child: Column(children: [if (_quotesEnabled) _buildQuoteStatus(appState), _buildPriceSummary(appState)]),
-                              ),
-                              const SizedBox(height: 100), // مساحة للزر السفلي
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                      ),
-                    ),
-                    
-                    // زر تأكيد الطلب
-                    _buildConfirmButton(appState),
-                  ],
-                );
-              },
-            ),
+
+                      // زر تأكيد الطلب
+                      _buildConfirmButton(appState),
+                    ],
+                  );
+                },
+              ),
     );
   }
 
@@ -502,16 +634,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(
-            color: AppColors.primary,
-          ),
+          CircularProgressIndicator(color: AppColors.primary),
           SizedBox(height: 16),
           Text(
             'جاري التحميل...',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey),
           ),
         ],
       ),
@@ -521,7 +648,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget _buildOrderSummary(AppStateProvider appState) {
     final itemCount = appState.cartItems.length;
     final totalQuantity = appState.cartItems.fold<int>(
-      0, 
+      0,
       (sum, item) => sum + (item['quantity'] as int? ?? 1),
     );
 
@@ -570,10 +697,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     Text(
                       '$itemCount أطباق ($totalQuantity قطعة)',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -640,7 +764,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          
+
           // Show selected address if available
           if (_selectedAddress != null)
             Container(
@@ -667,10 +791,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       if (_selectedAddress!.isDefault) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.green.withValues(alpha: 0.1),
-                            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                            border: Border.all(
+                              color: Colors.green.withValues(alpha: 0.3),
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text(
@@ -688,34 +817,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   const SizedBox(height: 4),
                   Text(
                     // عرض العنوان الكامل للضيوف أو الأجزاء المنفصلة للمستخدمين المسجلين
-                    _selectedAddress!.fullAddress.isNotEmpty && 
-                    (_selectedAddress!.province.isEmpty || _selectedAddress!.district.isEmpty || _selectedAddress!.neighborhood.isEmpty)
-                      ? _selectedAddress!.fullAddress
-                      : '${_selectedAddress!.province} - ${_selectedAddress!.district} - ${_selectedAddress!.neighborhood}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
+                    _selectedAddress!.fullAddress.isNotEmpty &&
+                            (_selectedAddress!.province.isEmpty ||
+                                _selectedAddress!.district.isEmpty ||
+                                _selectedAddress!.neighborhood.isEmpty)
+                        ? _selectedAddress!.fullAddress
+                        : '${_selectedAddress!.province} - ${_selectedAddress!.district} - ${_selectedAddress!.neighborhood}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
-                  if (_selectedAddress!.detailedAddress?.isNotEmpty == true) ...[
+                  if (_selectedAddress!.detailedAddress?.isNotEmpty ==
+                      true) ...[
                     const SizedBox(height: 4),
                     Text(
                       _selectedAddress!.detailedAddress ?? '',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
                   ],
                   if (_selectedAddress!.landmark.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(
-                          Icons.place,
-                          size: 14,
-                          color: Colors.grey[500],
-                        ),
+                        Icon(Icons.place, size: 14, color: Colors.grey[500]),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -776,10 +898,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(height: 4),
               Text(
                 'يرجى إضافة عنوانك لإتمام الطلب',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             ],
           ),
@@ -819,10 +938,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(height: 4),
               Text(
                 'اختر من عناوينك المحفوظة أو أضف عنوان جديد',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             ],
           ),
@@ -875,50 +991,60 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           const SizedBox(height: 16),
           Column(
-            children: PaymentMethod.values.map((method) {
-              return RadioListTile<PaymentMethod>(
-                value: method,
-                groupValue: _selectedPaymentMethod,
-                onChanged: method.isEnabled ? (value) {
-                  setState(() {
-                    _selectedPaymentMethod = value!;
-                  });
-                } : null,
-                title: Row(
-                  children: [
-                    Text(
-                      method.arabicName,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: method.isEnabled ? Colors.black87 : Colors.grey,
-                      ),
-                    ),
-                    if (!method.isEnabled) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-                        ),
-                        child: const Text(
-                          'قريباً',
+            children:
+                PaymentMethod.values.map((method) {
+                  return RadioListTile<PaymentMethod>(
+                    value: method,
+                    groupValue: _selectedPaymentMethod,
+                    onChanged:
+                        method.isEnabled
+                            ? (value) {
+                              setState(() {
+                                _selectedPaymentMethod = value!;
+                              });
+                            }
+                            : null,
+                    title: Row(
+                      children: [
+                        Text(
+                          method.arabicName,
                           style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.orange,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color:
+                                method.isEnabled ? Colors.black87 : Colors.grey,
                           ),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-                activeColor: AppColors.primary,
-                contentPadding: EdgeInsets.zero,
-              );
-            }).toList(),
+                        if (!method.isEnabled) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: const Text(
+                              'قريباً',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    activeColor: AppColors.primary,
+                    contentPadding: EdgeInsets.zero,
+                  );
+                }).toList(),
           ),
         ],
       ),
@@ -926,9 +1052,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildDiscountsSection() {
-    if (_discountLoadError != null) return Column(children: [
-      Text(_discountLoadError!), TextButton(onPressed: _loadStoreDiscounts, child: const Text('إعادة تحميل العروض')),
-    ]);
+    if (_discountLoadError != null)
+      return Column(
+        children: [
+          Text(_discountLoadError!),
+          TextButton(
+            onPressed: _loadStoreDiscounts,
+            child: const Text('إعادة تحميل العروض'),
+          ),
+        ],
+      );
     if (_isLoadingDiscounts) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -1007,7 +1140,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     hintText: 'أدخل كود الخصم',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                      borderSide: BorderSide(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -1022,13 +1157,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: _isValidatingDiscount
-                    ? null
-                    : (_appliedPromoCode != null ? _clearPromoCode : _applyPromoCode),
+                onPressed:
+                    _isValidatingDiscount
+                        ? null
+                        : (_appliedPromoCode != null
+                            ? _clearPromoCode
+                            : _applyPromoCode),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -1042,11 +1183,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             return RadioListTile<String>(
               value: discount.discountId,
               groupValue: _selectedDiscountId,
-              onChanged: _isValidatingDiscount
-                  ? null
-                  : (_) => _selectDiscount(discount),
+              onChanged:
+                  _isValidatingDiscount
+                      ? null
+                      : (_) => _selectDiscount(discount),
               title: Text(
-                discount.title.isNotEmpty ? discount.title : discount.displayValue,
+                discount.title.isNotEmpty
+                    ? discount.title
+                    : discount.displayValue,
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -1065,14 +1209,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           }),
           if (_selectedDiscountId != null) ...[
             TextButton(
-              onPressed: _isValidatingDiscount ? null : () => _selectDiscount(null),
+              onPressed:
+                  _isValidatingDiscount ? null : () => _selectDiscount(null),
               child: const Text(
                 'إزالة الخصم',
                 style: TextStyle(color: Colors.red, fontSize: 12),
               ),
             ),
           ],
-          if (!_discountCurrent) const Text('أعد اختيار الخصم بعد تغيير السلة أو سعر التوصيل'),
+          if (!_discountCurrent)
+            const Text('أعد اختيار الخصم بعد تغيير السلة أو سعر التوصيل'),
           if (_effectiveDiscount > 0) ...[
             const SizedBox(height: 4),
             Container(
@@ -1153,7 +1299,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               hintText: 'أي تعليمات خاصة للسائق؟ (اختياري)',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1171,21 +1319,38 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildQuoteStatus(AppStateProvider appState) {
-    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
-      Text(_quotedCheckout.pending
-          ? 'توجد محاولة تأكيد سابقة. تابعها لاستعادة نتيجتها قبل بدء طلب آخر.'
-          : _quoteMatches(appState)
-              ? 'سعر التوصيل صالح لفترة قصيرة. الإجمالي يشمل قيمة السلة المعروضة.'
-              : (_quotedCheckout.error ?? 'حمّل سعر التوصيل قبل تأكيد الطلب')),
-      if (!_quotedCheckout.pending)
-        TextButton(onPressed: _quotedCheckout.busy || _isLoading ? null : () => _loadQuote(renew: _quotedCheckout.quote != null),
-          child: Text(_quotedCheckout.busy ? 'جارٍ تسعير التوصيل…' : 'تحديث سعر التوصيل')),
-    ])));
+    if (!_quotedCheckout.pending &&
+        (_quotedCheckout.error == null || _quotedCheckout.valid)) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Text(
+              _quotedCheckout.pending
+                  ? 'توجد محاولة تأكيد سابقة. تابعها لاستعادة نتيجتها قبل بدء طلب آخر.'
+                  : 'تعذر الاتصال بخدمة التسعير. تحقق من الاتصال وأعد المحاولة.',
+            ),
+            if (!_quotedCheckout.pending)
+              TextButton(
+                onPressed:
+                    _quotedCheckout.busy || _isLoading
+                        ? null
+                        : () => _loadQuote(renew: true),
+                child: const Text('إعادة المحاولة'),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildPriceSummary(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
-    final deliveryFee = _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+    final visiblePreview=_preview(appState);
+    final deliveryFee = _quotesEnabled ? (visiblePreview?.fee ?? 0) : 10.0;
     final discount = _effectiveDiscount;
     final total = subtotal + deliveryFee - discount;
 
@@ -1243,7 +1408,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('رسوم التوصيل'),
-              Text(_quotesEnabled && !_quoteMatches(appState) ? 'بانتظار التسعير' : '${deliveryFee.toStringAsFixed(3)} د.ع'),
+              StorefrontValue(branchId:_branchId(appState)??'',field:StorefrontField.fee,items:appState.cartItems,hasGoodsDiscount:discount>0),
             ],
           ),
           if (discount > 0) ...[
@@ -1251,10 +1416,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'الخصم',
-                  style: TextStyle(color: Colors.green),
-                ),
+                const Text('الخصم', style: TextStyle(color: Colors.green)),
                 Text(
                   '-${discount.toStringAsFixed(2)} د.ع',
                   style: const TextStyle(color: Colors.green),
@@ -1276,7 +1438,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               Text(
-                _quotesEnabled && !_quoteMatches(appState) ? 'بانتظار التسعير' : '${total.toStringAsFixed(3)} د.ع',
+                _quotesEnabled && visiblePreview == null
+                    ? '—'
+                    : '${total.toStringAsFixed(3)} د.ع',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1292,12 +1456,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _buildConfirmButton(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
-    final deliveryFee = _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+    final deliveryFee =
+        _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
     final discount = _effectiveDiscount;
     final total = subtotal + deliveryFee - discount;
     final bool pending = _quotesEnabled && _quotedCheckout.pending;
-    final bool canConfirm = !_isValidatingDiscount && (pending || _discountCurrent) && !_isLoading && (!_quotesEnabled || !_quotedCheckout.busy) &&
-        (pending || (_selectedAddress != null && (!_quotesEnabled || _quoteMatches(appState))));
+    final bool canConfirm =
+        !_isValidatingDiscount &&
+        (pending || _discountCurrent) &&
+        !_isLoading &&
+        (pending || _selectedAddress != null);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1317,9 +1485,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: ElevatedButton(
             onPressed: canConfirm ? () => _confirmOrder(appState) : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: canConfirm 
-                  ? AppColors.primary 
-                  : Colors.grey[400],
+              backgroundColor:
+                  canConfirm ? AppColors.primary : Colors.grey[400],
               foregroundColor: AppColors.secondary,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
@@ -1327,22 +1494,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               elevation: canConfirm ? 2 : 0,
             ),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+            child:
+                _isLoading
+                    ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                    : Text(
+                      pending
+                          ? 'متابعة تأكيد الطلب السابق'
+                          : ApiConfig.commercialPricingEnabled
+                          ? 'مراجعة إجمالي الطلب'
+                          : 'تأكيد الطلب • ${total.toStringAsFixed(3)} د.ع',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  )
-                : Text(
-                    pending ? 'متابعة تأكيد الطلب السابق' : _quotesEnabled && !_quoteMatches(appState) ? 'حدّث سعر التوصيل أولًا' : ApiConfig.commercialPricingEnabled ? 'مراجعة إجمالي الطلب' : 'تأكيد الطلب • ${total.toStringAsFixed(3)} د.ع',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
           ),
         ),
       ),
@@ -1393,7 +1565,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Name field
           TextFormField(
             controller: _guestNameController,
@@ -1404,7 +1576,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               prefixIcon: const Icon(Icons.person_outline),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1422,7 +1596,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             },
           ),
           const SizedBox(height: 12),
-          
+
           // Phone field
           TextFormField(
             controller: _guestPhoneController,
@@ -1434,7 +1608,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               prefixIcon: const Icon(Icons.phone_outlined),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1452,7 +1628,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             },
           ),
           const SizedBox(height: 12),
-          
+
           // Email field (optional)
           TextFormField(
             controller: _guestEmailController,
@@ -1464,7 +1640,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               prefixIcon: const Icon(Icons.email_outlined),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1476,16 +1654,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             },
             validator: (value) {
               if (value != null && value.isNotEmpty) {
-                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                if (!RegExp(
+                  r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                ).hasMatch(value)) {
                   return 'البريد الإلكتروني غير صحيح';
                 }
               }
               return null;
             },
           ),
-          
+
           const SizedBox(height: 12),
-          
+
           // Login suggestion
           Container(
             padding: const EdgeInsets.all(12),
@@ -1515,10 +1695,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                       const Text(
                         'سجل دخولك لحفظ معلوماتك وعناوينك',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -1606,7 +1783,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Name field (always shown for logged in users)
           TextField(
             controller: _guestNameController,
@@ -1616,7 +1793,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               prefixIcon: const Icon(Icons.person_outline),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1633,7 +1812,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             },
           ),
           const SizedBox(height: 12),
-          
+
           // Show appropriate fields based on login method
           if (_isLoggedInWithEmail) ...[
             // User logged in with email - show email (readonly) and phone (required)
@@ -1644,10 +1823,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               decoration: InputDecoration(
                 labelText: 'البريد الإلكتروني',
                 prefixIcon: const Icon(Icons.email_outlined),
-                suffixIcon: const Icon(Icons.verified, color: Colors.green, size: 20),
+                suffixIcon: const Icon(
+                  Icons.verified,
+                  color: Colors.green,
+                  size: 20,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                  borderSide: BorderSide(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1659,7 +1844,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               readOnly: true,
             ),
             const SizedBox(height: 12),
-            
+
             // Phone field (required)
             TextField(
               controller: _guestPhoneController,
@@ -1671,7 +1856,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 prefixIcon: const Icon(Icons.phone_outlined),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                  borderSide: BorderSide(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1693,10 +1880,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               decoration: InputDecoration(
                 labelText: 'رقم الهاتف',
                 prefixIcon: const Icon(Icons.phone_outlined),
-                suffixIcon: const Icon(Icons.verified, color: Colors.green, size: 20),
+                suffixIcon: const Icon(
+                  Icons.verified,
+                  color: Colors.green,
+                  size: 20,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                  borderSide: BorderSide(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1708,7 +1901,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               readOnly: true,
             ),
             const SizedBox(height: 12),
-            
+
             // Email field (optional)
             TextField(
               controller: _guestEmailController,
@@ -1720,7 +1913,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 prefixIcon: const Icon(Icons.email_outlined),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                  borderSide: BorderSide(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1734,9 +1929,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               },
             ),
           ],
-          
+
           const SizedBox(height: 12),
-          
+
           // Info message
           Container(
             padding: const EdgeInsets.all(12),
@@ -1765,7 +1960,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                       ),
                       Text(
-                        _isLoggedInWithEmail 
+                        _isLoggedInWithEmail
                             ? 'تسجيل الدخول بالبريد الإلكتروني - يرجى إضافة رقم الهاتف'
                             : 'تسجيل الدخول برقم الهاتف - يمكنك إضافة البريد الإلكتروني (اختياري)',
                         style: const TextStyle(
@@ -1782,7 +1977,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ],
       ),
     );
-  }  void _selectAddress() async {
+  }
+
+  void _selectAddress() async {
     if (_isGuestUser) {
       // For guest users, go directly to add new address
       _addNewAddress();
@@ -1792,9 +1989,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final selectedAddress = await Navigator.push<DetailedAddress>(
       context,
       MaterialPageRoute(
-        builder: (context) => AddressSelectionScreen(
-          currentAddress: _selectedAddress,
-        ),
+        builder:
+            (context) =>
+                AddressSelectionScreen(currentAddress: _selectedAddress),
       ),
     );
 
@@ -1815,169 +2012,209 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         backgroundColor: AppColors.primary,
       ),
     );
-    
+
     // TODO: Navigate to address form screen
     // For now, create a simple address form dialog
     _showAddAddressDialog();
-  }  void _showAddAddressDialog() {
+  }
+
+  void _showAddAddressDialog() {
     final addressController = TextEditingController();
     final landmarkController = TextEditingController();
-    
+
     showDialog(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('أضف عنوان التوصيل'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: addressController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'العنوان الكامل *',
-                    hintText: 'اكتب عنوانك كما تريد: مثل شارع فلسطين، الكرخ، بغداد أو أي طريقة تفضلها',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.location_on),
-                  ),
+      builder:
+          (context) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Text('أضف عنوان التوصيل'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: addressController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'العنوان الكامل *',
+                        hintText:
+                            'اكتب عنوانك كما تريد: مثل شارع فلسطين، الكرخ، بغداد أو أي طريقة تفضلها',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.location_on),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: landmarkController,
+                      decoration: const InputDecoration(
+                        labelText: 'أقرب نقطة دليلية (اختياري)',
+                        hintText:
+                            'مثل: قرب مطعم الصادق، بجانب الصيدلية، أمام المدرسة',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.place),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'ملاحظة: يمكنك كتابة العنوان بأي طريقة تريدها، لا حاجة لتقسيمه إلى أجزاء',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: landmarkController,
-                  decoration: const InputDecoration(
-                    labelText: 'أقرب نقطة دليلية (اختياري)',
-                    hintText: 'مثل: قرب مطعم الصادق، بجانب الصيدلية، أمام المدرسة',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.place),
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('إلغاء'),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'ملاحظة: يمكنك كتابة العنوان بأي طريقة تريدها، لا حاجة لتقسيمه إلى أجزاء',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                    fontStyle: FontStyle.italic,
-                  ),
+                ElevatedButton(
+                  onPressed: () {
+                    final fullAddress = addressController.text.trim();
+                    final landmark = landmarkController.text.trim();
+
+                    if (fullAddress.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('يرجى إدخال العنوان الكامل'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    // إنشاء عنوان مؤقت للضيف بصيغة مبسطة
+                    final guestAddress = DetailedAddress(
+                      id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
+                      userId: 'guest',
+                      name: 'عنوان الضيف',
+                      province: '', // لا نحتاج تقسيم العنوان
+                      district: '',
+                      neighborhood: '',
+                      landmark: landmark.isNotEmpty ? landmark : '',
+                      fullAddress:
+                          fullAddress, // نحفظ العنوان كما أدخله المستخدم
+                      addressType: AddressType.other,
+                      createdAt: DateTime.now(),
+                      updatedAt: DateTime.now(),
+                    );
+
+                    setState(() {
+                      _selectedAddress = guestAddress;
+                    });
+
+                    Navigator.of(context).pop();
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('تم حفظ العنوان بنجاح'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  },
+                  child: const Text('حفظ'),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final fullAddress = addressController.text.trim();
-                final landmark = landmarkController.text.trim();
-                
-                if (fullAddress.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('يرجى إدخال العنوان الكامل'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                  return;
-                }
-
-                // إنشاء عنوان مؤقت للضيف بصيغة مبسطة
-                final guestAddress = DetailedAddress(
-                  id: 'guest_${DateTime.now().millisecondsSinceEpoch}',
-                  userId: 'guest',
-                  name: 'عنوان الضيف',
-                  province: '', // لا نحتاج تقسيم العنوان
-                  district: '',
-                  neighborhood: '',
-                  landmark: landmark.isNotEmpty ? landmark : '',
-                  fullAddress: fullAddress, // نحفظ العنوان كما أدخله المستخدم
-                  addressType: AddressType.other,
-                  createdAt: DateTime.now(),
-                  updatedAt: DateTime.now(),
-                );
-                
-                setState(() {
-                  _selectedAddress = guestAddress;
-                });
-                
-                Navigator.of(context).pop();
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تم حفظ العنوان بنجاح'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-
-
   Future<void> _confirmOrder(AppStateProvider appState) async {
-    if (!_quotedCheckout.pending && !_discountCurrent) {
-      _showMessage('أعد التحقق من الخصم بعد تغيير السلة أو سعر التوصيل', isError: true);
-      return;
-    }
-    if (_quotesEnabled && _quotedCheckout.pending) {
-      await _resumeQuotedOrder();
-      return;
-    }
-    if (_quotesEnabled && !_quoteMatches(appState)) {
-      _showMessage('حدّث سعر التوصيل وراجعه ثم أكد الطلب مجددًا', isError: true);
-      return;
-    }
-    // التحقق من صحة النموذج أولاً
-    if (!_formKey.currentState!.validate()) {
-      _showMessage('يرجى تعبئة جميع الحقول المطلوبة بشكل صحيح', isError: true);
-      return;
-    }
-    
-    // فحص حالة المطعم أولاً
-    if (widget.storeId != null) {
-      final businessStatusData = await BusinessStatusService.getBusinessStatus(widget.storeId!);
-      
-      if (businessStatusData != null) {
-        final canAcceptOrders = businessStatusData['isOpen'] as bool? ?? false;
-        final statusMessage = businessStatusData['message'] as String? ?? '';
-        
-        if (!canAcceptOrders) {
+    if (_isLoading || _preparingReview) return;
+    _preparingReview = true;
+    try {
+      if (_quotesEnabled && _quotedCheckout.pending) {
+        await _resumeQuotedOrder();
+        return;
+      }
+      if (_quotesEnabled && _selectedAddress != null) {
+        await SessionService.instance.getToken();
+        if(!mounted)return;
+        final branch = _branchId(appState);
+        if (branch != null) {
+          setState(() {
+            _isLoading = true;
+          });
+          try {
+            await _ensureQuoteFresh(branch, _selectedAddress!.id);
+          } finally {
+            if (mounted)
+              setState(() {
+                _isLoading = false;
+              });
+          }
+        }
+        if (!mounted) return;
+        if (!_quoteMatches(appState)) {
           _showMessage(
-            statusMessage.isNotEmpty 
-              ? statusMessage 
-              : 'المطعم غير متاح حالياً لاستقبال الطلبات',
-            isError: true
+            'تعذر مراجعة إجمالي الطلب؛ تحقق من الاتصال وأعد المحاولة',
+            isError: true,
           );
           return;
         }
       }
-    }
+      if (!_discountCurrent) {
+        _showMessage(
+          'تغير مبلغ التوصيل؛ أعد التحقق من الخصم ثم راجع الإجمالي',
+          isError: true,
+        );
+        return;
+      }
+      // التحقق من صحة النموذج أولاً
+      if (!_formKey.currentState!.validate()) {
+        _showMessage(
+          'يرجى تعبئة جميع الحقول المطلوبة بشكل صحيح',
+          isError: true,
+        );
+        return;
+      }
 
-    // التحقق من العنوان
-    if (_selectedAddress == null) {
-      _showMessage('يرجى اختيار عنوان التوصيل', isError: true);
-      return;
-    }
+      // فحص حالة المطعم أولاً
+      if (widget.storeId != null) {
+        final businessStatusData =
+            await BusinessStatusService.getBusinessStatus(widget.storeId!);
 
-    // التحقق البسيط من العنوان فقط
-    if (_selectedAddress!.fullAddress.trim().isEmpty || 
-        _selectedAddress!.fullAddress == 'العنوان غير مكتمل' ||
-        _selectedAddress!.fullAddress == 'عنوان غير محدد') {
-      _showMessage('يرجى إضافة أو اختيار عنوان صحيح للتوصيل', isError: true);
-      return;
-    }
+        if (businessStatusData != null) {
+          final canAcceptOrders =
+              businessStatusData['isOpen'] as bool? ?? false;
+          final statusMessage = businessStatusData['message'] as String? ?? '';
 
-    // إذا وصلنا هنا، العنوان صحيح ومكتمل
-    _createOrderWithAddress(appState);
+          if (!canAcceptOrders) {
+            _showMessage(
+              statusMessage.isNotEmpty
+                  ? statusMessage
+                  : 'المطعم غير متاح حالياً لاستقبال الطلبات',
+              isError: true,
+            );
+            return;
+          }
+        }
+      }
+
+      // التحقق من العنوان
+      if (_selectedAddress == null) {
+        _showMessage('يرجى اختيار عنوان التوصيل', isError: true);
+        return;
+      }
+
+      // التحقق البسيط من العنوان فقط
+      if (_selectedAddress!.fullAddress.trim().isEmpty ||
+          _selectedAddress!.fullAddress == 'العنوان غير مكتمل' ||
+          _selectedAddress!.fullAddress == 'عنوان غير محدد') {
+        _showMessage('يرجى إضافة أو اختيار عنوان صحيح للتوصيل', isError: true);
+        return;
+      }
+
+      // إذا وصلنا هنا، العنوان صحيح ومكتمل
+      await _createOrderWithAddress(appState);
+    } finally {
+      _preparingReview = false;
+    }
   }
 
   Future<void> _createOrderWithAddress(AppStateProvider appState) async {
@@ -2017,16 +2254,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         userId = null; // null للضيوف
         customerName = _guestName.trim();
         customerPhone = _guestPhone.trim();
-        customerEmail = _guestEmail.trim().isNotEmpty ? _guestEmail.trim() : null;
+        customerEmail =
+            _guestEmail.trim().isNotEmpty ? _guestEmail.trim() : null;
       } else {
         // مستخدم مسجل - جمع البيانات بناءً على طريقة تسجيل الدخول
         final sessionService = SessionService.instance;
         final currentUser = sessionService.currentUser;
-        
+
         userId = sessionService.currentUserId;
-        customerName = _guestName.trim().isNotEmpty ? _guestName.trim() : 
-                      (currentUser?['name'] ?? currentUser?['full_name'] ?? 'مستخدم');
-        
+        customerName =
+            _guestName.trim().isNotEmpty
+                ? _guestName.trim()
+                : (currentUser?['name'] ??
+                    currentUser?['full_name'] ??
+                    'مستخدم');
+
         if (_isLoggedInWithEmail) {
           // مسجل بالإيميل - استخدام الإيميل المحفوظ ورقم الهاتف المدخل
           customerEmail = _userExistingEmail;
@@ -2034,13 +2276,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         } else if (_isLoggedInWithPhone) {
           // مسجل برقم الهاتف - استخدام رقم الهاتف المحفوظ والإيميل المدخل (إن وجد)
           customerPhone = _userExistingPhone;
-          customerEmail = _guestEmail.trim().isNotEmpty ? _guestEmail.trim() : null;
+          customerEmail =
+              _guestEmail.trim().isNotEmpty ? _guestEmail.trim() : null;
         } else {
           // حالة افتراضية
-          customerPhone = _guestPhone.trim().isNotEmpty ? _guestPhone.trim() : 
-                         (currentUser?['phone'] ?? _selectedAddress!.phoneNumber);
-          customerEmail = _guestEmail.trim().isNotEmpty ? _guestEmail.trim() : 
-                         currentUser?['email'];
+          customerPhone =
+              _guestPhone.trim().isNotEmpty
+                  ? _guestPhone.trim()
+                  : (currentUser?['phone'] ?? _selectedAddress!.phoneNumber);
+          customerEmail =
+              _guestEmail.trim().isNotEmpty
+                  ? _guestEmail.trim()
+                  : currentUser?['email'];
         }
       }
 
@@ -2055,26 +2302,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       // التحقق من صحة البيانات
-      final storeId = widget.storeId ?? (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_id'] : null);
-      final storeName = widget.storeName ?? (appState.cartItems.isNotEmpty ? appState.cartItems.first['store_name'] : null);
-      
+      final storeId =
+          widget.storeId ??
+          (appState.cartItems.isNotEmpty
+              ? appState.cartItems.first['store_id']
+              : null);
+      final storeName =
+          widget.storeName ??
+          (appState.cartItems.isNotEmpty
+              ? appState.cartItems.first['store_name']
+              : null);
+
       // الحصول على عنوان المطعم من بيانات السلة
       String storeAddress = 'العنوان غير محدد';
       if (appState.cartItems.isNotEmpty) {
         final firstItem = appState.cartItems.first;
-        storeAddress = firstItem['store_address'] as String? ?? 'العنوان غير محدد';
-        
+        storeAddress =
+            firstItem['store_address'] as String? ?? 'العنوان غير محدد';
+
         // طباعة عنوان المطعم للتشخيص
         print('🛒 CheckoutScreen - بيانات السلة:');
         print('  عدد الأصناف: ${appState.cartItems.length}');
         print('  عنوان المطعم من السلة: "$storeAddress"');
       }
-      
+
       if (storeId == null || storeId.isEmpty) {
         _showMessage('خطأ: معرف المطعم غير موجود', isError: true);
         return;
       }
-      
+
       if (appState.cartItems.isEmpty) {
         _showMessage('خطأ: السلة فارغة', isError: true);
         return;
@@ -2100,7 +2356,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         print('  - storeImage isEmpty: ${storeImage?.isEmpty ?? true}');
         print('  - firstItem keys: ${firstItem.keys.toList()}');
         if (firstItem.containsKey('store_image')) {
-          print('  - store_image value type: ${firstItem['store_image'].runtimeType}');
+          print(
+            '  - store_image value type: ${firstItem['store_image'].runtimeType}',
+          );
         }
       }
 
@@ -2113,19 +2371,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         cartItems: appState.cartItems,
         deliveryAddress: _selectedAddress!,
         paymentMethod: _selectedPaymentMethod,
-        deliveryInstructions: _deliveryInstructions.isEmpty ? null : _deliveryInstructions,
+        deliveryInstructions:
+            _deliveryInstructions.isEmpty ? null : _deliveryInstructions,
         deliveryFee: _quotesEnabled ? _quotedCheckout.quote!.fee : 10.0,
         quoteCheckout: _quotesEnabled ? _quotedCheckout : null,
         approveCommercial: (proposal) async {
           if (!mounted || commercialScope != _discountContext()) return false;
           final scope = commercialScope;
-          String value(String key) => ((proposal[key]['minorAmount'] as int) / 1000).toStringAsFixed(3);
-          final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
-            title: const Text('تأكيد إجمالي الطلب'),
-            content: Text('السلع: ${value('goodsGross')} د.ع\nالخصم: ${value('discount')} د.ع\nرسوم الخدمة: ${value('serviceFee')} د.ع\nالتوصيل: ${value('deliveryFee')} د.ع${proposal.containsKey('driverTip') ? '\nالإكرامية: ${value('driverTip')} د.ع' : ''}\nالإجمالي: ${value('customerTotal')} د.ع'),
-            actions: [TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('إلغاء')),
-              FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('تأكيد هذا المبلغ'))],
-          ));
+          final accepted = await showModalBottomSheet<bool>(
+            context: context,
+            isScrollControlled: true,
+            useSafeArea: true,
+            showDragHandle: true,
+            backgroundColor: Colors.white,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            builder:
+                (_) => CommercialConfirmationSheet(
+                  proposal: proposal,
+                  storeName: storeName ?? 'المطعم',
+                  customerName: customerName ?? '',
+                  phone: customerPhone ?? '',
+                  address: _selectedAddress!.fullAddress,
+                  paymentLabel:
+                      _selectedPaymentMethod == PaymentMethod.cash
+                          ? 'نقدًا عند الاستلام'
+                          : 'طريقة الدفع المختارة',
+                  instructions: _deliveryInstructions,
+                  items:
+                      appState.cartItems
+                          .map((item) => Map<String, dynamic>.from(item))
+                          .toList(),
+                ),
+          );
           return mounted && scope == _discountContext() && accepted == true;
         },
         promoCode: _appliedPromoCode,
@@ -2142,21 +2421,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       if (result['success']) {
         final order = result['order'] as OrderModel;
-        
+
         // إضافة الطلب للقائمة المحلية في OrderService
         _orderService.addOrderToList(order);
-        
+
         // مسح السلة
         appState.clearCart();
-        
+
         // الانتقال لشاشة تتبع الطلب
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => OrderTrackingScreen(
-              orderId: order.id,
-              orderNumber: order.orderNumber,
-            ),
+            builder:
+                (context) => OrderTrackingScreen(
+                  orderId: order.id,
+                  orderNumber: order.orderNumber,
+                ),
           ),
         );
       } else if (result['code'] != null) {
@@ -2173,43 +2453,78 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _showMessage(result['message'] ?? 'فشل في إنشاء الطلب', isError: true);
       }
     } on TimeoutException catch (_) {
-      _showMessage('انتهت مهلة الاتصال - يرجى المحاولة مرة أخرى', isError: true);
+      _showMessage(
+        'انتهت مهلة الاتصال - يرجى المحاولة مرة أخرى',
+        isError: true,
+      );
     } on FormatException catch (_) {
-      _showMessage('خطأ في تنسيق البيانات - يرجى المحاولة مرة أخرى', isError: true);
+      _showMessage(
+        'خطأ في تنسيق البيانات - يرجى المحاولة مرة أخرى',
+        isError: true,
+      );
     } catch (e) {
       String errorMessage;
       final eStr = e.toString();
-      if (eStr.isEmpty || eStr == '{}' || eStr == '{().toString()}' || eStr == 'null') {
+      if (eStr.isEmpty ||
+          eStr == '{}' ||
+          eStr == '{().toString()}' ||
+          eStr == 'null') {
         errorMessage = 'خطأ في إنشاء الطلب - يرجى المحاولة مرة أخرى';
       } else {
         errorMessage = 'خطأ في إنشاء الطلب: $eStr';
       }
       _showMessage(errorMessage, isError: true);
     } finally {
-      if (mounted) setState(() { _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+        });
     }
   }
 
   Future<void> _resumeQuotedOrder() async {
-    setState(() { _isLoading = true; });
+    setState(() {
+      _isLoading = true;
+    });
     try {
       final response = await _quotedCheckout.confirm(null);
       if (!mounted) return;
       final data = jsonDecode(response.body);
-      if ([200, 201].contains(response.statusCode) && data['success'] == true && data['order'] is Map) {
-        final order = OrderModel.fromJson(Map<String, dynamic>.from(data['order']));
+      if ([200, 201].contains(response.statusCode) &&
+          data['success'] == true &&
+          data['order'] is Map) {
+        final order = OrderModel.fromJson(
+          Map<String, dynamic>.from(data['order']),
+        );
         _orderService.addOrderToList(order);
         // A restored attempt may belong to a previous cart. Keep today's cart intact.
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => OrderTrackingScreen(
-          orderId: order.id, orderNumber: order.orderNumber)));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder:
+                (_) => OrderTrackingScreen(
+                  orderId: order.id,
+                  orderNumber: order.orderNumber,
+                ),
+          ),
+        );
       } else {
-        _showMessage(_quotedCheckout.pending
-            ? 'لم تتأكد النتيجة؛ أعد متابعة التأكيد. لن ننشئ محاولة أخرى'
-            : 'لم يُنشأ الطلب بهذا العرض؛ حدّث السعر وراجعه ثم أكد مجددًا', isError: true);
+        _showMessage(
+          _quotedCheckout.pending
+              ? 'لم تتأكد النتيجة؛ أعد متابعة التأكيد. لن ننشئ محاولة أخرى'
+              : 'لم يُنشأ الطلب بهذا العرض؛ حدّث السعر وراجعه ثم أكد مجددًا',
+          isError: true,
+        );
       }
     } catch (_) {
-      if (mounted) _showMessage('تعذر تأكيد النتيجة؛ أعد متابعة التأكيد', isError: true);
-    } finally { if (mounted) setState(() { _isLoading = false; }); }
+      if (mounted)
+        _showMessage('تعذر تأكيد النتيجة؛ أعد متابعة التأكيد', isError: true);
+    } finally {
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+        });
+    }
   }
 
   void _showMessage(String message, {bool isError = false}) {
@@ -2359,10 +2674,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       Navigator.of(sheetContext).pop();
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) => OrderTrackingScreen(
-                            orderId: orderId,
-                            orderNumber: orderNumber ?? orderId,
-                          ),
+                          builder:
+                              (context) => OrderTrackingScreen(
+                                orderId: orderId,
+                                orderNumber: orderNumber ?? orderId,
+                              ),
                         ),
                       );
                     },
@@ -2407,9 +2723,4 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       },
     );
   }
-
-
-
-
-
 }

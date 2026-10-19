@@ -325,11 +325,16 @@ class OrderService extends ChangeNotifier {
         throw Exception(errorMessage);
       }
     } catch (e) {
+      if (e is ActiveCheckoutOrder) {
+        return {'success': false, 'statusCode': 409, 'errorType': 'ACTIVE_ORDER_CONFLICT',
+          'message': 'لديك طلب جارٍ. أكمله أو ألغِه من صفحة طلباتك قبل إنشاء طلب جديد.',
+          'activeOrderDetails': e.details};
+      }
       print('OrderService: Error creating order: $e');
       _setError('خطأ في إنشاء الطلب: ${e.toString()}');
       return {
         'success': false,
-        'message': e.toString(),
+        'message': e is StateError ? e.message : 'تعذر إكمال العملية؛ أعد المحاولة',
       };
     } finally {
       _setLoading(false);

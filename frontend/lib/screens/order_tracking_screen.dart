@@ -1,3 +1,5 @@
+import '../services/live_activity_service.dart';
+import '../widgets/order_arrival_card.dart';
 // lib/screens/order_tracking_screen.dart
 
 import 'dart:async';
@@ -90,9 +92,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     debugPrint('OrderTracking: 🔔 تحديث من OrderServiceV2');
     
     // البحث عن الطلب المحدث في قائمة OrderServiceV2
+    if (_orderService.orders.isEmpty) return;
     final updatedOrder = _orderService.orders.firstWhere(
       (order) => order.id == widget.orderId,
-      orElse: () => _order!,
+      orElse: () => _orderService.orders.first,
     );
     
     // إذا وجد طلب محدث، حديث الطلب المحلي
@@ -147,6 +150,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       debugPrint('OrderTracking: Order data received: ${order != null ? "SUCCESS" : "NULL"}');
       
       if (order != null) {
+        if(!LiveActivityService.isTerminal(order.status)) unawaited(LiveActivityService.startForOrder(order));
         debugPrint('OrderTracking: Order loaded successfully - ${order.orderNumber}');
         debugPrint('OrderTracking: Order status: ${order.status.arabicName}');
         debugPrint('OrderTracking: Order total: ${order.total}');
@@ -528,6 +532,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           // Connection Status Bar
           ConnectionStatusWidget(showDetailed: false),
           const SizedBox(height: 16),
+          OrderArrivalCard(order: _order!),
+          const SizedBox(height: 16),
           _buildOrderHeader(),
           if (_order?.driverSearchUnavailable == true) const Padding(
             padding: EdgeInsets.all(16),
@@ -539,7 +545,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               _order!.status != OrderStatus.expired &&
               _order!.status != OrderStatus.failed) ...[
             const SizedBox(height: 24),
-            _buildStatusTimeline(),
+            ExpansionTile(title: const Text('مراحل الطلب'), children: [_buildStatusTimeline()]),
           ],
           // Driver Info Card - Show when driver is assigned
           if (_shouldShowDriverInfo) ...[
