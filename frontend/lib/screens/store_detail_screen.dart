@@ -116,7 +116,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_){if(mounted){final items=context.read<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();unawaited(StorefrontPricing.instance.load(widget.store.id,items,force:true));}});
+    WidgetsBinding.instance.addPostFrameCallback((_){if(mounted){final items=context.read<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();unawaited(StorefrontPricing.instance.load(widget.store.id,items));}});
     developer.log('🏗️ StoreDetailScreen initState');
     
     // تهيئة SubscriptionManager
@@ -1465,7 +1465,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                       _buildInfoRow(Icons.route_outlined, 'المسافة', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.distance)),
                       ListenableBuilder(listenable:StorefrontPricing.instance,builder:(context,_){
                         final items=context.watch<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();
-                        final minimum=StorefrontPricing.instance.peek(widget.store.id,items)?.minimumOrderAmountIqd;
+                        final minimum=StorefrontPricing.instance.minimumIqd(widget.store.id,items);
                         return minimum==null?const SizedBox.shrink():_buildInfoRow(Icons.shopping_basket_outlined,'الحد الأدنى للطلب','$minimum د.ع');
                       }),
                       if (widget.store.address.isNotEmpty)

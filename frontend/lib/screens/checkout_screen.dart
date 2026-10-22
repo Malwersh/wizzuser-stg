@@ -1,3 +1,4 @@
+import '../widgets/basket_line_card.dart' show basketMoney;
 import '../services/storefront_pricing.dart';
 import '../services/delivery_address_manager.dart';
 import '../models/delivery_address.dart';
@@ -7,6 +8,7 @@ import '../constants/app_colors.dart';
 import '../config/api_config.dart';
 import '../services/delivery_quote_checkout.dart';
 import '../widgets/commercial_confirmation_sheet.dart';
+import '../widgets/driver_tip_selector.dart';
 import 'dart:convert';
 
 import 'dart:async';
@@ -45,37 +47,61 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ? null
           : state.cartItems.first['store_id'] as String?);
   void _quoteChanged() {
-    if (mounted) setState(() {});
+    if (mounted) setState(() {
+      final pendingTip = _quotedCheckout.pendingTipIqd;
+      if (pendingTip != null) _driverTipIqd = pendingTip;
+    });
   }
 
   Future<void> _syncActiveAddress() async {
-    final a=_selectedAddress;if(a==null||a.latitude==null||a.longitude==null)return;
-    final current=DeliveryAddressManager.instance.activeAddress;
-    if(current?.addressId==a.id&&current?.latitude==a.latitude&&current?.longitude==a.longitude)return;
-    await DeliveryAddressManager.instance.setActiveAddress(DeliveryAddress.fromJson({
-      'addressId':a.id,'userId':a.userId,'formattedAddress':a.fullAddress,'latitude':a.latitude,'longitude':a.longitude,
-      'label':a.name,'city':a.district,'regionId':a.regionId,'source':'saved','timestamp':a.updatedAt.toIso8601String(),
-    }));
+    final a = _selectedAddress;
+    if (a == null || a.latitude == null || a.longitude == null) return;
+    final current = DeliveryAddressManager.instance.activeAddress;
+    if (current?.addressId == a.id &&
+        current?.latitude == a.latitude &&
+        current?.longitude == a.longitude)
+      return;
+    await DeliveryAddressManager.instance.setActiveAddress(
+      DeliveryAddress.fromJson({
+        'addressId': a.id,
+        'userId': a.userId,
+        'formattedAddress': a.fullAddress,
+        'latitude': a.latitude,
+        'longitude': a.longitude,
+        'label': a.name,
+        'city': a.district,
+        'regionId': a.regionId,
+        'source': 'saved',
+        'timestamp': a.updatedAt.toIso8601String(),
+      }),
+    );
   }
-  StorefrontPreview? _preview(AppStateProvider state){
-    final b=_branchId(state);if(b==null||_selectedAddress?.id!=DeliveryAddressManager.instance.activeAddress?.addressId)return null;
-    return StorefrontPricing.instance.peek(b,state.cartItems,hasGoodsDiscount:_effectiveDiscount>0);
-  }
+
   Future<void> _loadQuote({bool renew = false}) async {
     if (!_quotesEnabled || !mounted || _selectedAddress == null) return;
     await SessionService.instance.getToken();
-    if(!mounted)return;
+    if (!mounted) return;
     await _syncActiveAddress();
-    final state=context.read<AppStateProvider>();
+    final state = context.read<AppStateProvider>();
     final branch = _branchId(state);
-    if(branch!=null)await StorefrontPricing.instance.load(branch,state.cartItems,hasGoodsDiscount:_effectiveDiscount>0,force:renew);
-    // A binding quote is requested only for discount validation or final review,
-    // not repeatedly while the customer browses the checkout.
+    if (branch != null) {
+      // Prepare the binding quote while the customer reviews the form. The final
+      // review still checks expiry and the server prices the exact basket.
+      await Future.wait([
+        StorefrontPricing.instance.load(
+          branch,
+          state.cartItems,
+          hasGoodsDiscount: _effectiveDiscount > 0,
+          force: renew,
+        ),
+        _quotedCheckout.ensureFresh(branch, _selectedAddress!.id),
+      ]);
+    }
   }
 
-  Future<void> _ensureQuoteFresh(String branch,String address)async{
+  Future<void> _ensureQuoteFresh(String branch, String address) async {
     await SessionService.instance.getToken();
-    await _quotedCheckout.ensureFresh(branch,address);
+    await _quotedCheckout.ensureFresh(branch, address);
   }
 
   bool _quoteMatches(AppStateProvider state) =>
@@ -86,7 +112,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get _actualDeliveryFee =>
       _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
   String? _validatedDiscountContext;
-  String _discountContext() {
+  String _discountContext({bool includeTip = false}) {
     final state = context.read<AppStateProvider>();
     return jsonEncode([
       SessionService.instance.currentUserId,
@@ -94,6 +120,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       state.cartItems,
       _selectedAddress?.id,
       _actualDeliveryFee,
+      // Tips change final consent, but are not inputs to discount eligibility.
+      if (includeTip) _driverTipIqd,
     ]);
   }
 
@@ -104,6 +132,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   DetailedAddress? _selectedAddress;
   PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
   String _deliveryInstructions = '';
+  int _driverTipIqd = 0;
   bool _isLoading = false;
   bool _preparingReview = false;
 
@@ -151,12 +180,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       account: () => SessionService.instance.currentUserId,
       token: () => SessionService.instance.accessToken,
     )..addListener(_quoteChanged);
-    _activeAddressUpdates=DeliveryAddressManager.instance.addressStream.listen((address){
-      if(!mounted||address==null||_selectedAddress==null||_quotedCheckout.pending)return;
-      if(address.addressId==_selectedAddress!.id&&address.latitude==_selectedAddress!.latitude&&address.longitude==_selectedAddress!.longitude)return;
-      _discountAttempt++;_quotedCheckout.invalidate();
-      unawaited(_loadUserAddress());
-    });
+    _activeAddressUpdates = DeliveryAddressManager.instance.addressStream
+        .listen((address) {
+          if (!mounted ||
+              address == null ||
+              _selectedAddress == null ||
+              _quotedCheckout.pending)
+            return;
+          if (address.addressId == _selectedAddress!.id &&
+              address.latitude == _selectedAddress!.latitude &&
+              address.longitude == _selectedAddress!.longitude)
+            return;
+          _discountAttempt++;
+          _quotedCheckout.invalidate();
+          unawaited(_loadUserAddress());
+        });
     if (_quotesEnabled) {
       _quotedCheckout.restore().then((_) {
         if (mounted) _loadQuote();
@@ -242,8 +280,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         !_quotedCheckout.pending &&
         _selectedAddress != null) {
       final branch = _branchId(appState);
-      if (branch != null)
-        await _ensureQuoteFresh(branch, _selectedAddress!.id);
+      if (branch != null) await _ensureQuoteFresh(branch, _selectedAddress!.id);
       if (!mounted) return;
     }
     if (_quotedCheckout.pending ||
@@ -337,8 +374,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         !_quotedCheckout.pending &&
         _selectedAddress != null) {
       final branch = _branchId(appState);
-      if (branch != null)
-        await _ensureQuoteFresh(branch, _selectedAddress!.id);
+      if (branch != null) await _ensureQuoteFresh(branch, _selectedAddress!.id);
       if (!mounted) return;
     }
     if (_quotedCheckout.pending ||
@@ -504,9 +540,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       if (mounted && addressService.detailedAddresses.isNotEmpty) {
         setState(() {
-          final activeId=DeliveryAddressManager.instance.activeAddress?.addressId;
-          final matches=addressService.detailedAddresses.where((a)=>a.id==activeId);
-          _selectedAddress=matches.isNotEmpty?matches.first:addressService.defaultAddress??addressService.detailedAddresses.first;
+          final activeId =
+              DeliveryAddressManager.instance.activeAddress?.addressId;
+          final matches = addressService.detailedAddresses.where(
+            (a) => a.id == activeId,
+          );
+          _selectedAddress =
+              matches.isNotEmpty
+                  ? matches.first
+                  : addressService.defaultAddress ??
+                      addressService.detailedAddresses.first;
         });
         await _loadQuote();
       }
@@ -537,10 +580,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body:
-          _isLoading
-              ? _buildLoadingWidget()
-              : Consumer<AppStateProvider>(
+      body: CheckoutLoadingBody(
+        busy: _isLoading || _preparingReview,
+        progress: _buildLoadingWidget(),
+        child: Consumer<AppStateProvider>(
                 builder: (context, appState, child) {
                   if (appState.cartItems.isEmpty) {
                     return const Center(child: Text('السلة فارغة'));
@@ -594,6 +637,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ),
                                   const SizedBox(height: 16),
 
+                                  if (ApiConfig.commercialPricingEnabled) ...[
+                                    DriverTipSelector(
+                                      amountIqd: _driverTipIqd,
+                                      enabled:
+                                          !_isLoading &&
+                                          !_preparingReview &&
+                                          !_quotedCheckout.pending,
+                                      onChanged:
+                                          (amount) => setState(
+                                            () => _driverTipIqd = amount,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+
                                   // قسم تعليمات التوصيل
                                   RepaintBoundary(
                                     child: _buildInstructionsSection(),
@@ -626,6 +684,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   );
                 },
               ),
+      ),
     );
   }
 
@@ -1331,7 +1390,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Text(
               _quotedCheckout.pending
                   ? 'توجد محاولة تأكيد سابقة. تابعها لاستعادة نتيجتها قبل بدء طلب آخر.'
-                  : 'تعذر الاتصال بخدمة التسعير. تحقق من الاتصال وأعد المحاولة.',
+                  : (_quotedCheckout.error ?? 'تعذر تحميل سعر التوصيل؛ أعد المحاولة'),
             ),
             if (!_quotedCheckout.pending)
               TextButton(
@@ -1349,10 +1408,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _buildPriceSummary(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
-    final visiblePreview=_preview(appState);
-    final deliveryFee = _quotesEnabled ? (visiblePreview?.fee ?? 0) : 10.0;
+    final deliveryFee = _quotesEnabled ? (StorefrontPricing.instance.feeIqd(_branchId(appState)??'',appState.cartItems,hasGoodsDiscount:_effectiveDiscount>0) ?? 0) : 10.0;
     final discount = _effectiveDiscount;
-    final total = subtotal + deliveryFee - discount;
+    final total = subtotal + deliveryFee + _driverTipIqd - discount;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1400,7 +1458,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('المجموع الفرعي'),
-              Text('${subtotal.toStringAsFixed(2)} د.ع'),
+              Text(basketMoney(subtotal)),
             ],
           ),
           const SizedBox(height: 8),
@@ -1408,9 +1466,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('رسوم التوصيل'),
-              StorefrontValue(branchId:_branchId(appState)??'',field:StorefrontField.fee,items:appState.cartItems,hasGoodsDiscount:discount>0),
+              StorefrontValue(
+                branchId: _branchId(appState) ?? '',
+                field: StorefrontField.fee,
+                items: appState.cartItems,
+                hasGoodsDiscount: discount > 0,
+              ),
             ],
           ),
+          if (_driverTipIqd > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('إكرامية السائق'),
+                Text(basketMoney(_driverTipIqd)),
+              ],
+            ),
+          ],
           if (discount > 0) ...[
             const SizedBox(height: 8),
             Row(
@@ -1418,7 +1491,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 const Text('الخصم', style: TextStyle(color: Colors.green)),
                 Text(
-                  '-${discount.toStringAsFixed(2)} د.ع',
+                  '-${basketMoney(discount)}',
                   style: const TextStyle(color: Colors.green),
                 ),
               ],
@@ -1438,9 +1511,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               Text(
-                _quotesEnabled && visiblePreview == null
+                _quotesEnabled && StorefrontPricing.instance.feeIqd(_branchId(appState)??'',appState.cartItems,hasGoodsDiscount:_effectiveDiscount>0)==null
                     ? '—'
-                    : '${total.toStringAsFixed(3)} د.ع',
+                    : basketMoney(total),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1459,12 +1532,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final deliveryFee =
         _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
     final discount = _effectiveDiscount;
-    final total = subtotal + deliveryFee - discount;
+    final total = subtotal + deliveryFee + _driverTipIqd - discount;
     final bool pending = _quotesEnabled && _quotedCheckout.pending;
     final bool canConfirm =
         !_isValidatingDiscount &&
         (pending || _discountCurrent) &&
         !_isLoading &&
+        !_preparingReview &&
         (pending || _selectedAddress != null);
 
     return Container(
@@ -2126,15 +2200,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _confirmOrder(AppStateProvider appState) async {
     if (_isLoading || _preparingReview) return;
-    _preparingReview = true;
+    setState(() => _preparingReview = true);
     try {
       if (_quotesEnabled && _quotedCheckout.pending) {
         await _resumeQuotedOrder();
         return;
       }
+      final businessStatusFuture = widget.storeId == null
+          ? Future<Map<String, dynamic>?>.value(null)
+          : BusinessStatusService.getBusinessStatus(widget.storeId!);
       if (_quotesEnabled && _selectedAddress != null) {
-        await SessionService.instance.getToken();
-        if(!mounted)return;
+        if (!mounted) return;
         final branch = _branchId(appState);
         if (branch != null) {
           setState(() {
@@ -2152,7 +2228,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (!mounted) return;
         if (!_quoteMatches(appState)) {
           _showMessage(
-            'تعذر مراجعة إجمالي الطلب؛ تحقق من الاتصال وأعد المحاولة',
+            _quotedCheckout.error ?? 'تعذر مراجعة إجمالي الطلب؛ أعد المحاولة',
             isError: true,
           );
           return;
@@ -2166,7 +2242,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         return;
       }
       // التحقق من صحة النموذج أولاً
-      if (!_formKey.currentState!.validate()) {
+      if (_formKey.currentState?.validate() != true) {
         _showMessage(
           'يرجى تعبئة جميع الحقول المطلوبة بشكل صحيح',
           isError: true,
@@ -2176,8 +2252,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       // فحص حالة المطعم أولاً
       if (widget.storeId != null) {
-        final businessStatusData =
-            await BusinessStatusService.getBusinessStatus(widget.storeId!);
+        final businessStatusData = await businessStatusFuture;
 
         if (businessStatusData != null) {
           final canAcceptOrders =
@@ -2213,7 +2288,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // إذا وصلنا هنا، العنوان صحيح ومكتمل
       await _createOrderWithAddress(appState);
     } finally {
-      _preparingReview = false;
+      if (mounted) setState(() => _preparingReview = false);
     }
   }
 
@@ -2362,7 +2437,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       }
 
-      final commercialScope = _discountContext();
+      final commercialScope = _discountContext(includeTip: true);
       final result = await _orderService.createOrder(
         storeId: storeId,
         storeName: storeName ?? 'المطعم',
@@ -2374,9 +2449,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryInstructions:
             _deliveryInstructions.isEmpty ? null : _deliveryInstructions,
         deliveryFee: _quotesEnabled ? _quotedCheckout.quote!.fee : 10.0,
+        driverTipIqd: _driverTipIqd,
         quoteCheckout: _quotesEnabled ? _quotedCheckout : null,
         approveCommercial: (proposal) async {
-          if (!mounted || commercialScope != _discountContext()) return false;
+          if (!mounted || commercialScope != _discountContext(includeTip: true)) return false;
           final scope = commercialScope;
           final accepted = await showModalBottomSheet<bool>(
             context: context,
@@ -2405,7 +2481,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           .toList(),
                 ),
           );
-          return mounted && scope == _discountContext() && accepted == true;
+          return mounted && scope == _discountContext(includeTip: true) && accepted == true;
         },
         promoCode: _appliedPromoCode,
         discountId: _selectedDiscountId,
@@ -2528,7 +2604,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _showMessage(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? Colors.red : Colors.green,
@@ -2723,4 +2801,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       },
     );
   }
+}
+
+/// Keeps the form mounted while asynchronous review preparation blocks edits.
+class CheckoutLoadingBody extends StatelessWidget {
+  final bool busy;
+  final Widget child, progress;
+  const CheckoutLoadingBody({super.key, required this.busy, required this.child, required this.progress});
+  @override
+  Widget build(BuildContext context) => AbsorbPointer(
+    absorbing: busy,
+    child: Stack(fit: StackFit.expand, children: [
+      child,
+      if (busy) Positioned.fill(child: ColoredBox(
+        color: const Color(0xB3FAFAFA), child: progress,
+      )),
+    ]),
+  );
 }

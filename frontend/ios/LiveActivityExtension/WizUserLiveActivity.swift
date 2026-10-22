@@ -9,6 +9,7 @@ struct WizUserLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: OrderLiveActivityAttributes.self) { context in
             lockScreenView(context)
+                .widgetURL(URL(string: "wizuser://orders/\(context.attributes.orderId)"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -38,55 +39,104 @@ struct WizUserLiveActivity: Widget {
                 Text(shortStatus(context))
                     .font(.caption2)
                     .fontWeight(.bold)
-                    .foregroundColor(accent)
+                    .foregroundColor(Color(red: 1, green: 0.77, blue: 0))
                     .lineLimit(1)
                     .frame(maxWidth: 52)
             } minimal: {
                 leadingBadge(context, size: 16)
             }
+            .widgetURL(URL(string: "wizuser://orders/\(context.attributes.orderId)"))
         }
     }
 
     // MARK: - Lock Screen (big, detailed card)
 
     private func lockScreenView(_ context: ActivityViewContext<OrderLiveActivityAttributes>) -> some View {
-        HStack(spacing: 14) {
-            leadingBadge(context, size: 52)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(context.state.statusLabel)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                    Spacer()
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image("WizzLiveLogo")
+                        .resizable().scaledToFit()
+                        .frame(width: 40, height: 40)
+                        .accessibilityLabel("ويز")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(context.state.storeName)
+                            .font(.system(size: 15, weight: .bold))
+                            .lineLimit(1)
+                        Text("#\(context.state.orderNumber)")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                    }
+                }
+                Spacer(minLength: 4)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("الوصول المتوقع")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
                     etaView(context, compact: false)
                 }
+                .frame(maxWidth: 164, alignment: .trailing)
+            }
+            Text(context.state.statusLabel)
+                .font(.system(size: 19, weight: .bold))
+                .foregroundColor(accent)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            milestones(context)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .environment(\.colorScheme, .light)
+        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.locale, Locale(identifier: "ar_IQ"))
+        .foregroundColor(Color(red: 0.07, green: 0.12, blue: 0.22))
+        .activityBackgroundTint(.white)
+        .activitySystemActionForegroundColor(accent)
+    }
 
-                Text(context.state.storeName)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+    /// Milestones follow the actual fulfillment status, independently of ETA.
+    private func milestoneIndex(_ status: String) -> Int {
+        switch status {
+        case "delivered", "returned": return 3
+        case "returning": return 1
+        case "return_arrived": return 2
+        case "picked_up", "on_the_way", "heading_to_customer", "arrived_at_customer": return 2
+        case "confirmed", "preparing", "ready_for_pickup", "assigned", "accepted", "heading_to_store", "arrived_at_store": return 1
+        default: return 0
+        }
+    }
 
-                HStack(spacing: 6) {
-                    Text("#\(context.state.orderNumber)")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(accent, in: Capsule())
-                    Spacer()
+    private func milestones(_ context: ActivityViewContext<OrderLiveActivityAttributes>) -> some View {
+        let current = milestoneIndex(context.state.status)
+        let returning = ["returning", "return_arrived", "returned"].contains(context.state.status)
+        let symbols = returning ? ["exclamationmark", "bicycle", "storefront.fill", "checkmark"] : ["checkmark", "storefront.fill", "bicycle", "house.fill"]
+        let labels = returning ? ["تعذر التسليم", "العودة", "المطعم", "تأكيد الاستلام"] : ["تأكيد الطلب", "المطعم", "في الطريق", "التسليم"]
+        let yellow = Color(red: 1, green: 0.77, blue: 0)
+        return HStack(alignment: .top, spacing: 0) {
+            ForEach(0..<4) { index in
+                if index > 0 {
+                    Capsule()
+                        .fill(index <= current ? accent : accent.opacity(0.12))
+                        .frame(height: 4)
+                        .padding(.top, 15)
+                        .padding(.horizontal, 3)
+                        .accessibilityHidden(true)
                 }
-
-                progressBar(context)
+                VStack(spacing: 5) {
+                    Image(systemName: symbols[index])
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(index == current ? accent : (index < current ? .white : accent.opacity(0.35)))
+                        .frame(width: 34, height: 34)
+                        .background(index == current ? yellow : (index < current ? accent : accent.opacity(0.07)), in: Circle())
+                    Text(labels[index])
+                        .font(.system(size: 9, weight: index == current ? .bold : .medium))
+                        .foregroundColor(index <= current ? accent : .secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 58)
+                .accessibilityElement(children: .combine)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .activityBackgroundTint(Color(.systemBackground))
-        .activitySystemActionForegroundColor(accent)
     }
 
     // MARK: - Shared components
@@ -95,7 +145,7 @@ struct WizUserLiveActivity: Widget {
         let progress = max(0.05, min(1, context.state.progress))
         return ProgressView(value: progress)
             .progressViewStyle(.linear)
-            .tint(accent)
+            .tint(Color(red: 1, green: 0.77, blue: 0))
     }
 
     private func isStale(_ context: ActivityViewContext<OrderLiveActivityAttributes>) -> Bool {
@@ -105,27 +155,29 @@ struct WizUserLiveActivity: Widget {
 
     private func etaView(_ context: ActivityViewContext<OrderLiveActivityAttributes>, compact: Bool) -> some View {
         let text = context.state.etaText.isEmpty ? "قيد الانتظار" : context.state.etaText
-        return HStack(spacing: 3) {
-            Image(systemName: "clock.fill")
-                .font(compact ? .caption2 : .caption)
-            Group {
-                if isStale(context) { Text("يجري تحديث وقت الوصول") }
-                else if context.state.status != "pending", let late = context.state.arrivalLatestEpoch {
-                    HStack(spacing: 2) {
-                        Text("تقديري")
-                        if let early = context.state.arrivalEarliestEpoch, early != late {
-                            Text(Date(timeIntervalSince1970: early), style: .time)
-                            Text("–")
-                        }
-                        Text(Date(timeIntervalSince1970: late), style: .time)
+        return Group {
+            if ["returning", "return_arrived", "returned"].contains(context.state.status) {
+                Text(text)
+            } else if isStale(context) {
+                Text("جارٍ تحديث الوصول")
+            } else if context.state.status != "pending", let late = context.state.arrivalLatestEpoch {
+                HStack(spacing: 3) {
+                    if let early = context.state.arrivalEarliestEpoch, early != late {
+                        Text(Date(timeIntervalSince1970: early), style: .time)
+                        Text("–")
                     }
-                } else { Text(text) }
+                    Text(Date(timeIntervalSince1970: late), style: .time)
+                }
+                .environment(\.layoutDirection, .leftToRight)
+            } else {
+                Text(text)
             }
-                .font(compact ? .caption2 : .caption)
-                .fontWeight(.semibold)
-                .lineLimit(1)
         }
-        .foregroundColor(accent)
+        .font(.system(size: compact ? 10 : 13, weight: .bold))
+        .foregroundColor(compact ? Color.white : accent)
+        .lineLimit(2)
+        .minimumScaleFactor(0.85)
+        .multilineTextAlignment(.trailing)
     }
 
     private func leadingBadge(_ context: ActivityViewContext<OrderLiveActivityAttributes>, size: CGFloat) -> some View {
@@ -147,7 +199,9 @@ struct WizUserLiveActivity: Widget {
         case "ready_for_pickup": return "takeoutbag.and.cup.and.straw.fill"
         case "assigned", "accepted", "heading_to_store", "arrived_at_store": return "bicycle"
         case "picked_up", "on_the_way", "heading_to_customer", "arrived_at_customer": return "bicycle"
-        case "delivered": return "checkmark.seal.fill"
+        case "returning": return "arrow.uturn.backward.circle.fill"
+        case "return_arrived": return "storefront.fill"
+        case "returned", "delivered": return "checkmark.seal.fill"
         case "cancelled", "failed", "rejected": return "xmark.circle.fill"
         default: return "bag.fill"
         }

@@ -59,6 +59,7 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
     if (terminal) return const SizedBox.shrink();
     final delivered = ['delivered', 'completed'].contains(status);
     final pending = status == 'pending';
+    final returning = ['returning','return_arrived'].contains(status);
     final now = (widget.now ?? DateTime.now)();
     final estimate = o.deliveryEstimate;
     final early =
@@ -71,7 +72,10 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
             estimate?['driverWaitIncluded'] == false
                 ? 'وقت مبدئي للوصول'
                 : 'الوصول المتوقع';
-    if (delivered) {
+    if (returning) {
+      title = o.returnStatus=='REQUESTED'?'متابعة معالجة تعذر التسليم':'متابعة إرجاع الطلب';
+      time = o.returnStatus=='REQUESTED'?'بانتظار تعليمات معالجة الطلب':o.returnStatus == 'REVIEW_REQUIRED' ? 'استلام المرتجع قيد المراجعة' : status == 'returning' ? 'السائق يعيد الطلب للمطعم' : 'بانتظار تأكيد استلام المطعم';
+    } else if (delivered) {
       time = 'تم التسليم';
       title = 'بالعافية!';
     } else if (pending) {
@@ -88,7 +92,9 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
       time = 'نحدّث وقت الوصول';
     }
     final progress =
-        delivered
+        returning
+            ? (status == 'returning' ? 0.5 : 0.75)
+            : delivered
             ? 1.0
             : pending
             ? 0.08
@@ -152,12 +158,14 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
                             size: 36,
                           ),
                           const SizedBox(height: 8),
-                          Text(
+                          Flexible(child: Text(
                             time,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
+                                ?.copyWith(fontWeight: FontWeight.bold, fontSize: returning ? 16 : null),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          )),
                         ],
                       ),
                     ),
@@ -170,7 +178,7 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
               o.status.arabicName,
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            if (!pending && !delivered && o.estimatedPreparationTime != null)
+            if (!returning && !pending && !delivered && o.estimatedPreparationTime != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
@@ -178,7 +186,7 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
                   textAlign: TextAlign.center,
                 ),
               ),
-            if (!pending && !delivered)
+            if (!returning && !pending && !delivered)
               const Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: Text(

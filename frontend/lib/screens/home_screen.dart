@@ -1,3 +1,4 @@
+import '../services/activity_link_navigation.dart';
 import '../services/storefront_pricing.dart';
 import 'notifications_screen.dart';
 import '../services/notification_inbox_service.dart';
@@ -122,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    ActivityLinkNavigation.ready(true);
     StorefrontPricing.instance.addListener(_storefrontUpdated);
     NotificationInboxService.instance.load().catchError((Object _) {});
     // مراقبة دورة حياة التطبيق لتفعيل جلب فوري عند العودة للمقدمة
@@ -398,7 +400,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (item is BusinessModel) {
                 businesses.add(item);
               } else if (item is Map<String, dynamic>) {
-                businesses.add(BusinessModel.fromJson(item));
+                businesses.add(BusinessService.parseBusiness(item));
               }
             } catch (e) {
               developer.log('⚠️ خطأ في تحويل مطعم: $e');
@@ -441,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (item is BusinessModel) {
             businesses.add(item);
           } else if (item is Map<String, dynamic>) {
-            businesses.add(BusinessModel.fromJson(item));
+            businesses.add(BusinessService.parseBusiness(item));
           }
         } catch (e) {
           developer.log('⚠️ خطأ في تحويل مطعم: $e');
@@ -534,7 +536,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           } else if (item is Map<String, dynamic>) {
             debugPrint('🧪 RAW MAP KEYS (${i + 1}): ${item.keys.join(', ')}');
             debugPrint('🧪 RAW businessId=${item['businessId'] ?? item['business_id']} businessName=${item['businessName'] ?? item['business_name']}');
-            final business = BusinessModel.fromJson(item);
+            final business = BusinessService.parseBusiness(item);
             convertedBusinesses.add(business);
             debugPrint('🌉 BRIDGE: تم تحويل ${business.businessName} (ID: ${business.id})');
           } else {
@@ -852,7 +854,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           developer.log('   📋 Item type: ${item.runtimeType}');
           developer.log('   📋 Item keys: ${(item as Map).keys.take(10).join(", ")}...');
           
-          final business = BusinessModel.fromJson(item as Map<String, dynamic>);
+          final business = BusinessService.parseBusiness(item as Map<String, dynamic>);
           allBusinesses.add(business);
           
           developer.log('   ✅ SUCCESS - Added to list (total now: ${allBusinesses.length})');
@@ -1096,7 +1098,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   //   for (final item in dynamicList) {
   //     if (item is Map<String, dynamic>) {
   //       try {
-  //         businesses.add(BusinessModel.fromJson(item));
+  //         businesses.add(BusinessService.parseBusiness(item));
   //       } catch (e) {
   //         developer.log('⚠️ خطأ في تحويل business: $e');
   //       }
@@ -1205,6 +1207,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    ActivityLinkNavigation.ready(false);
     // إلغاء اشتراك WebSocket
     _businessStatusSubscription?.cancel();
     _webSocketService.onBusinessStatusUpdate = null;
@@ -1702,9 +1705,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     developer.log('    - Status message: "$statusMessage"');
 
     final pricing=StorefrontPricing.instance;
+    pricing.seedBusiness(business.id, business.metadata ?? const {}, onlyIfAbsent: true);
     // Warm only a bounded first screen; opening another store loads it on demand.
     if (_allRealBusinesses.take(4).any((b)=>b.id==business.id)) {
-      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)pricing.load(business.id,const[]);});
+      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)pricing.load(business.id,context.read<AppStateProvider>().cartItems.where((item)=>item['store_id']==business.id).toList());});
     }
     final preview=pricing.peek(business.id,const[]);
     final store = Store(
@@ -1904,7 +1908,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             modelCopied++;
           } else if (item is Map<String, dynamic>) {
             try {
-              final model = BusinessModel.fromJson(item);
+              final model = BusinessService.parseBusiness(item);
               bridged.add(model);
               mapConverted++;
             } catch (e) {

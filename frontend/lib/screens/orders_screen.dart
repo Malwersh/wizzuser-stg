@@ -1419,6 +1419,11 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.returning:
+      case OrderStatus.returnArrived:
+        return Colors.orange;
+      case OrderStatus.returned:
+        return Colors.blueGrey;
       case OrderStatus.pending:
         return AppColors.primary;
       case OrderStatus.confirmed:
@@ -1459,6 +1464,12 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   IconData _getStatusIcon(OrderStatus status) {
     switch (status) {
+      case OrderStatus.returning:
+        return Icons.assignment_return;
+      case OrderStatus.returnArrived:
+        return Icons.store;
+      case OrderStatus.returned:
+        return Icons.assignment_turned_in;
       case OrderStatus.pending:
         return Icons.schedule;
       case OrderStatus.confirmed:
@@ -1499,6 +1510,12 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   String _getStatusText(OrderStatus status) {
     switch (status) {
+      case OrderStatus.returning:
+        return 'السائق يعيد الطلب للمطعم';
+      case OrderStatus.returnArrived:
+        return 'بانتظار تأكيد استلام المطعم';
+      case OrderStatus.returned:
+        return 'تم إرجاع الطلب للمطعم';
       case OrderStatus.pending:
         return 'في انتظار تأكيد المطعم';
       case OrderStatus.confirmed:

@@ -1,3 +1,4 @@
+import 'services/activity_link_navigation.dart';
 import 'services/live_activity_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +29,7 @@ void main() async {
   ));
   
   await LiveActivityService.initialize();
+  await ActivityLinkNavigation.initialize();
   runApp(const FoodApp());
 }
 

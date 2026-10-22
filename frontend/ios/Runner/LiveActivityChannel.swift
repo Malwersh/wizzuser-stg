@@ -38,7 +38,7 @@ class LiveActivityChannel: NSObject {
             tokenUpdateTasks.values.forEach { $0.cancel() }
             tokenUpdateTasks.removeAll()
             Task {
-                for activity in Activity<OrderLiveActivityAttributes>.activities { await activity.end() }
+                for activity in Activity<OrderLiveActivityAttributes>.activities { await activity.end(dismissalPolicy: .immediate) }
                 DispatchQueue.main.async { result(nil) }
             }
         default:
@@ -136,7 +136,7 @@ class LiveActivityChannel: NSObject {
         tokenUpdateTasks.removeValue(forKey: orderId)
         Task {
             for activity in Activity<OrderLiveActivityAttributes>.activities where activity.attributes.orderId == orderId {
-                await activity.end()
+                await activity.end(dismissalPolicy: .immediate)
             }
             DispatchQueue.main.async { result(nil) }
         }

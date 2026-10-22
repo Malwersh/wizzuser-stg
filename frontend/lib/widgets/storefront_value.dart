@@ -13,6 +13,8 @@ class StorefrontValue extends StatefulWidget {
   final TextStyle? style;
   final bool hasGoodsDiscount;
   final int? initialPreparationMinutes;
+  final StorefrontPricing? pricing;
+  final Duration requestDebounce;
   const StorefrontValue({
     super.key,
     required this.branchId,
@@ -21,15 +23,18 @@ class StorefrontValue extends StatefulWidget {
     this.style,
     this.hasGoodsDiscount = false,
     this.initialPreparationMinutes,
+    this.pricing,
+    this.requestDebounce = Duration.zero,
   });
   @override
   State<StorefrontValue> createState() => _StorefrontValueState();
 }
 
 class _StorefrontValueState extends State<StorefrontValue> {
-  final pricing = StorefrontPricing.instance;
+  late final pricing = widget.pricing ?? StorefrontPricing.instance;
   String? _requested;
   bool _loading = false;
+  Timer? _requestTimer;
   @override
   void initState() {
     super.initState();
@@ -42,6 +47,7 @@ class _StorefrontValueState extends State<StorefrontValue> {
 
   @override
   void dispose() {
+    _requestTimer?.cancel();
     pricing.removeListener(changed);
     super.dispose();
   }
@@ -73,35 +79,57 @@ class _StorefrontValueState extends State<StorefrontValue> {
     if (key != _requested ||
         (p == null && error == null && !_loading && key != null)) {
       _requested = key;
-      _loading = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted)
-          unawaited(
-            pricing
-                .load(
-                  widget.branchId,
-                  items,
-                  hasGoodsDiscount: widget.hasGoodsDiscount,
-                )
-                .whenComplete(() {
-                  if (mounted) setState(() => _loading = false);
-                }),
-          );
-      });
+      _requestTimer?.cancel();
+      _loading = key != null;
+      if (key != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _requested != key) return;
+          _requestTimer = Timer(widget.requestDebounce, () {
+            if (!mounted || _requested != key) return;
+            unawaited(
+              pricing
+                  .load(
+                    widget.branchId,
+                    items,
+                    hasGoodsDiscount: widget.hasGoodsDiscount,
+                  )
+                  .whenComplete(() {
+                    if (mounted && _requested == key)
+                      setState(() => _loading = false);
+                  }),
+            );
+          });
+        });
+      }
     }
+
     String text = key == null ? 'اختر عنوان التوصيل' : '—';
     if (widget.field == StorefrontField.preparation &&
         widget.initialPreparationMinutes != null)
       text = 'نحو ${widget.initialPreparationMinutes} دقيقة';
-    if (p != null) {
+    final display = p ?? pricing.peekRoute(widget.branchId);
+    if (display != null) {
       text = switch (widget.field) {
-        StorefrontField.fee => p.feeText,
-        StorefrontField.preparation => p.preparationText,
-        StorefrontField.arrival => p.arrivalText,
-        StorefrontField.distance => p.distanceText,
+        StorefrontField.fee => p?.feeText ?? text,
+        StorefrontField.preparation => display.preparationText,
+        StorefrontField.arrival => display.arrivalText,
+        StorefrontField.distance => display.distanceText,
       };
     }
-    if (error != null && p == null)
+    final fee = pricing.feeIqd(
+      widget.branchId,
+      items,
+      hasGoodsDiscount: widget.hasGoodsDiscount,
+    );
+    if (widget.field == StorefrontField.fee && fee != null)
+      text =
+          fee == 0
+              ? 'توصيل مجاني'
+              : '${fee.toStringAsFixed(fee == fee.roundToDouble() ? 0 : 3)} د.ع';
+    if (error != null &&
+        p == null &&
+        !(display != null && widget.field != StorefrontField.fee) &&
+        !(widget.field == StorefrontField.fee && fee != null))
       return TextButton(
         onPressed:
             () => pricing.load(
@@ -136,10 +164,7 @@ class StorefrontMinimum extends StatelessWidget {
     return ListenableBuilder(
       listenable: StorefrontPricing.instance,
       builder: (context, _) {
-        final minimum =
-            StorefrontPricing.instance
-                .peek(branchId, items)
-                ?.minimumOrderAmountIqd;
+        final minimum = StorefrontPricing.instance.minimumIqd(branchId, items);
         if (minimum == null) return const SizedBox.shrink();
         return Expanded(
           child: Column(

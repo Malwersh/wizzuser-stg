@@ -1,0 +1,62 @@
+{
+  "part": 270,
+  "status": "PUBLISHED_VERIFIED",
+  "scope": "staging",
+  "function": "WizzUser-CreateOrder-staging",
+  "baseCodeSha256": "+DA8UjkPZpLSTyyo3WKwMpMTf4CI94qIo90N1DPOqdc=",
+  "codeSha256": "93eYb7gxelc8k8jip4ekcp8Aks26PIu0HamMftBPztY=",
+  "configurationAndIamUnchanged": true,
+  "customerSimulatorBuild": 219,
+  "customerDesignsMerged": false,
+  "humanCheckoutRetry": "PENDING",
+  "realOrdersOrFinancialAttestationsCreated": false,
+  "allDeployedBytesVerified": true,
+  "unrelatedEntriesPreserved": true,
+  "changedFiles": [
+    "_discount_review/user-create-order/index.js",
+    "checkout-store-agreement-270.js",
+    "checkout-pricing-reads-270.js"
+  ],
+  "negativeSmokeStatus": 401,
+  "historicalCase": "14 RESOLVED; merchant PAID6250; hold RELEASED; no customer cash case",
+  "preflight": {
+    "status": "PASS",
+    "fullBundledDependencies": true,
+    "actualFattoushAgreement": true,
+    "uncached": {
+      "cached": false,
+      "elapsedMs": 1380,
+      "reads": 19,
+      "queries": 1,
+      "conditionChecks": 2,
+      "customerDeliveryIqd": 1500,
+      "customerTotalIqd": 9500,
+      "agreementKind": "FIXED_TARIFF"
+    },
+    "cached": {
+      "cached": true,
+      "elapsedMs": 1124,
+      "reads": 15,
+      "queries": 1,
+      "conditionChecks": 2,
+      "cache": {
+        "requests": 15,
+        "hits": 4
+      },
+      "customerDeliveryIqd": 1500,
+      "customerTotalIqd": 9500,
+      "agreementKind": "FIXED_TARIFF"
+    },
+    "allBusinessMutationsBlocked": true,
+    "customerIdentityLocallyStubbed": true,
+    "noRealConsentOrOrder": true
+  },
+  "tests": {
+    "wallet": 1373,
+    "bundledPricing": 59,
+    "compatibilityAndReadCache": 5,
+    "flutter": 37
+  },
+  "customerSimulatorInstalledAndLaunched": true,
+  "remainingWholeSpecificationComplete": false
+}

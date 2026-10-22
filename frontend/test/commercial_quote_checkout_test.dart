@@ -28,6 +28,7 @@ void main() {
   late int quoteFee;
   late bool failOrder;
   late bool activeConflict;
+  String? previewError;
   late DeliveryQuoteCheckout checkout;
   late void Function(Map<String, dynamic>) mutatePreview;
   setUp(() async {
@@ -37,6 +38,7 @@ void main() {
     quoteFee = 0;
     failOrder = false;
     activeConflict = false;
+    previewError = null;
     mutatePreview = (_) {};
     checkout = DeliveryQuoteCheckout(
       account: () => owner,
@@ -70,6 +72,7 @@ void main() {
         }
         posts.add(body);
         if (body['action'] == 'preview_commercial') {
+          if (previewError != null) return http.Response(jsonEncode({'success':false,'code':previewError}),503);
           if (activeConflict)
             return http.Response(
               jsonEncode({
@@ -93,6 +96,11 @@ void main() {
             'discount': money(0),
             'deliveryFee': money(0),
           };
+          if ((body['tip'] ?? 0) > 0) {
+            proposal['driverTip'] = money((body['tip'] as int) * 1000);
+            proposal['discount'] = money(500000);
+            proposal['customerTotal'] = money(3500000 + (body['tip'] as int) * 1000);
+          }
           mutatePreview(proposal);
           return http.Response(
             jsonEncode({'success': true, 'commercial': proposal}),
@@ -136,6 +144,22 @@ void main() {
         !enabled ||
         const String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT').isEmpty,
   );
+  test('a driver tip and goods discount both reach final consent and the persisted order', () async {
+    await checkout.confirm({...content(),'tip':500},approveCommercial:(proposal) async {
+      expect(proposal['discount']['minorAmount'],500000);
+      expect(proposal['driverTip']['minorAmount'],500000);
+      expect(proposal['customerTotal']['minorAmount'],4000000);
+      return true;
+    });
+    expect(posts,hasLength(2));expect(posts.last['tip'],500);
+    expect(posts.last['commercialConsent']['customerTotalMinor'],4000000);
+  },skip:!enabled);
+  test('unavailable delivery policy explains failure before consent and never creates an order', () async {
+    previewError='DELIVERY_POLICY_UNAVAILABLE';var approvals=0;
+    await expectLater(checkout.confirm(content(),approveCommercial:(_) async {approvals++;return true;}),
+      throwsA(isA<StateError>().having((e)=>e.message,'message',contains('لم يُرسل الطلب'))));
+    expect(approvals,0);expect(posts,hasLength(1));expect(saved,isEmpty);expect(checkout.pending,false);
+  },skip:!enabled);
   test(
     'cancel commercial amount sends no order and persists no attempt',
     () async {

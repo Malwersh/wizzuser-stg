@@ -142,7 +142,9 @@ class BusinessModel {
       latitude: json['latitude'] != null ? double.tryParse(json['latitude'].toString()) : null,
       longitude: json['longitude'] != null ? double.tryParse(json['longitude'].toString()) : null,
       metadata: {
-        'averagePreparationMinutes':json['averagePreparationMinutes'],
+        'minimumOrderAmountIqd': json['minimumOrderAmountIqd'] ?? json['minimum_order'] ?? json['metadata']?['minimumOrderAmountIqd'],
+        'storefrontDeliveryAgreements': json['storefrontDeliveryAgreements'] ?? json['metadata']?['storefrontDeliveryAgreements'] ?? [],
+        'averagePreparationMinutes':json['averagePreparationMinutes'] ?? json['orderReceptionSettings']?['defaultPreparationMinutes'] ?? json['metadata']?['averagePreparationMinutes'],
         'orderReceptionSettings':json['orderReceptionSettings'],
         'reviewCount': json['reviewCount'] ?? json['reviewsCount'] ?? json['ratingCount'],
         'sponsored': parseBool(json['sponsored'], defaultValue: false),

@@ -10,6 +10,8 @@ import '../services/session_service.dart';
 class CartModel extends ChangeNotifier {
   final List<CartItem> _items = [];
   bool _isLoaded = false;
+  Future<void> _storageQueue = Future.value();
+  int _revision = 0;
 
   /// عناصر السلة
   List<CartItem> get items => List.unmodifiable(_items);
@@ -22,8 +24,7 @@ class CartModel extends ChangeNotifier {
   int get itemCount => _items.fold(0, (sum, item) => sum + item.quantity);
 
   /// المعرّف الحالي للمتجر (null إذا كانت السلة فارغة)
-  String? get currentStoreId =>
-      _items.isEmpty ? null : _items.first.storeId;
+  String? get currentStoreId => _items.isEmpty ? null : _items.first.storeId;
 
   /// هل تم تحميل السلة من التخزين المحلي
   bool get isLoaded => _isLoaded;
@@ -33,7 +34,7 @@ class CartModel extends ChangeNotifier {
     final sessionService = SessionService.instance;
     final userId = sessionService.currentUserId;
     final isGuest = sessionService.isGuest;
-    
+
     if (isGuest) {
       return 'cart_items_guest';
     } else if (userId != null) {
@@ -45,31 +46,40 @@ class CartModel extends ChangeNotifier {
 
   /// تحميل السلة من التخزين المحلي
   Future<void> loadFromStorage() async {
+    final revision = _revision;
+    final loadingKey = await _getCartKey();
     try {
+      await _storageQueue;
       final prefs = await SharedPreferences.getInstance();
       final cartKey = await _getCartKey();
+      if (cartKey != loadingKey || revision != _revision) return;
       final cartData = prefs.getString(cartKey);
-      
+
       // تنظيف السلة الحالية أولاً
       _items.clear();
-      
+
       if (cartData != null) {
         final List<dynamic> jsonList = json.decode(cartData);
-        
+
         for (final itemJson in jsonList) {
           try {
-            final cartItem = CartItem.fromFullJson(itemJson as Map<String, dynamic>);
+            final cartItem = CartItem.fromFullJson(
+              itemJson as Map<String, dynamic>,
+            );
             _items.add(cartItem);
           } catch (e) {
             debugPrint('خطأ في تحميل عنصر السلة: $e');
           }
         }
-        
-        debugPrint('تم تحميل ${_items.length} عنصر من السلة للمستخدم: $cartKey');
+
+        debugPrint(
+          'تم تحميل ${_items.length} عنصر من السلة للمستخدم: $cartKey',
+        );
       } else {
         debugPrint('لا توجد سلة محفوظة للمستخدم: $cartKey');
       }
     } catch (e) {
+      if (revision != _revision) return;
       debugPrint('خطأ في تحميل السلة من التخزين: $e');
       // في حالة الخطأ، تنظيف السلة للحماية
       _items.clear();
@@ -80,28 +90,43 @@ class CartModel extends ChangeNotifier {
   }
 
   /// حفظ السلة في التخزين المحلي
-  Future<void> saveToStorage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cartKey = await _getCartKey();
-      final cartData = json.encode(_items.map((item) => item.toJson()).toList());
-      await prefs.setString(cartKey, cartData);
-      debugPrint('تم حفظ ${_items.length} عنصر في السلة للمستخدم: $cartKey');
-    } catch (e) {
-      debugPrint('خطأ في حفظ السلة: $e');
-    }
+  Future<void> saveToStorage() {
+    // Capture account and data before awaiting I/O. Serialize writes so an older
+    // tap cannot overwrite a newer quantity or resurrect a cleared basket.
+    final session = SessionService.instance;
+    final key =
+        session.isGuest
+            ? 'cart_items_guest'
+            : session.currentUserId != null
+            ? 'cart_items_${session.currentUserId}'
+            : 'cart_items_anonymous';
+    final data = json.encode(_items.map((item) => item.toJson()).toList());
+    return _storageQueue = _storageQueue
+        .then((_) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(key, data);
+        })
+        .catchError((Object e) {
+          debugPrint('Cart persistence failed: $e');
+        });
   }
 
-  /// مسح السلة من التخزين المحلي
-  Future<void> clearStorage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cartKey = await _getCartKey();
-      await prefs.remove(cartKey);
-      debugPrint('تم مسح السلة من التخزين للمستخدم: $cartKey');
-    } catch (e) {
-      debugPrint('خطأ في مسح السلة من التخزين: $e');
-    }
+  Future<void> clearStorage() {
+    final session = SessionService.instance;
+    final key =
+        session.isGuest
+            ? 'cart_items_guest'
+            : session.currentUserId != null
+            ? 'cart_items_${session.currentUserId}'
+            : 'cart_items_anonymous';
+    return _storageQueue = _storageQueue
+        .then((_) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(key);
+        })
+        .catchError((Object e) {
+          debugPrint('Cart persistence failed: $e');
+        });
   }
 
   /// إضافة عنصر مع التحقق من المطعم
@@ -112,10 +137,9 @@ class CartModel extends ChangeNotifier {
       return;
     }
 
-    final existing = _items.firstWhereOrNull((item) =>
-        item.dish.id == newItem.dish.id &&
-        const DeepCollectionEquality()
-            .equals(item.selectedOptions, newItem.selectedOptions));
+    final existing = _items.firstWhereOrNull(
+      (item) => item.lineKey == newItem.lineKey,
+    );
 
     if (existing != null) {
       final idx = _items.indexOf(existing);
@@ -134,12 +158,13 @@ class CartModel extends ChangeNotifier {
       _items.add(newItem);
     }
 
+    _revision++;
     notifyListeners();
     saveToStorage(); // حفظ تلقائي
   }
 
   void updateItemQuantity(CartItem item, int newQuantity) {
-    final idx = _items.indexOf(item);
+    final idx = _items.indexWhere((r) => r.lineKey == item.lineKey);
     if (idx == -1) return;
     if (newQuantity <= 0) {
       _items.removeAt(idx);
@@ -155,31 +180,41 @@ class CartModel extends ChangeNotifier {
         specialInstructions: existing.specialInstructions,
       );
     }
+    _revision++;
     notifyListeners();
     saveToStorage(); // حفظ تلقائي
   }
 
+  void changeItemQuantity(CartItem item, int delta) {
+    final current = _items.firstWhereOrNull((r) => r.lineKey == item.lineKey);
+    if (current == null || delta == 0) return;
+    updateItemQuantity(current, current.quantity + delta);
+  }
+
   void removeItem(CartItem item) {
-    _items.remove(item);
+    _items.removeWhere((r) => r.lineKey == item.lineKey);
+    _revision++;
     notifyListeners();
     saveToStorage(); // حفظ تلقائي
   }
 
   void clear() {
     _items.clear();
+    _revision++;
     notifyListeners();
     clearStorage(); // مسح من التخزين أيضاً
   }
 
   /// مسح السلة عند تغيير الجلسة (بدلاً من الحذف، نحمل السلة الصحيحة)
   Future<void> clearOnSessionChange() async {
-    // مسح السلة المعروضة حالياً في الذاكرة
+    // Invalidate any previous account load before switching baskets.
+    _revision++;
     _items.clear();
-    
+
     // إعادة تحميل السلة المناسبة للمستخدم الجديد
     // هذا سيحمل السلة الفارغة للمستخدم الجديد أو سلته المحفوظة
     await loadFromStorage();
-    
+
     debugPrint('تم تبديل السلة بسبب تغيير الجلسة');
   }
 }

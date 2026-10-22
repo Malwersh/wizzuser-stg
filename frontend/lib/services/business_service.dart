@@ -1,3 +1,4 @@
+import 'storefront_pricing.dart';
 // lib/services/business_service.dart
 
 import 'dart:convert';
@@ -10,6 +11,13 @@ import 'package:foodapp_user/services/session_service.dart';
 import '../config/api_config.dart';
 
 class BusinessService {
+  static BusinessModel parseBusiness(dynamic value) {
+    final data=Map<String,dynamic>.from(value as Map);
+    final business=BusinessModel.fromJson(data);
+    StorefrontPricing.instance.seedBusiness(business.id,business.metadata ?? data);
+    return business;
+  }
+
   static String get _baseUrl {
     final url = ApiConfig.baseUrl;
     if (url.isEmpty) {
@@ -30,7 +38,7 @@ class BusinessService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true && data['business'] != null) {
-          return BusinessModel.fromJson(data['business']);
+          return parseBusiness(data['business']);
         }
       }
       
@@ -352,7 +360,7 @@ class BusinessService {
         
         if (data['success'] == true && data['businesses'] != null) {
           final businesses = (data['businesses'] as List)
-              .map((business) => BusinessModel.fromJson(business))
+              .map((business) => parseBusiness(business))
               .toList();
           
           // فحص أول business
@@ -418,7 +426,7 @@ class BusinessService {
         
         if (data['success'] == true && data['businesses'] != null) {
           final businesses = (data['businesses'] as List)
-              .map((business) => BusinessModel.fromJson(business))
+              .map((business) => parseBusiness(business))
               .toList();
           
           return BusinessListResponse(

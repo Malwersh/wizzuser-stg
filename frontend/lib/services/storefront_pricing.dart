@@ -66,13 +66,19 @@ class StorefrontPricing extends ChangeNotifier {
   final Future<String?> Function() freshToken;
   final http.Client client;
   final DateTime Function() now;
+  final _businessFacts = <String, Map<String, dynamic>>{};
+  final String? Function() regionId;
   final _cache = <String, StorefrontPreview>{};
+  // Route information is independent of basket contents. Never reuse its fee.
+  final _routes = <String, StorefrontPreview>{};
   final _running = <String, Future<StorefrontPreview?>>{};
   final _errors = <String, String>{};
   final _retryAt = <String, DateTime>{};
   StreamSubscription? _addresses, _sessions;
   String? _lastAccount;
   int _active = 0;
+  Timer? _termsBoundary;
+  bool _disposed = false;
   final _slots = <Completer<void>>[];
   StorefrontPricing({
     String? Function()? account,
@@ -80,10 +86,14 @@ class StorefrontPricing extends ChangeNotifier {
     Future<String?> Function()? freshToken,
     String? Function()? addressId,
     String? Function()? addressRevision,
+    String? Function()? regionId,
     http.Client? client,
     DateTime Function()? now,
     bool listenToAddress = true,
-  }) : account = account ?? (() => SessionService.instance.currentUserId),
+  }) : regionId =
+           regionId ??
+           (() => DeliveryAddressManager.instance.activeAddress?.regionId),
+       account = account ?? (() => SessionService.instance.currentUserId),
        token = token ?? (() => SessionService.instance.accessToken),
        freshToken =
            freshToken ??
@@ -112,12 +122,109 @@ class StorefrontPricing extends ChangeNotifier {
         if (_lastAccount != this.account()) {
           _lastAccount = this.account();
           _cache.clear();
+          _routes.clear();
           _errors.clear();
           notifyListeners();
         }
       });
     }
   }
+  void seedBusiness(String branch, Map<String, dynamic> facts, {bool onlyIfAbsent = false}) {
+    if (onlyIfAbsent && _businessFacts.containsKey(branch)) return;
+    final selected = <String, dynamic>{
+      'minimumOrderAmountIqd': facts['minimumOrderAmountIqd'],
+      'averagePreparationMinutes': facts['averagePreparationMinutes'],
+      'storefrontDeliveryAgreements':
+          facts['storefrontDeliveryAgreements'] ?? [],
+    };
+    if (_businessFacts.length >= 80 && !_businessFacts.containsKey(branch))
+      _businessFacts.remove(_businessFacts.keys.first);
+    final previous = _businessFacts[branch];
+    _businessFacts[branch] = jsonDecode(jsonEncode(selected));
+    _scheduleTermsBoundary();
+    if (jsonEncode(previous) != jsonEncode(selected)) {
+      _cache.removeWhere((key, _) => (jsonDecode(key) as List)[3] == branch);
+      _routes.removeWhere((key, _) => (jsonDecode(key) as List)[3] == branch);
+      scheduleMicrotask(() { if (!_disposed) notifyListeners(); });
+    }
+  }
+
+  void _scheduleTermsBoundary() {
+    _termsBoundary?.cancel();
+    DateTime? next;
+    for (final facts in _businessFacts.values) {
+      final rows = facts['storefrontDeliveryAgreements'];
+      if (rows is! List) continue;
+      for (final row in rows.whereType<Map>())
+        for (final field in ['effectiveFrom', 'effectiveTo']) {
+          final boundary = DateTime.tryParse(row[field]?.toString() ?? '');
+          if (boundary != null &&
+              boundary.isAfter(now()) &&
+              (next == null || boundary.isBefore(next)))
+            next = boundary;
+        }
+    }
+    if (next != null)
+      _termsBoundary = Timer(next.difference(now()), () {
+        _cache.clear();
+        _routes.clear();
+        notifyListeners();
+        _scheduleTermsBoundary();
+      });
+  }
+
+  Map? _agreement(String branch) {
+    if (addressId() == null || regionId() == null) return null;
+    final rows = _businessFacts[branch]?['storefrontDeliveryAgreements'];
+    if (rows is! List) return null;
+    final matching =
+        rows.whereType<Map>().where((row) {
+          final from = DateTime.tryParse(
+                row['effectiveFrom']?.toString() ?? '',
+              ),
+              to = DateTime.tryParse(row['effectiveTo']?.toString() ?? '');
+          final fee = row['deliveryFeeIqd'],
+              minimum = row['minimumOrderAmountIqd'];
+          return from != null &&
+              to != null &&
+              !now().isBefore(from) &&
+              now().isBefore(to) &&
+              row['regionIds'] is List &&
+              (row['regionIds'] as List).contains(regionId()) &&
+              fee is int &&
+              fee >= 0 &&
+              minimum is int &&
+              minimum >= 0;
+        }).toList();
+    return matching.length == 1 ? matching.single : null;
+  }
+
+  double? feeIqd(
+    String branch,
+    List<dynamic> items, {
+    bool hasGoodsDiscount = false,
+  }) {
+    final preview = peek(branch, items, hasGoodsDiscount: hasGoodsDiscount);
+    if (preview != null) return preview.fee;
+    final agreement = _agreement(branch);
+    return agreement == null
+        ? null
+        : (agreement['deliveryFeeIqd'] as int).toDouble();
+  }
+
+  int? minimumIqd(
+    String branch,
+    List<dynamic> items, {
+    bool hasGoodsDiscount = false,
+  }) {
+    final preview = peek(branch, items, hasGoodsDiscount: hasGoodsDiscount);
+    if (preview != null) return preview.minimumOrderAmountIqd;
+    final value =
+        _agreement(branch)?['minimumOrderAmountIqd'] ??
+        _businessFacts[branch]?['minimumOrderAmountIqd'];
+    return value is int && value > 0 ? value : null;
+  }
+
   static List<Map<String, dynamic>> selections(List<dynamic> items) =>
       items.map((raw) {
           final r = raw as Map;
@@ -144,6 +251,7 @@ class StorefrontPricing extends ChangeNotifier {
       branch,
       selections(items),
       hasGoodsDiscount,
+      regionId(),
     ]);
   }
 
@@ -154,6 +262,16 @@ class StorefrontPricing extends ChangeNotifier {
   }) {
     final p = _cache[key(branch, items, hasGoodsDiscount: hasGoodsDiscount)];
     return p != null && now().isBefore(p.expiresAt) ? p : null;
+  }
+
+  String? _routeKey(String branch) {
+    if (key(branch, const []) == null) return null;
+    return jsonEncode([account(), addressId(), addressRevision(), branch, regionId()]);
+  }
+
+  StorefrontPreview? peekRoute(String branch) {
+    final route = _routes[_routeKey(branch)];
+    return route != null && now().isBefore(route.expiresAt) ? route : null;
   }
 
   String? error(
@@ -178,6 +296,7 @@ class StorefrontPricing extends ChangeNotifier {
     final owner = account(),
         address = addressId(),
         revision = addressRevision(),
+        region = regionId(),
         selected = selections(items);
     Future<StorefrontPreview?> run() async {
       if (_active >= 2) {
@@ -192,7 +311,7 @@ class StorefrontPricing extends ChangeNotifier {
         if (access == null) throw const FormatException('Session unavailable');
         if (owner != account() ||
             address != addressId() ||
-            revision != addressRevision())
+            revision != addressRevision() || region != regionId())
           return null;
         final response = await client
             .post(
@@ -213,7 +332,7 @@ class StorefrontPricing extends ChangeNotifier {
             .timeout(const Duration(seconds: 20));
         if (owner != account() ||
             address != addressId() ||
-            revision != addressRevision())
+            revision != addressRevision() || region != regionId())
           return null;
         final body = jsonDecode(response.body);
         if (response.statusCode != 200 || body['success'] != true) {
@@ -235,12 +354,17 @@ class StorefrontPricing extends ChangeNotifier {
           throw const FormatException('Preview scope changed');
         if (_cache.length >= 80) _cache.remove(_cache.keys.first);
         _cache[k] = result;
+        final routeKey = _routeKey(branch);
+        if (routeKey != null) {
+          if (_routes.length >= 80) _routes.remove(_routes.keys.first);
+          _routes[routeKey] = result;
+        }
         _errors.remove(k);
         return result;
       } catch (_) {
         if (owner == account() &&
             address == addressId() &&
-            revision == addressRevision()) {
+            revision == addressRevision() && region == regionId()) {
           _errors[k] = 'تعذر حساب التوصيل. أعد المحاولة';
           _retryAt.putIfAbsent(k, () => now().add(const Duration(seconds: 30)));
         }
@@ -260,12 +384,14 @@ class StorefrontPricing extends ChangeNotifier {
       return await task;
     } finally {
       _running.remove(k);
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _termsBoundary?.cancel();
     _addresses?.cancel();
     _sessions?.cancel();
     super.dispose();

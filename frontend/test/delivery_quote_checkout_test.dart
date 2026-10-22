@@ -86,6 +86,13 @@ void main() {
     checkout = make();
     await checkout.restore();
   });
+  test('closed staging admission does not claim an internet failure or create an order', () async {
+    final service=DeliveryQuoteCheckout(account:()=>'u1',token:()=>'access',now:()=>clock,read:(_)async=>null,write:(_,__)async{},remove:(_)async{},client:MockClient((r)async=>http.Response(jsonEncode({'success':false,'code':'FINANCE_ROLLOUT_ADMISSION_CLOSED'}),403)));
+    await service.restore();await service.load('b1','a1');
+    expect(service.valid,false);expect(service.pending,false);
+    expect(service.error,'إتمام الطلب غير متاح حاليًا؛ يرجى المحاولة لاحقًا');
+    service.dispose();
+  });
   tearDown(() => checkout.dispose());
   test(
     'scoped test uses approved confirmation and restores it after lost reply',
@@ -292,13 +299,14 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       orders = (_) async => throw http.ClientException('lost response');
-      await expectLater(checkout.confirm(content), throwsException);
+      await expectLater(checkout.confirm({...content, 'tip': 500}), throwsException);
       final first = requests.last.body;
       expect(checkout.pending, true);
       clock = clock.add(const Duration(hours: 1));
       final restored = make();
       await restored.restore();
       expect(restored.pending, true);
+      expect(restored.pendingTipIqd, 500);
       orders = (r) async {
         expect(r.body, first);
         return success(r, 200);

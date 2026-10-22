@@ -16,7 +16,7 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   ];
   for (final key in [
     ...fields,
-    if (proposal['schemaVersion'] == 2) 'referenceDeliveryFee',
+    if ([2, 3].contains(proposal['schemaVersion'])) 'referenceDeliveryFee',
     if (proposal.containsKey('driverTip')) 'driverTip',
   ]) {
     final money = proposal[key];
@@ -34,10 +34,24 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   BigInt amount(String key) => BigInt.from(proposal[key]['minorAmount'] as int);
   final tip =
       proposal.containsKey('driverTip') ? amount('driverTip') : BigInt.zero;
-  final funded = proposal['schemaVersion'] == 2;
+  final agreement = proposal['schemaVersion'] == 3;
+  final funded = proposal['schemaVersion'] == 2 || agreement;
+  if (agreement) {
+    final pin = proposal['deliveryAgreement'];
+    if (pin is! Map || pin.length != 4 ||
+        pin['policyId'] is! String ||
+        !RegExp(r'^[A-Za-z0-9_.:-]{1,150}$').hasMatch(pin['policyId']) ||
+        pin['version'] is! int || pin['version'] < 1 ||
+        pin['termsHash'] is! String ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(pin['termsHash']) ||
+        !['FIXED_TARIFF','FREE'].contains(pin['kind']) ||
+        (pin['kind'] == 'FREE' && amount('deliveryFee') != BigInt.zero)) {
+      throw const FormatException('INVALID_DELIVERY_AGREEMENT_PREVIEW');
+    }
+  }
   if ((funded
           ? proposal['referenceDeliveryFee']['minorAmount'] != quotedFeeMinor ||
-              proposal['deliveryFee']['minorAmount'] >= quotedFeeMinor
+              (!agreement && proposal['deliveryFee']['minorAmount'] >= quotedFeeMinor)
           : proposal['deliveryFee']['minorAmount'] != quotedFeeMinor) ||
       amount('discount') > amount('goodsGross') ||
       amount('goodsGross') -
@@ -135,6 +149,11 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
        now = now ?? DateTime.now;
   String _key(String user) => 'quoted_checkout_v1_${Uri.encodeComponent(user)}';
   bool get pending => _pending != null;
+  int? get pendingTipIqd {
+    if (_owner != account() || _pending == null) return null;
+    final tip = _pending!['tip'] ?? 0;
+    return tip is int && tip >= 0 ? tip : null;
+  }
   bool get valid =>
       ready &&
       _owner == account() &&
@@ -275,6 +294,12 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 : 60;
         _quoteRetryAt = now().add(Duration(seconds: seconds));
         error = 'طلبات تسعير كثيرة؛ أعد المحاولة بعد $seconds ثانية';
+        return;
+      }
+      if (['FINANCE_ROLLOUT_ADMISSION_CLOSED', 'FINANCE_ROLLOUT_OUT_OF_SCOPE',
+           'FINANCE_ROLLOUT_NOT_CONFIGURED'].contains(data['code'])) {
+        quote = null;
+        error = 'إتمام الطلب غير متاح حاليًا؛ يرجى المحاولة لاحقًا';
         return;
       }
       if (response.statusCode != 200 || data['success'] != true) {
@@ -441,6 +466,9 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
               throw StateError(
                 'قيمة الأصناف أقل من الحد الأدنى للمطعم. ارجع إلى السلة وأضف أصنافًا.',
               );
+            if (data is Map && data['code'] == 'PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED') {
+              throw StateError('هذا الخصم غير متاح الآن. اختر خصمًا آخر أو تابع دون خصم.');
+            }
             if (previewResponse.statusCode == 409 &&
                 data is Map &&
                 data['activeOrder'] is Map) {
@@ -457,6 +485,17 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
               await renewForConfirmation();
               continue;
             }
+            if (data is Map && previewResponse.statusCode != 200) {
+              final message = switch (data['code']) {
+                'DELIVERY_POLICY_UNAVAILABLE' || 'DELIVERY_POLICY_AUTHORITY_REVOKED' || 'DELIVERY_POLICY_HISTORY_MISMATCH' => 'تعذر اعتماد سعر التوصيل الآن. لم يُرسل الطلب؛ أعد المحاولة لاحقًا.',
+                'CART_PRICE_CHANGED' => 'تغيّرت أسعار بعض الأصناف. ارجع إلى المطعم وحدّث السلة قبل المتابعة.',
+                'UNSUPPORTED_DISCOUNT_ITEMS' || 'COMMERCIAL_ORDER_UNSUPPORTED' => 'تعذر تسعير أحد الأصناف أو إضافاته. راجع الأصناف المختارة قبل المتابعة.',
+                'CASH_TOTAL_DENOMINATION_UNSUPPORTED' => 'تعذر اعتماد مبلغ الدفع النقدي. راجع الإكرامية والخصم ثم أعد المحاولة.',
+                'AUTH_REQUIRED' || 'ACCOUNT_UNAVAILABLE' => 'يرجى تسجيل الدخول مجددًا قبل تأكيد الطلب.',
+                _ => null,
+              };
+              if (message != null) throw StateError(message);
+            }
             final proposal = data['commercial'];
             final previewExpiry =
                 proposal is Map && proposal['expiresAt'] is String
@@ -471,7 +510,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
             if (previewResponse.statusCode != 200 ||
                 data['success'] != true ||
                 proposal is! Map ||
-                ![1, 2].contains(proposal['schemaVersion']) ||
+                ![1, 2, 3].contains(proposal['schemaVersion']) ||
                 proposal['digest'] is! String ||
                 !RegExp(r'^[a-f0-9]{64}$').hasMatch(proposal['digest']) ||
                 proposal['quoteId'] != saved['quoteId'] ||
@@ -576,6 +615,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'COMMERCIAL_CONSENT_REQUIRED',
                 'COMMERCIAL_QUOTE_EXPIRED',
                 'DISCOUNT_FUNDING_UNAVAILABLE',
+                'PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED',
                 'COMMERCIAL_SOURCE_UNAVAILABLE',
               ].contains(data['code']);
       if (success || definitive) {

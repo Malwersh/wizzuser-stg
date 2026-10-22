@@ -1,3 +1,4 @@
+import 'package:uuid/uuid.dart';
 import 'live_activity_service.dart';
 // lib/services/order_service_v2.dart
 
@@ -50,6 +51,9 @@ class OrderServiceV2 extends ChangeNotifier {
   OrderModel? _currentOrder;
   bool _isLoading = false;
   String? _error;
+  bool lastCancellationPending = false;
+  String? lastCancellationMessage;
+  final Map<String,String> _cancellationKeys = {};
   String? _guestToken; // Token for guest order tracking
 
   // Getters
@@ -487,7 +491,7 @@ class OrderServiceV2 extends ChangeNotifier {
       final fullUrl = '$_baseUrl/orders/$orderId';
 
       print('📡 OrderService: Making GET request to: $fullUrl');
-      print('📋 OrderService: Headers: $headers');
+
 
       final response = await http
           .get(Uri.parse(fullUrl), headers: headers)
@@ -555,6 +559,7 @@ class OrderServiceV2 extends ChangeNotifier {
             _orders.insert(0, order);
             print('➕ OrderService: Added new order to list');
           }
+          unawaited(LiveActivityService.syncOrder(order));
           notifyListeners();
 
           return order;
@@ -805,7 +810,7 @@ class OrderServiceV2 extends ChangeNotifier {
         // تحديث فقط الطلبات المكتملة في القائمة
         _orders.removeWhere(
           (order) =>
-              ['delivered', 'cancelled', 'failed'].contains(order.status.value),
+              ['delivered', 'cancelled', 'failed', 'returned'].contains(order.status.value),
         );
         _orders.addAll(completedOrders);
 
@@ -829,6 +834,7 @@ class OrderServiceV2 extends ChangeNotifier {
     'failed',
     'expired',
     'rejected',
+    'returned',
   ];
 
   /// الحصول على الطلبات النشطة من القائمة المحلية
@@ -878,6 +884,12 @@ class OrderServiceV2 extends ChangeNotifier {
       final responseData = json.decode(response.body);
 
       if (response.statusCode == 200 && responseData['success'] == true) {
+        if (responseData['cancellationStatus'] == 'REQUESTED' && responseData['cancelled'] == false) {
+          lastCancellationPending = true;
+          lastCancellationMessage = responseData['message'] as String?;
+          notifyListeners();
+          return true;
+        }
         // تحديث الطلب في القائمة المحلية
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
@@ -897,6 +909,8 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// إلغاء طلب
   Future<bool> cancelOrder(String orderId, String reason) async {
+    lastCancellationPending = false;
+    lastCancellationMessage = null;
     print('🔴 OrderService.cancelOrder():');
     print('   - معرف الطلب: $orderId');
     print('   - سبب الإلغاء: $reason');
@@ -914,6 +928,8 @@ class OrderServiceV2 extends ChangeNotifier {
         'orderId': orderId,
         'canceledBy': 'customer',
         'reason': reason,
+        'cancellationProtocolVersion': 1,
+        'idempotencyKey': _cancellationKeys.putIfAbsent(orderId, () => const Uuid().v4()),
         'requestedBy': userId ?? _guestToken,
         if (_guestToken != null) 'guestToken': _guestToken,
       });
@@ -1028,6 +1044,7 @@ class OrderServiceV2 extends ChangeNotifier {
         .where(
           (order) =>
               order.status != OrderStatus.delivered &&
+              order.status != OrderStatus.returned &&
               order.status != OrderStatus.cancelled &&
               order.status != OrderStatus.failed,
         )
@@ -1040,6 +1057,7 @@ class OrderServiceV2 extends ChangeNotifier {
         .where(
           (order) =>
               order.status == OrderStatus.delivered ||
+              order.status == OrderStatus.returned ||
               order.status == OrderStatus.cancelled ||
               order.status == OrderStatus.failed ||
               order.status == OrderStatus.expired ||

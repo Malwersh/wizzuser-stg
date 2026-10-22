@@ -285,6 +285,16 @@ class AppStateProvider extends ChangeNotifier {
         .fold(0.0, (sum, item) => sum + item.totalPrice);
   }
   
+  void changeCartLineQuantity(CartItem item, int delta) {
+    _cart.changeItemQuantity(item, delta);
+    notifyListeners();
+  }
+
+  void removeCartLine(CartItem item) {
+    _cart.removeItem(item);
+    notifyListeners();
+  }
+
   Future<void> updateCartItemQuantity(dynamic itemId, int newQuantity, [String? storeId]) async {
     try {
       // إذا كان itemId رقماً (index)، استخدمه مباشرة

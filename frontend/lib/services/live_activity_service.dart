@@ -15,7 +15,7 @@ import 'android_order_tracking.dart';
 class LiveActivityService {
   static const enabled = bool.fromEnvironment(
     'ORDER_LIVE_ACTIVITY_ENABLED',
-    defaultValue: false,
+    defaultValue: ApiConfig.generalStagingFinance,
   );
   static const MethodChannel _methodChannel = MethodChannel(
     'com.wiz.wizuserapp/live_activity',
@@ -151,7 +151,7 @@ class LiveActivityService {
     await start(
       orderId: order.id,
       status: order.status.value,
-      statusLabel: order.status.arabicName,
+      statusLabel: statusLabel(order),
       storeName: order.storeName,
       orderNumber: order.orderNumber,
       etaText: etaText(order),
@@ -167,7 +167,7 @@ class LiveActivityService {
     await update(
       orderId: order.id,
       status: order.status.value,
-      statusLabel: order.status.arabicName,
+      statusLabel: statusLabel(order),
       storeName: order.storeName,
       orderNumber: order.orderNumber,
       etaText: etaText(order),
@@ -181,12 +181,13 @@ class LiveActivityService {
   }
 
   static Future<void> _android(OrderModel order) async {
-    await AndroidOrderTracking.show({'orderId':order.id,'status':order.status.value,'statusLabel':order.status.arabicName,'storeName':order.storeName,'orderNumber':order.orderNumber,'etaText':etaText(order),'arrivalLatestEpoch':_arrival(order,true),'progress':statusProgress(order.status),'updatedAt':(order.updatedAt??order.createdAt).toIso8601String()});
+    await AndroidOrderTracking.show({'orderId':order.id,'status':order.status.value,'statusLabel':statusLabel(order),'storeName':order.storeName,'orderNumber':order.orderNumber,'etaText':etaText(order),'arrivalLatestEpoch':_arrival(order,true),'progress':statusProgress(order.status),'updatedAt':(order.updatedAt??order.createdAt).toIso8601String()});
   }
 
   static bool isTerminal(OrderStatus status) {
     return [
       OrderStatus.delivered,
+      OrderStatus.returned,
       OrderStatus.cancelled,
       OrderStatus.failed,
       OrderStatus.expired,
@@ -195,7 +196,8 @@ class LiveActivityService {
   }
 
   static double? _arrival(OrderModel order, bool latest) {
-    if (order.status == OrderStatus.pending ||
+    if ([OrderStatus.returning, OrderStatus.returnArrived, OrderStatus.returned].contains(order.status) ||
+        order.status == OrderStatus.pending ||
         order.driverSearchUnavailable ||
         isTerminal(order.status))
       return null;
@@ -219,7 +221,14 @@ class LiveActivityService {
     } catch (_) {}
   }
 
+  static String statusLabel(OrderModel order)=>order.returnStatus=='REQUESTED'?'تعذر التسليم؛ نراجع معالجة طلبك':order.status.arabicName;
+
   static String etaText(OrderModel order) {
+    if(order.returnStatus=='REQUESTED')return 'بانتظار تعليمات معالجة الطلب';
+    if (order.returnStatus == 'REVIEW_REQUIRED') return 'استلام المرتجع قيد المراجعة';
+    if (order.status == OrderStatus.returning) return 'تعذر تسليم الطلب للزبون';
+    if (order.status == OrderStatus.returnArrived) return 'بانتظار تأكيد استلام المطعم';
+    if (order.status == OrderStatus.returned) return 'أكد المطعم استلام المرتجع';
     if (order.status == OrderStatus.pending) return 'بانتظار موافقة المطعم';
     if (order.driverSearchUnavailable) return 'بانتظار سائق';
     final early =
@@ -266,6 +275,11 @@ class LiveActivityService {
         return 0.8;
       case OrderStatus.arrivedAtCustomer:
         return 0.95;
+      case OrderStatus.returning:
+        return 0.5;
+      case OrderStatus.returnArrived:
+        return 0.75;
+      case OrderStatus.returned:
       case OrderStatus.delivered:
         return 1.0;
       case OrderStatus.cancelled:

@@ -19,4 +19,16 @@ void main(){
   await tester.pumpWidget(const SizedBox.shrink());
  });
  test('status copies preserve server timing and driver identity',(){final o=order(estimate:{'latestAt':'2026-10-17T12:25:00Z'});final next=o.copyWith(status:OrderStatus.confirmed);expect(next.deliveryEstimate,o.deliveryEstimate);expect(next.driverId,'driver');expect(next.estimatedPreparationTime,20);});
+
+test('stale search exhaustion cannot override an assigned driver', () {
+  for (final status in ['assigned', 'accepted', 'heading_to_store', 'picked_up']) {
+    final order = OrderModel.fromJson({
+      'orderId': 'order', 'status': status, 'items': [],
+      'deliveryAddress': <String, dynamic>{},
+      'driverId': 'driver', 'driverSearchUnavailable': true,
+    });
+    expect(order.driverSearchUnavailable, isFalse);
+  }
+});
+
 }

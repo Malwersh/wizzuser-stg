@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import '../widgets/basket_line_card.dart';
 import '../services/storefront_pricing.dart';
 import '../widgets/storefront_value.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +9,6 @@ import 'package:provider/provider.dart';
 import '../providers/app_state_provider.dart';
 import '../models/store.dart';
 import '../models/product_model.dart';
-import '../models/business_suggestion_data.dart';
 import '../services/restaurant_availability_service.dart';
 import '../services/business_service.dart';
 import '../screens/checkout_screen.dart';
@@ -17,30 +19,112 @@ class CartScreen extends StatefulWidget {
   final String? storeId;
   final List<Store>? stores; // قائمة المتاجر للبحث عن اسم المطعم
 
+  final StorefrontPricing? pricing;
+  final WidgetBuilder? checkoutBuilder;
+
   // إعدادات السلة
 
-  const CartScreen({super.key, this.storeName, this.storeId, this.stores});
+  const CartScreen({
+    super.key,
+    this.storeName,
+    this.storeId,
+    this.stores,
+    this.pricing,
+    this.checkoutBuilder,
+  });
 
   @override
   State<CartScreen> createState() => _CartScreenState();
 }
 
 class _CartScreenState extends State<CartScreen> {
+  late final StorefrontPricing _pricing =
+      widget.pricing ?? StorefrontPricing.instance;
+  final _suggestedProducts = <String, Future<List<ProductModel>>>{};
+  bool _continuing = false;
+  String? _continueError;
+
+  String _branch(AppStateProvider state) =>
+      state.cart.currentStoreId ?? widget.storeId ?? '';
+
+  Future<void> _continueCheckout(AppStateProvider state) async {
+    if (_continuing || state.cartItems.isEmpty) return;
+    setState(() {
+      _continuing = true;
+      _continueError = null;
+    });
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final branch = _branch(state), items = state.cartItems;
+        if (items.isEmpty) return;
+        final fingerprint = jsonEncode(items),
+            scope = _pricing.key(branch, items);
+        if (scope != null) {
+          final preview = await _pricing.load(branch, items);
+          if (!mounted) return;
+          if (branch != _branch(state) ||
+              fingerprint != jsonEncode(state.cartItems) ||
+              scope != _pricing.key(branch, state.cartItems))
+            continue;
+          if (preview == null) {
+            setState(
+              () =>
+                  _continueError =
+                      'تعذر تحديث بيانات التوصيل. تحقق من الاتصال ثم أعد المحاولة.',
+            );
+            return;
+          }
+        }
+        final minimum = _pricing.minimumIqd(branch, state.cartItems);
+        if (minimum != null && state.cartTotal < minimum) {
+          setState(
+            () =>
+                _continueError =
+                    'الحد الأدنى للأصناف ${basketMoney(minimum)}. أضف ${basketMoney(minimum - state.cartTotal)} للمتابعة.',
+          );
+          return;
+        }
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                widget.checkoutBuilder ??
+                (_) => CheckoutScreen(
+                  storeId: branch,
+                  storeName: _resolveStoreName() ?? 'المطعم',
+                ),
+          ),
+        );
+        return;
+      }
+      if (mounted)
+        setState(
+          () =>
+              _continueError =
+                  'تغيّرت السلة أثناء التحقق. راجع الكمية ثم تابع.',
+        );
+    } finally {
+      if (mounted) setState(() => _continuing = false);
+    }
+  }
+
   String? _resolveStoreName() {
+    final activeBranch = _branch(context.read<AppStateProvider>());
     // قائمة الأسماء المرفوضة (الافتراضية/الخاطئة)
     final rejectedNames = ['متجر', 'المطعم', 'عربة التسوق'];
 
     // 1. فحص اسم المتجر الممرر، ولكن نتجاهل الأسماء المرفوضة
-    if (widget.storeName != null &&
+    if ((widget.storeId == null || widget.storeId == activeBranch) &&
+        widget.storeName != null &&
         widget.storeName!.isNotEmpty &&
         !rejectedNames.contains(widget.storeName)) {
       return widget.storeName;
     }
 
     // 2. محاولة البحث في قائمة المتاجر بناءً على storeId (حتى لو كان اسم المطعم في السلة غير صحيح)
-    if (widget.storeId != null && widget.stores != null) {
+    if (activeBranch.isNotEmpty && widget.stores != null) {
       final found = widget.stores!.firstWhere(
-        (s) => s.id == widget.storeId,
+        (s) => s.id == activeBranch,
         orElse:
             () => Store(
               id: '',
@@ -87,7 +171,7 @@ class _CartScreenState extends State<CartScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: const Color(0xFFFAFAFA),
+        backgroundColor: const Color(0xfff6f8fb),
         body: Consumer<AppStateProvider>(
           builder: (context, appState, child) {
             if (appState.cartItems.isEmpty) {
@@ -444,13 +528,13 @@ class _CartScreenState extends State<CartScreen> {
                 const SizedBox(height: 24),
                 // تفاصيل السلة
                 _buildCartSummary(context, appState),
-                const SizedBox(height: 100), // مساحة للزر السفلي
+                const SizedBox(height: 20),
               ],
             ),
           ),
           // زر المتابعة في الأسفل
           ListenableBuilder(
-            listenable: StorefrontPricing.instance,
+            listenable: _pricing,
             builder: (context, _) => _buildCheckoutButton(context, appState),
           ),
         ],
@@ -466,290 +550,19 @@ class _CartScreenState extends State<CartScreen> {
     dynamic item,
     int index,
   ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
-      ),
-      child: Column(
-        children: [
-          // الصف العلوي مع اسم الطبق وزر الحذف
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  item['name']?.toString() ?? 'طبق غير محدد',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              // زر حذف الطبق في الجهة اليسرى العليا
-              GestureDetector(
-                onTap: () => _showDeleteConfirmation(context, appState, index),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                    size: 20,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // الصف السفلي مع تفاصيل الطبق
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // صورة الطبق
-              GestureDetector(
-                onTap: () {
-                  // TODO: إصلاح التنقل إلى DishDetailScreen لاحقاً
-                },
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.grey[100],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Builder(
-                      builder: (context) {
-                        final imageUrl = item['image']?.toString() ?? '';
-
-                        // إذا كان الرابط يبدأ بـ http أو https، استخدم Image.network
-                        if (imageUrl.isNotEmpty &&
-                            (imageUrl.startsWith('http://') ||
-                                imageUrl.startsWith('https://'))) {
-                          return Image.network(
-                            imageUrl,
-                            fit: BoxFit.cover,
-                            width: 64,
-                            height: 64,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                color: Colors.grey[200],
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.grey[400]!,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: Colors.grey[200],
-                                child: Icon(
-                                  Icons.restaurant,
-                                  color: Colors.grey[400],
-                                  size: 24,
-                                ),
-                              );
-                            },
-                          );
-                        }
-
-                        // إذا كان الرابط محلي أو فارغ، استخدم placeholder
-                        return Container(
-                          color: Colors.grey[200],
-                          child: Icon(
-                            Icons.fastfood,
-                            color: Colors.grey[400],
-                            size: 24,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // تفاصيل الطبق
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // وصف مختصر
-                    if (item['description'] != null &&
-                        item['description'].toString().isNotEmpty &&
-                        item['description'].toString() != 'وصف غير متوفر')
-                      Text(
-                        item['description'].toString(),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                          height: 1.3,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-
-                    // عرض السعر الأساسي إذا كان مختلفاً عن السعر الإجمالي (في حالة وجود إضافات)
-                    if (item['base_price'] != null &&
-                        item['base_price'] != item['price'])
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'السعر الأساسي: ${(item['base_price'] as num).toStringAsFixed(2)} د.ع',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[500],
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-
-                    // عرض التعليمات الخاصة إذا كانت موجودة
-                    if (item['special_instructions'] != null &&
-                        item['special_instructions']
-                            .toString()
-                            .trim()
-                            .isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.note_alt_outlined,
-                              size: 14,
-                              color: AppColors.primaryDark,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                'ملاحظة: ${item['special_instructions']}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.primaryDark,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    const SizedBox(height: 12),
-                    // التحكم بالكمية والسعر
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // أدوات التحكم بالكمية
-                        Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Colors.grey.withValues(alpha: 0.3),
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  final currentQuantity =
-                                      (item['quantity'] as num?)?.toInt() ?? 1;
-                                  if (currentQuantity > 1) {
-                                    final itemId = item['id']?.toString() ?? '';
-                                    final storeId =
-                                        item['store_id']?.toString() ?? '';
-                                    appState.updateCartItemQuantity(
-                                      itemId,
-                                      currentQuantity - 1,
-                                      storeId,
-                                    );
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  child: Icon(
-                                    Icons.remove,
-                                    color: Colors.grey[700],
-                                    size: 18,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                child: Text(
-                                  '${(item['quantity'] as num?)?.toInt() ?? 1}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () {
-                                  final currentQuantity =
-                                      (item['quantity'] as num?)?.toInt() ?? 1;
-                                  final itemId = item['id']?.toString() ?? '';
-                                  final storeId =
-                                      item['store_id']?.toString() ?? '';
-                                  appState.updateCartItemQuantity(
-                                    itemId,
-                                    currentQuantity + 1,
-                                    storeId,
-                                  );
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  child: const Icon(
-                                    Icons.add,
-                                    color: AppColors.primary,
-                                    size: 18,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // السعر الإجمالي للطبق
-                        Text(
-                          '${((item['price'] as num? ?? 0) * (item['quantity'] as num? ?? 1)).toStringAsFixed(2)} د.ع',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    final line = appState.cart.items[index];
+    return BasketLineCard(
+      key: ValueKey(line.lineKey),
+      item: line,
+      increase: () {
+        appState.changeCartLineQuantity(line, 1);
+        setState(() => _continueError = null);
+      },
+      decrease: () {
+        appState.changeCartLineQuantity(line, -1);
+        setState(() => _continueError = null);
+      },
+      remove: () => _showDeleteConfirmation(context, appState, index),
     );
   }
 
@@ -758,80 +571,13 @@ class _CartScreenState extends State<CartScreen> {
     BuildContext context,
     AppStateProvider appState,
   ) {
-    String? currentStoreId = widget.storeId;
-    if (currentStoreId == null && appState.cartItems.isNotEmpty) {
-      currentStoreId = appState.cartItems.first['store_id']?.toString();
-    }
-    if (currentStoreId == null) {
-      print('⚠️ لا يوجد store ID للاقتراحات');
-      return const SizedBox.shrink();
-    }
-
-    print('🏪 جلب اقتراحات للمطعم: $currentStoreId');
+    final currentStoreId = _branch(appState);
+    if (currentStoreId.isEmpty) return const SizedBox.shrink();
 
     // 🔥 استخدام البيانات المحفوظة بدلاً من عمل استعلام
     final businessData = appState.getBusinessSuggestionData(currentStoreId);
 
-    if (businessData == null) {
-      print('❌ لا توجد بيانات محفوظة للمطعم: $currentStoreId');
-      print('🔍 محاولة إجبار عرض قسم الاقتراحات للاختبار...');
-
-      // 🔥 في حالة عدم وجود بيانات محفوظة، جرب عرض الاقتراحات مباشرة
-      return FutureBuilder<List<ProductModel>>(
-        future: _loadSuggestedProducts(currentStoreId),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
-              ),
-              child: const Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            print('❌ لا توجد اقتراحات متاحة حتى بدون فلترة');
-            return const SizedBox.shrink();
-          }
-
-          final suggestions = snapshot.data!;
-          print(
-            '📦 تم العثور على ${suggestions.length} اقتراحات بدون فلترة نوع المطعم',
-          );
-
-          return Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '🔧 وضع الاختبار - لا توجد بيانات محفوظة',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.orange,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text('تم العثور على ${suggestions.length} منتجات من المطعم'),
-              ],
-            ),
-          );
-        },
-      );
-    }
-
-    print('🏢 البيانات المحفوظة: $businessData');
-    print('🔍 businessType: "${businessData.businessType}"');
-    print('🔍 isRestaurant result: ${businessData.isRestaurant}');
+    if (businessData == null) return const SizedBox.shrink();
 
     // ✅ عرض الاقتراحات فقط للمطاعم - أو إذا كان businessType فارغ (افتراض أنه مطعم)
     final shouldShowSuggestions =
@@ -839,87 +585,18 @@ class _CartScreenState extends State<CartScreen> {
         businessData.businessType == null ||
         businessData.businessType!.isEmpty;
 
-    if (!shouldShowSuggestions) {
-      print(
-        '❌ لن يتم عرض اقتراحات - نوع النشاط ليس مطعم: ${businessData.businessType}',
-      );
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '❌ ليس مطعم',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.red,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('نوع النشاط: "${businessData.businessType}"'),
-            Text('isRestaurant: ${businessData.isRestaurant}'),
-          ],
-        ),
-      );
-    }
-
-    print('✅ سيتم عرض الاقتراحات للمطعم');
+    if (!shouldShowSuggestions) return const SizedBox.shrink();
 
     // 🔥 استخدام الفئات المحفوظة بدلاً من جلبها من قاعدة البيانات
     final suggestionCategories = businessData.suggestionAvailableCategories;
 
-    print(
-      '📋 الفئات المتوفرة في المطعم (${businessData.availableCategories.length}): ${businessData.availableCategories.join(", ")}',
-    );
-    print(
-      '🎯 الفئات المطلوبة للاقتراحات (${BusinessSuggestionData.suggestionCategories.length}): ${BusinessSuggestionData.suggestionCategories.join(", ")}',
-    );
-    print(
-      '✅ الفئات المطابقة للاقتراحات (${suggestionCategories.length}): ${suggestionCategories.join(", ")}',
-    );
-
-    if (suggestionCategories.isEmpty) {
-      print('❌ لا توجد فئات مطلوبة متاحة في المطعم');
-      print('📋 الفئات المتوفرة: ${businessData.availableCategories}');
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '⚠️ لا توجد فئات مطلوبة',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.amber,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'الفئات المتوفرة (${businessData.availableCategories.length}): ${businessData.availableCategories.join(", ")}',
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'الفئات المطلوبة: ${BusinessSuggestionData.suggestionCategories.join(", ")}',
-            ),
-          ],
-        ),
-      );
-    }
+    if (suggestionCategories.isEmpty) return const SizedBox.shrink();
 
     return FutureBuilder<List<ProductModel>>(
-      future: _loadSuggestedProducts(currentStoreId),
+      future: _suggestedProducts.putIfAbsent(
+        currentStoreId,
+        () => _loadSuggestedProducts(currentStoreId),
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
@@ -934,29 +611,26 @@ class _CartScreenState extends State<CartScreen> {
         }
 
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          print('❌ لا توجد اقتراحات متاحة');
           return const SizedBox.shrink();
         }
 
         final suggestions = snapshot.data!;
-        print('📦 تم تحميل ${suggestions.length} اقتراحات');
 
         // استبعد المنتجات الموجودة بالفعل في السلة
         final cartProductIds =
             appState.cartItems.map((item) => item['id'] ?? '').toSet();
         final availableSuggestions =
             suggestions
-                .where((product) => !cartProductIds.contains(product.id))
+                .where(
+                  (product) =>
+                      product.isAvailable &&
+                      product.price.isFinite &&
+                      product.price > 0 &&
+                      !cartProductIds.contains(product.id),
+                )
                 .toList();
 
-        print(
-          '📦 بعد استبعاد المنتجات الموجودة في السلة: ${availableSuggestions.length} اقتراحات',
-        );
-
         if (availableSuggestions.isEmpty) {
-          print(
-            '❌ لا توجد اقتراحات متاحة بعد استبعاد المنتجات الموجودة في السلة',
-          );
           return const SizedBox.shrink();
         }
 
@@ -965,8 +639,6 @@ class _CartScreenState extends State<CartScreen> {
             availableSuggestions.length > 6
                 ? availableSuggestions.take(6).toList()
                 : availableSuggestions;
-
-        print('✅ سيتم عرض ${displaySuggestions.length} اقتراحات');
 
         return Container(
           padding: const EdgeInsets.all(20),
@@ -1046,15 +718,9 @@ class _CartScreenState extends State<CartScreen> {
   // 🔍 تحميل المنتجات المقترحة من الفئات المحددة فقط
   Future<List<ProductModel>> _loadSuggestedProducts(String businessId) async {
     try {
-      print('🔍 بدء تحميل الاقتراحات للمطعم: $businessId');
-
       // جلب جميع فئات ومنتجات المطعم
       final categoryProducts =
           await BusinessService.getBusinessCategoriesAndProducts(businessId);
-
-      print(
-        '📋 فئات المطعم المتوفرة (${categoryProducts.keys.length}): ${categoryProducts.keys.toList()}',
-      );
 
       // الفئات المطلوبة للاقتراحات - شاملة للإنجليزي والعربي وتنويعات الكتابة
       final targetCategories = {
@@ -1076,21 +742,15 @@ class _CartScreenState extends State<CartScreen> {
         'sides', 'الأطباق الجانبية', 'side', 'side dish', 'side dishes',
       };
 
-      print('🎯 الفئات المستهدفة: $targetCategories');
-
       final List<ProductModel> suggestions = [];
-      int totalMatchedCategories = 0;
 
       // البحث في فئات المطعم عن الفئات المطلوبة
       for (final entry in categoryProducts.entries) {
         final categoryName = entry.key.toLowerCase().trim();
         final products = entry.value;
 
-        print('🔍 فحص فئة: "$categoryName" (عدد المنتجات: ${products.length})');
-
         // فحص محسن لمطابقة الفئات - مطابقة مرنة وشاملة
         bool isTargetCategory = false;
-        String? matchedTarget;
 
         // فحص المطابقة مع تجاهل الحالة والمسافات
         for (final target in targetCategories) {
@@ -1100,8 +760,6 @@ class _CartScreenState extends State<CartScreen> {
           // مطابقة مباشرة تماماً
           if (categoryLower == targetLower) {
             isTargetCategory = true;
-            matchedTarget = target;
-            print('✅ مطابقة مباشرة تماماً: "$categoryName" = "$target"');
             break;
           }
 
@@ -1113,8 +771,6 @@ class _CartScreenState extends State<CartScreen> {
                 targetLower.length >= 4 || categoryLower.length >= 4;
             if (minLength) {
               isTargetCategory = true;
-              matchedTarget = target;
-              print('✅ مطابقة جزئية محسنة: "$categoryName" ↔ "$target"');
               break;
             }
           }
@@ -1135,125 +791,39 @@ class _CartScreenState extends State<CartScreen> {
               (categoryLower.contains('appetizer') &&
                   targetLower.contains('appetizer'))) {
             isTargetCategory = true;
-            matchedTarget = target;
-            print('✅ مطابقة كلمة مفتاحية: "$categoryName" ↔ "$target"');
             break;
           }
         }
 
         if (isTargetCategory && products.isNotEmpty) {
-          totalMatchedCategories++;
-          print(
-            '✅ إضافة ${products.length} منتجات من فئة: "$categoryName" (مطابقة مع: $matchedTarget)',
-          );
           // إضافة المنتجات من هذه الفئة (حد أقصى 3 منتجات لكل فئة)
           final productsToAdd = products.take(3).toList();
           suggestions.addAll(productsToAdd);
-
-          // طباعة أسماء المنتجات المضافة
-          for (var product in productsToAdd) {
-            print('   - ${product.name} (${product.price} د.ع)');
-          }
-        } else if (isTargetCategory) {
-          print('⚠️ فئة مطابقة لكن لا توجد منتجات: "$categoryName"');
-        } else {
-          print('❌ لا تطابق: "$categoryName"');
         }
       }
 
       // خلط الاقتراحات للحصول على تنوع أكبر
       suggestions.shuffle();
 
-      print('📊 ملخص النتائج:');
-      print('   - إجمالي الفئات المفحوصة: ${categoryProducts.keys.length}');
-      print('   - الفئات المطابقة: $totalMatchedCategories');
-      print('   - إجمالي الاقتراحات المحملة: ${suggestions.length}');
-
       return suggestions;
     } catch (e) {
-      print('❌ خطأ في تحميل الاقتراحات: $e');
       return [];
     }
   }
 
   // زر إضافة المزيد من الأطباق
-  Widget _buildAddMoreDishesButton(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.add_shopping_cart,
-                  color: AppColors.primary,
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'تريد المزيد؟',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'استكشف المزيد من الأطباق اللذيذة من نفس المطعم',
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.secondary,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                elevation: 0,
-              ),
-              onPressed: () {
-                _navigateBackToStore(context);
-              },
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.restaurant_menu, size: 18),
-                  SizedBox(width: 8),
-                  Text(
-                    'إضافة المزيد من الأطباق',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildAddMoreDishesButton(BuildContext context) => OutlinedButton.icon(
+    onPressed: () => _navigateBackToStore(context),
+    icon: const Icon(Icons.add_rounded),
+    label: const Text('إضافة أطباق من المطعم'),
+    style: OutlinedButton.styleFrom(
+      foregroundColor: AppColors.secondary,
+      minimumSize: const Size.fromHeight(48),
+      side: const BorderSide(color: Color(0xffdce5f0)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+  );
 
-  // تفاصيل السلة
-  // تفاصيل السلةrtSummary(BuildContext context, AppStateProvider appState) {
   Widget _buildCartSummary(BuildContext context, AppStateProvider appState) {
     final int totalDishes = appState.cartItems.fold(
       0,
@@ -1264,8 +834,8 @@ class _CartScreenState extends State<CartScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xffe3eaf2)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -1308,11 +878,11 @@ class _CartScreenState extends State<CartScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'عدد الأطباق ($totalDishes)',
+                'مجموع الأصناف ($totalDishes قطعة)',
                 style: const TextStyle(fontSize: 15, color: Colors.black87),
               ),
               Text(
-                '${subtotal.toStringAsFixed(2)} د.ع',
+                basketMoney(subtotal),
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -1327,17 +897,14 @@ class _CartScreenState extends State<CartScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'رسوم التوصيل',
+                'التوصيل التقديري',
                 style: TextStyle(fontSize: 15, color: Colors.black87),
               ),
               StorefrontValue(
-                branchId:
-                    widget.storeId ??
-                    (appState.cartItems.isEmpty
-                        ? ''
-                        : appState.cartItems.first['store_id'] as String? ??
-                            ''),
+                branchId: _branch(appState),
                 field: StorefrontField.fee,
+                pricing: _pricing,
+                requestDebounce: const Duration(milliseconds: 250),
                 items: appState.cartItems,
                 style: const TextStyle(
                   fontSize: 15,
@@ -1347,31 +914,14 @@ class _CartScreenState extends State<CartScreen> {
               ),
             ],
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(height: 1),
-          ),
-          // المجموع الكلي
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'مجموع الأصناف',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              Text(
-                '${subtotal.toStringAsFixed(2)} د.ع',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
+          const Divider(height: 24),
+          const Text(
+            'رسوم الخدمة والخصومات والإكرامية تظهر في مراجعة الفاتورة قبل تأكيد الطلب.',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.6,
+              color: AppColors.textSecondary,
+            ),
           ),
         ],
       ),
@@ -1381,146 +931,66 @@ class _CartScreenState extends State<CartScreen> {
   // زر المتابعة مع التحقق من الحد الأدنى
   // زر المتابعة مع التحقق من الحد الأدنىt context, AppStateProvider appState) {
   Widget _buildCheckoutButton(BuildContext context, AppStateProvider appState) {
-    final double subtotal = appState.cartTotal;
-    final branch =
-        widget.storeId ??
-        appState.cartItems.firstOrNull?['store_id']?.toString() ??
-        '';
-    final preview = StorefrontPricing.instance.peek(branch, appState.cartItems);
-    final minimum = (preview?.minimumOrderAmountIqd ?? 0).toDouble();
-    final bool isMinimumMet = subtotal >= minimum;
-    final double remainingAmount = minimum - subtotal;
+    final minimum = _pricing.minimumIqd(_branch(appState), appState.cartItems);
+    final below = minimum != null && appState.cartTotal < minimum;
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: const BoxDecoration(
         color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
+        border: Border(top: BorderSide(color: Color(0xffe3eaf2))),
       ),
       child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (preview != null && !isMinimumMet)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.amber.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.info_outline,
-                        color: Colors.amber,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'الحد الأدنى للطلب',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber,
-                            ),
-                          ),
-                          Text(
-                            'أضف ${remainingAmount.toStringAsFixed(2)} د.ع إضافية للوصول للحد الأدنى (${minimum.toStringAsFixed(0)} د.ع)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+            if (_continueError != null || below)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  _continueError ??
+                      'الحد الأدنى للأصناف ${basketMoney(minimum!)} · أضف ${basketMoney(minimum - appState.cartTotal)}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.error),
                 ),
               ),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isMinimumMet ? AppColors.primary : Colors.grey[400],
-                  foregroundColor: AppColors.secondary,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  elevation: isMinimumMet ? 2 : 0,
-                ),
+              height: 56,
+              child: FilledButton(
                 onPressed:
-                    preview == null
-                        ? () {
-                          StorefrontPricing.instance.load(
-                            branch,
-                            appState.cartItems,
-                            force: true,
-                          );
-                          _showSnackBar(
-                            context,
-                            "تعذر التحقق من تفاصيل الطلب. أعد المحاولة.",
-                            Colors.amber,
-                          );
-                        }
-                        : isMinimumMet
-                        ? () {
-                          // Navigate to new checkout screen
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (_) => CheckoutScreen(
-                                    storeId:
-                                        widget.storeId ??
-                                        appState.cartItems.first['store_id']
-                                            ?.toString(),
-                                    storeName: _resolveStoreName() ?? 'المطعم',
-                                  ),
-                            ),
-                          );
-                        }
-                        : () {
-                          _showSnackBar(
-                            context,
-                            'الحد الأدنى للطلب ${minimum.toStringAsFixed(0)} د.ع. أضف ${remainingAmount.toStringAsFixed(2)} د.ع إضافية.',
-                            Colors.amber,
-                          );
-                        },
-                child: Text(
-                  preview == null
-                      ? 'التحقق من تفاصيل الطلب'
-                      : isMinimumMet
-                      ? 'متابعة الطلب'
-                      : 'أضف ${remainingAmount.toStringAsFixed(2)} د.ع للمتابعة',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    _continuing ? null : () => _continueCheckout(appState),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.secondaryDark,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
+                child:
+                    _continuing
+                        ? const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.secondary,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Text('جارٍ التحقق…'),
+                          ],
+                        )
+                        : const Text(
+                          'متابعة الطلب',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
               ),
             ),
           ],
@@ -1543,53 +1013,14 @@ class _CartScreenState extends State<CartScreen> {
 
   // العودة لنفس المطعم أو الشاشة الرئيسية
   void _navigateBackToStore(BuildContext context) {
-    if (widget.storeId != null && widget.stores != null) {
-      // البحث عن المطعم الحالي
-      try {
-        final store = widget.stores!.firstWhere(
-          (s) => s.id == widget.storeId,
-          orElse:
-              () =>
-                  widget.stores!.isNotEmpty
-                      ? widget.stores!.first
-                      : Store(
-                        id: '',
-                        name: '',
-                        image: '',
-                        logoUrl: '',
-                        isOpen: true,
-                        fee: '',
-                        rating: '',
-                        reviews: '',
-                        distance: '',
-                        time: '',
-                        address: '',
-                        combos: [],
-                        sandwiches: [],
-                        drinks: [],
-                        extras: [],
-                        specialties: [],
-                      ),
-        );
-
-        // إذا تم العثور على المطعم، الانتقال مباشرة إلى شاشة المطعم
-        if (store.id.isNotEmpty) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => StoreDetailScreen(store: store),
-            ),
-          );
-          return;
-        }
-      } catch (e) {
-        // في حالة حدوث خطأ، العودة للشاشة السابقة فقط
-        print('Error navigating back to store: $e');
-      }
-    }
-
-    // العودة للشاشة السابقة إذا لم نجد معلومات المطعم أو حدث خطأ
-    if (Navigator.canPop(context)) {
+    final branch = _branch(context.read<AppStateProvider>());
+    final store = widget.stores?.where((s) => s.id == branch).firstOrNull;
+    if (store != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => StoreDetailScreen(store: store)),
+      );
+    } else if (Navigator.canPop(context)) {
       Navigator.pop(context);
     }
   }
@@ -1601,6 +1032,7 @@ class _CartScreenState extends State<CartScreen> {
     int index,
   ) {
     final item = appState.cartItems[index];
+    final line = appState.cart.items[index];
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1703,8 +1135,7 @@ class _CartScreenState extends State<CartScreen> {
                           elevation: 0,
                         ),
                         onPressed: () {
-                          final itemId = item['id']?.toString() ?? '';
-                          appState.removeFromCart(itemId);
+                          appState.removeCartLine(line);
                           Navigator.pop(context);
                           _showSnackBar(
                             context,
@@ -1871,13 +1302,18 @@ class _CartScreenState extends State<CartScreen> {
     AppStateProvider appState,
     ProductModel product,
   ) async {
+    final branch = _branch(appState);
+    if (branch.isEmpty ||
+        (product.businessId.isNotEmpty && product.businessId != branch))
+      return;
     try {
-      // 🔒 فحص توفر المطعم قبل إضافة المنتج
-      if (widget.storeId != null && widget.storeId!.isNotEmpty) {
+      // Preserve merchant availability checks for optional suggestions.
+      if (branch.isNotEmpty) {
         final availabilityService = RestaurantAvailabilityService.instance;
         final availabilityStatus = await availabilityService
-            .checkRestaurantAvailability(widget.storeId!, skipCache: true);
+            .checkRestaurantAvailability(branch, skipCache: true);
 
+        if (!mounted || !context.mounted || branch != _branch(appState)) return;
         if (!availabilityStatus.isAvailable) {
           String errorMessage;
 
@@ -1897,7 +1333,6 @@ class _CartScreenState extends State<CartScreen> {
       }
 
       // ✅ المطعم متاح، إضافة المنتج للسلة
-      print('🛒 محاولة إضافة منتج للسلة: ${product.name} (ID: ${product.id})');
       final cartItem = {
         'id': product.id, // ✅ إصلاح: تغيير من 'dish_id' إلى 'id'
         'name': product.name,
@@ -1905,30 +1340,27 @@ class _CartScreenState extends State<CartScreen> {
         'image': product.imageUrl,
         'price': product.price,
         'quantity': 1,
-        'store_id': widget.storeId ?? '1',
+        'store_id': branch,
         'store_name': _resolveStoreName() ?? 'المطعم',
-        'store_address': 'العنوان غير محدد', // TODO: إضافة عنوان المطعم الحقيقي
       };
-      print('🛒 بيانات المنتج: $cartItem');
       final success = await appState.addToCart(
         cartItem,
       ); // ✅ إصلاح: await للدالة async
+      if (!mounted || !context.mounted) return;
       if (success) {
-        print('✅ تم إضافة المنتج للسلة بنجاح');
         _showSnackBar(
           context,
           'تم إضافة ${product.name} للسلة',
           AppColors.primary,
         );
       } else {
-        print('❌ فشل في إضافة المنتج للسلة');
         _showSnackBar(context, 'فشل في إضافة المنتج للسلة', Colors.red);
       }
     } catch (e) {
-      print('❌ خطأ في إضافة المنتج للسلة: $e');
+      if (!mounted || !context.mounted) return;
       _showSnackBar(
         context,
-        'حدث خطأ في إضافة المنتج: ${e.toString()}',
+        'تعذر إضافة الطبق الآن. أعد المحاولة.',
         Colors.red,
       );
     }

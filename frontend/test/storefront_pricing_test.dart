@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:foodapp_user/models/business_model.dart';
+import 'package:foodapp_user/widgets/storefront_value.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -23,6 +26,41 @@ Map<String, dynamic> result(String address, {int fee = 1500000}) => {
   'arrivalMinutes': {'minimum': 24, 'maximum': 29},
 };
 void main() {
+  testWidgets('list metadata shows agreement fee on the first frame while routing is pending', (t) async {
+    final response=Completer<http.Response>();
+    final p=StorefrontPricing(account:()=>'u',token:()=>'t',addressId:()=>'a',addressRevision:()=>'v',regionId:()=>'zone',listenToAddress:false,now:()=>DateTime.utc(2026,10,19),client:MockClient((_)=>response.future));
+    final business=BusinessModel.fromJson({'businessId':'b','minimum_order':4000,'orderReceptionSettings':{'defaultPreparationMinutes':20},'storefrontDeliveryAgreements':[{'id':'contract','version':1,'effectiveFrom':'2026-10-19T00:00:00Z','effectiveTo':'2026-11-19T00:00:00Z','regionIds':['zone'],'deliveryFeeIqd':1500,'minimumOrderAmountIqd':7000}]});
+    p.seedBusiness(business.id,business.metadata!);
+    expect(p.minimumIqd('b',[]),7000);expect(business.averagePreparationMinutes,20);
+    await t.pumpWidget(MaterialApp(home:StorefrontValue(branchId:'b',field:StorefrontField.fee,items:const[],pricing:p)));
+    expect(find.text('1500 د.ع'),findsOneWidget);
+    response.complete(http.Response(jsonEncode({'success':true,'preview':result('a')}),200));
+    await t.pumpAndSettle();await t.pumpWidget(const SizedBox());p.dispose();
+  });
+  test('basket changes reuse only valid route information, never a different basket fee',()async{
+    var address='a',revision='v1',owner='u',region='zone',clock=DateTime.utc(2026,10,19);
+    var calls=0;
+    final p=StorefrontPricing(account:()=>owner,token:()=>'t',addressId:()=>address,addressRevision:()=>revision,regionId:()=>region,listenToAddress:false,now:()=>clock,client:MockClient((_)async{calls++;return http.Response(jsonEncode({'success':true,'preview':result('a')}),200);}));
+    await p.load('b',[]);
+    final basket=[{'id':'item','quantity':2}];
+    expect(p.peek('b',basket),isNull);expect(p.feeIqd('b',basket),isNull);
+    expect(p.peekRoute('b')!.arrivalText,'24–29 دقيقة');expect(calls,1);
+    region='outside';expect(p.peekRoute('b'),isNull);
+    region='zone';revision='edited';expect(p.peekRoute('b'),isNull);
+    revision='v1';address='other';expect(p.peekRoute('b'),isNull);
+    address='a';owner='other';expect(p.peekRoute('b'),isNull);
+    owner='u';clock=DateTime.utc(2026,10,20);expect(p.peekRoute('b'),isNull);p.dispose();
+  });
+  test('commercial terms show before route loading, follow region and dates, and restore original minimum',() {
+    var address='a',region='zone',clock=DateTime.utc(2026,10,19);
+    final p=StorefrontPricing(account:()=>'u',token:()=>'t',addressId:()=>address,addressRevision:()=>address,regionId:()=>region,listenToAddress:false,now:()=>clock);
+    p.seedBusiness('b',{'minimumOrderAmountIqd':4000,'storefrontDeliveryAgreements':[{'id':'contract','version':1,'effectiveFrom':'2026-10-19T00:00:00.000Z','effectiveTo':'2026-11-19T00:00:00.000Z','regionIds':['zone'],'deliveryFeeIqd':1500,'minimumOrderAmountIqd':7000}]});
+    expect(p.feeIqd('b',[]),1500);expect(p.minimumIqd('b',[]),7000);
+    address='different';expect(p.feeIqd('b',[]),1500);
+    region='outside';expect(p.feeIqd('b',[]),isNull);expect(p.minimumIqd('b',[]),4000);
+    region='zone';clock=DateTime.utc(2026,11,19);expect(p.feeIqd('b',[]),isNull);expect(p.minimumIqd('b',[]),4000);p.dispose();
+  });
+
   test('minimum has no invented default and supports explicit branch values',(){
     for(final value in [null,0])expect(StorefrontPreview({...result('a'),'minimumOrderAmountIqd':value}).minimumOrderAmountIqd,isNull);
     expect(StorefrontPreview({...result('a'),'minimumOrderAmountIqd':1500}).minimumOrderAmountIqd,1500);

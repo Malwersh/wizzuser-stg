@@ -7,7 +7,7 @@ class ScopedCheckoutAttempt {
   final String userId, branchId, requestId;
   const ScopedCheckoutAttempt._(this.userId, this.branchId, this.requestId);
 
-  static ScopedCheckoutAttempt? fromBuild() => parse(
+  static ScopedCheckoutAttempt? fromBuild() => ApiConfig.generalStagingFinance ? null : parse(
     const String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT'),
     environment: ApiConfig.environment,
     quotesEnabled: ApiConfig.deliveryQuotesEnabled,

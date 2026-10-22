@@ -424,7 +424,7 @@ exports.handler = async (event) => {
                 TABLE_NAME !== 'WizzOrders' || BUSINESSES_TABLE !== 'WhizzMerchants_Businesses') {
                 throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
             }
-            const service = createStagingQuoteOrder({db: dynamoDb, enableDeliveryFunding:deliveryPromotionMode==='REQUIRED', authenticateCustomer: async () => {
+            const service = createStagingQuoteOrder({enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1',db: dynamoDb, enableDeliveryFunding:deliveryPromotionMode==='REQUIRED', authenticateCustomer: async () => {
                 const live = await readAccount();
                 return {userId: body.userId, subjectId: live.sub, condition: live.condition};
             }});
@@ -577,7 +577,7 @@ exports.handler = async (event) => {
             if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some(l=>
                 processedItems.find(i=>i.itemId===l.productId)?.unitPrice !== l.unitPrice.minorAmount))
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
-            minimumPolicy.assertMinimumOrder(minimumBranch,catalog.goodsGross.minorAmount);
+            if(commercialMode!=='REQUIRED')minimumPolicy.assertMinimumOrder(minimumBranch,catalog.goodsGross.minorAmount);
             discountItems = catalogItems(catalog);
             discountOperations.push(...catalog.conditions);
         }
@@ -598,10 +598,12 @@ exports.handler = async (event) => {
             if (!['cod','cash','cash_on_delivery'].includes(String(body.paymentMethod).toLowerCase()) ||
                 processedItems.some(i=>i.modifiers.length) || packagingFee!==0 || tax!==0 || rounding!==0)
                 throw Object.assign(Error('COMMERCIAL_ORDER_UNSUPPORTED'),{statusCode:409});
-            const deliveryPromotion=deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:dynamoDb,
+            const pricingReads=body.action==='preview_commercial'?require('./checkout-pricing-reads').createCheckoutPricingReads(dynamoDb):null;
+            const pricingDb=pricingReads?.db??dynamoDb;
+            const deliveryPromotion=deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:pricingDb,lifecycleReadMode:'CONDITION_CHECK',previewOnly:body.action==='preview_commercial',
                 pricingRequest:quotedOrder.deliveryPromotionPricingRequest(),
                 customerFacts:()=>deliveryPromotionCustomerFacts(currentOffers,accountOrder)}):undefined;
-            commercial = await createStagingCommercialSource({db:dynamoDb,deliveryPromotion}).prepare({orderId,branchId:body.storeId,
+            commercial = await createStagingCommercialSource({db:pricingDb,deliveryPromotion,enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1'}).prepare({orderId,branchId:body.storeId,
                 items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity})),
                 quote:{createdAt:quotedOrder.createdAt,expiresAt:quotedOrder.expiresAt,deliveryFeeMinor:deliveryFee,
                     origin:quotedOrder.origin,destination:quotedOrder.destination,destinationRegionId:quotedOrder.destinationRegionId},
@@ -611,7 +613,7 @@ exports.handler = async (event) => {
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
             deliveryFee=commercial.calculation.allocationInput.customerDeliveryFee.minorAmount;
             if(body.action==='preview_commercial') return {statusCode:200,headers,body:JSON.stringify({success:true,
-                commercial:{schemaVersion:commercial.deliveryFunding?2:1,...(commercial.deliveryFunding?{referenceDeliveryFee:moneyFromMinor(quotedOrder.deliveryFeeMinor)}:{}),quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
+                commercial:{schemaVersion:commercial.deliveryFunding?(commercial.deliveryAgreement?3:2):1,...(commercial.deliveryAgreement?{deliveryAgreement:commercial.deliveryAgreement}:{}),...(commercial.deliveryFunding?{referenceDeliveryFee:moneyFromMinor(quotedOrder.deliveryFeeMinor)}:{}),quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
                     customerTotal:commercial.calculation.customerTotal,goodsGross:commercial.calculation.allocationInput.goodsGross,
                     serviceFee:commercial.calculation.serviceFee.amount,discount:moneyFromMinor(discountFils),deliveryFee:moneyFromMinor(deliveryFee),driverTip:moneyFromMinor(tip)}})};
             if(body.commercialConsent?.digest!==commercial.digest ||
@@ -941,8 +943,9 @@ exports.handler = async (event) => {
         if (commercial) {
             order.merchantId=commercial.merchantId;
             order.financialSnapshot=commercial.financialSnapshot;
+            if(commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1')order.exceptionPolicy=require('./quote-runtime/orderExceptionPolicy').createOrderExceptionPolicy(order.createdAt);
             order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
-                calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
+                calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1'?'BUDGET_COMMITTED_WITH_ORDER':commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
         }
 
         const receptionEnabled=process.env.MERCHANT_RESPONSE_MODE==='REQUIRED'&&!order.scheduled&&!order.scheduledAt;
@@ -1077,14 +1080,14 @@ exports.handler = async (event) => {
         console.error('Error name:', error.name);
         
         return {
-            statusCode: error.statusCode || 500,
+            statusCode: error.statusCode || (error.name === 'DeliveryFundingReaderError' ? 503 : 500),
             headers: headers,
             body: JSON.stringify({
                 error: 'Failed to create order',
                 message: error.message,
                 errorName: error.name,
                 ...(error instanceof QuoteOrderError ? {code: error.code} :
-                    ['MINIMUM_ORDER_NOT_MET','INVALID_MINIMUM_ORDER','FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
+                    ['DELIVERY_POLICY_UNAVAILABLE','DELIVERY_POLICY_AUTHORITY_REVOKED','DELIVERY_POLICY_HISTORY_MISMATCH','MINIMUM_ORDER_NOT_MET','INVALID_MINIMUM_ORDER','FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
                 success: false
             })
         };
