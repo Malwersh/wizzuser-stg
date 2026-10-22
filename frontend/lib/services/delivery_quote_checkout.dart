@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
 import 'scoped_checkout_attempt.dart';
+import 'offer_checkout_failures.dart';
 
 void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   const fields = [
@@ -491,6 +492,8 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'CART_PRICE_CHANGED' => 'تغيّرت أسعار بعض الأصناف. ارجع إلى المطعم وحدّث السلة قبل المتابعة.',
                 'UNSUPPORTED_DISCOUNT_ITEMS' || 'COMMERCIAL_ORDER_UNSUPPORTED' => 'تعذر تسعير أحد الأصناف أو إضافاته. راجع الأصناف المختارة قبل المتابعة.',
                 'CASH_TOTAL_DENOMINATION_UNSUPPORTED' => 'تعذر اعتماد مبلغ الدفع النقدي. راجع الإكرامية والخصم ثم أعد المحاولة.',
+                'BENEFIT_EXHAUSTED' || 'BENEFIT_EXPIRED' || 'BENEFIT_PAUSED' || 'BENEFIT_NOT_ELIGIBLE' => 'الميزة لم تعد متاحة؛ أزلها أو اختر ميزة أخرى ثم راجع الإجمالي.',
+                'BENEFIT_MINIMUM_ORDER' || 'BENEFIT_WRONG_BRANCH' || 'BENEFIT_WRONG_REGION' || 'BENEFIT_DISTANCE_EXCEEDED' || 'BENEFIT_DELIVERY_CAP_EXCEEDED' || 'BENEFIT_NO_SAVINGS' || 'BENEFIT_STACKING_DENIED' => 'شروط الميزة لا تنطبق على هذا الطلب. أزلها أو اختر ميزة أخرى.',
                 'AUTH_REQUIRED' || 'ACCOUNT_UNAVAILABLE' => 'يرجى تسجيل الدخول مجددًا قبل تأكيد الطلب.',
                 _ => null,
               };
@@ -596,6 +599,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
           data['activeOrder'] is Map;
       final definitive =
           activeConflict ||
+          isDefinitiveOfferRejection(data['code'], response.statusCode) ||
           response.statusCode < 500 &&
               [
                 'QUOTE_EXPIRED',

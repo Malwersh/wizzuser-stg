@@ -1,3 +1,5 @@
+import '../models/platform_benefit.dart';
+import '../widgets/checkout_benefits_sheet.dart';
 import '../widgets/basket_line_card.dart' show basketMoney;
 import '../services/storefront_pricing.dart';
 import '../services/delivery_address_manager.dart';
@@ -111,6 +113,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   double get _actualDeliveryFee =>
       _quotesEnabled ? (_quotedCheckout.quote?.fee ?? 0) : 10.0;
+  PlatformBenefit? _selectedBenefit;
   String? _validatedDiscountContext;
   String _discountContext({bool includeTip = false}) {
     final state = context.read<AppStateProvider>();
@@ -122,11 +125,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _actualDeliveryFee,
       // Tips change final consent, but are not inputs to discount eligibility.
       if (includeTip) _driverTipIqd,
+      if (includeTip) _selectedBenefit?.id,
+      if (includeTip) _selectedDiscountId,
+      if (includeTip) _appliedPromoCode,
     ]);
   }
 
   bool get _discountCurrent =>
-      (_selectedDiscountId == null && _appliedPromoCode == null) ||
+      (_selectedDiscountId == null && _appliedPromoCode == null && _selectedBenefit == null) ||
       (_validatedDiscountContext == _discountContext());
   double get _effectiveDiscount => _discountCurrent ? _discount : 0;
   DetailedAddress? _selectedAddress;
@@ -317,6 +323,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isValidatingDiscount = false;
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
+        _selectedBenefit = null;
         _appliedPromoCode = code;
         _promoDiscountAmount = (result['discount'] as num?)?.toDouble() ?? 0.0;
         _discount = _promoDiscountAmount;
@@ -326,7 +333,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       } else {
         _appliedPromoCode = null;
         _promoDiscountAmount = 0.0;
-        _discount = _merchantDiscountAmount;
+        if (_selectedBenefit == null) _discount = _merchantDiscountAmount;
       }
     });
 
@@ -343,7 +350,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _appliedPromoCode = null;
       _promoCodeController.clear();
       _promoDiscountAmount = 0.0;
-      _discount = _merchantDiscountAmount;
+      if (_selectedBenefit == null) _discount = _merchantDiscountAmount;
     });
   }
 
@@ -353,7 +360,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() {
         _selectedDiscountId = null;
         _merchantDiscountAmount = 0.0;
-        _discount = _promoDiscountAmount;
+        if (_selectedBenefit == null) _discount = _promoDiscountAmount;
       });
       return;
     }
@@ -411,6 +418,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _isValidatingDiscount = false;
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
+        _selectedBenefit = null;
         _selectedDiscountId = discount.discountId;
         _merchantDiscountAmount =
             (result['discount'] as num?)?.toDouble() ?? 0.0;
@@ -424,7 +432,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // only the failed merchant discount is rejected
         _selectedDiscountId = null;
         _merchantDiscountAmount = 0.0;
-        _discount = _promoDiscountAmount;
+        if (_selectedBenefit == null) _discount = _promoDiscountAmount;
       }
     });
 
@@ -440,6 +448,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.storeId != widget.storeId) {
       _discountAttempt++;
+      _selectedBenefit = null;
       _selectedDiscountId = null;
       _appliedPromoCode = null;
       _discount = 0;
@@ -631,6 +640,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ),
                                   const SizedBox(height: 16),
 
+                                  if (!_isGuestUser && ApiConfig.commercialPricingEnabled && _quotesEnabled) ...[
+                                    _buildPlatformBenefitSection(),
+                                    const SizedBox(height: 16),
+                                  ],
                                   // قسم العروض والخصومات
                                   RepaintBoundary(
                                     child: _buildDiscountsSection(),
@@ -1107,6 +1120,97 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _choosePlatformBenefit() async {
+    if (_isLoading || _preparingReview || _isValidatingDiscount || _quotedCheckout.pending) return;
+    final state = context.read<AppStateProvider>();
+    final branch = _branchId(state);
+    final account = SessionService.instance.currentUserId;
+    if (branch == null || account == null || _selectedAddress == null) {
+      _showMessage('سجّل الدخول واختر عنوان التوصيل أولًا', isError: true);
+      return;
+    }
+    await _syncActiveAddress();
+    if (!mounted) return;
+    final benefit = await showModalBottomSheet<PlatformBenefit>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => FractionallySizedBox(heightFactor: .85, child: CheckoutBenefitsSheet(branchId: branch)),
+    );
+    if (!mounted || benefit == null || account != SessionService.instance.currentUserId || branch != _branchId(state) || _quotedCheckout.pending) return;
+    final attempt = ++_discountAttempt;
+    setState(() => _isValidatingDiscount = true);
+    try {
+      await _ensureQuoteFresh(branch, _selectedAddress!.id);
+      if (!mounted || attempt != _discountAttempt) return;
+      if (!_quoteMatches(state) || account != SessionService.instance.currentUserId) {
+        _showMessage('تعذر التحقق من الميزة؛ حدّث العنوان وأعد المحاولة', isError: true);
+        return;
+      }
+      final scope = _discountContext();
+      final result = await _orderService.validatePromoCode(
+        code: '', platformDiscountId: benefit.id, addressId: _selectedAddress!.id,
+        storeId: branch, items: state.cartItems, orderTotal: state.cartTotal,
+        deliveryFee: _actualDeliveryFee,
+      );
+      if (!mounted || attempt != _discountAttempt || scope != _discountContext()) return;
+      if (result['valid'] != true || result['deliveryBenefit'] != benefit.isDelivery ||
+          (!benefit.isDelivery && ((result['discount'] as num?) ?? 0) <= 0)) {
+        _showMessage(result['message'] as String? ?? 'تعذر تطبيق الميزة على هذه السلة', isError: true);
+        return;
+      }
+      setState(() {
+        _selectedBenefit = benefit;
+        _validatedDiscountContext = scope;
+        _discount = benefit.isDelivery ? 0 : (result['discount'] as num).toDouble();
+        _selectedDiscountId = null;
+        _appliedPromoCode = null;
+        _promoCodeController.clear();
+        _merchantDiscountAmount = 0;
+        _promoDiscountAmount = 0;
+      });
+      _showMessage(benefit.isDelivery ? 'تم اختيار ميزة التوصيل؛ تظهر رسومها النهائية عند مراجعة الإجمالي' : 'تم تطبيق ميزة المنصة بنجاح');
+    } catch (_) {
+      if (mounted && attempt == _discountAttempt) _showMessage('تعذر التحقق من الميزة؛ تحقق من الاتصال وأعد المحاولة', isError: true);
+    } finally {
+      if (mounted && attempt == _discountAttempt) setState(() => _isValidatingDiscount = false);
+    }
+  }
+
+  Widget _buildPlatformBenefitSection() {
+    final locked = _isLoading || _preparingReview || _isValidatingDiscount || _quotedCheckout.pending;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Icon(Icons.card_giftcard, color: AppColors.secondary),
+          const SizedBox(width: 12),
+          const Expanded(child: Text('مزايا المنصة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+          if (_isValidatingDiscount) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+        ]),
+        if (_selectedBenefit != null) ...[
+          const SizedBox(height: 8),
+          Text(_selectedBenefit!.title),
+          if (_selectedBenefit!.isDelivery) const Text('يُحسب خصم التوصيل في مراجعة الإجمالي النهائي.'),
+          if (!_discountCurrent) const Text('تغيرت بيانات الطلب؛ أعد اختيار الميزة للتحقق من شروطها.', style: TextStyle(color: Colors.red)),
+        ],
+        Row(children: [
+          Expanded(child: TextButton.icon(onPressed: locked ? null : _choosePlatformBenefit, icon: const Icon(Icons.local_offer_outlined), label: Text(_selectedBenefit == null ? 'عرض مزاياي واختيار ميزة' : 'تغيير الميزة'))),
+          if (_selectedBenefit != null) TextButton(onPressed: locked ? null : () => setState(() {
+            _discountAttempt++;
+            _selectedBenefit = null;
+            _discount = 0;
+            _validatedDiscountContext = null;
+          }), child: const Text('إزالة')),
+        ]),
+      ]),
     );
   }
 
@@ -2484,6 +2588,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           return mounted && scope == _discountContext(includeTip: true) && accepted == true;
         },
         promoCode: _appliedPromoCode,
+        platformDiscountId: _selectedBenefit?.isDelivery == false ? _selectedBenefit!.id : null,
+        deliveryBenefitId: _selectedBenefit?.isDelivery == true ? _selectedBenefit!.id : null,
         discountId: _selectedDiscountId,
         discount: _effectiveDiscount,
         // إضافة معلومات المستخدم الحقيقية

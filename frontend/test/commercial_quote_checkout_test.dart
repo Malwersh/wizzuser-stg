@@ -144,6 +144,35 @@ void main() {
         !enabled ||
         const String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT').isEmpty,
   );
+  test('goods benefit preserves fixed agreement 1500 and reviews 8500', () async {
+    quoteFee=2000000;
+    await checkout.load('b1','a1',renew:true);
+    mutatePreview=(p){
+      p['schemaVersion']=3;p['referenceDeliveryFee']=money(2000000);
+      p['deliveryAgreement']={'policyId':'agreement','version':1,'termsHash':'b'*64,'kind':'FIXED_TARIFF'};
+      p['goodsGross']=money(7000000);p['discount']=money(500000);p['serviceFee']=money(500000);p['deliveryFee']=money(1500000);p['customerTotal']=money(8500000);
+    };
+    await checkout.confirm({...content(),'platformDiscountId':'benefit-500','discount':500},approveCommercial:(p)async{
+      expect(p['deliveryFee']['minorAmount'],1500000);expect(p['discount']['minorAmount'],500000);expect(p['customerTotal']['minorAmount'],8500000);return true;
+    });
+    expect(posts.last['platformDiscountId'],'benefit-500');expect(posts.last['commercialConsent']['customerTotalMinor'],8500000);
+  },skip:!enabled);
+  test('selected benefit stays bound to preview, consent and confirmation', () async {
+    mutatePreview=(p){p['discount']=money(500000);p['customerTotal']=money(3500000);};
+    await checkout.confirm({...content(), 'platformDiscountId':'benefit-500', 'discount':500}, approveCommercial: (_) async => true);
+    expect(posts,hasLength(2));
+    for(final request in posts) { expect(request['platformDiscountId'],'benefit-500'); }
+    expect(posts.first['idempotencyKey'],posts.last['idempotencyKey']);
+  },skip:!enabled);
+  test('delivery benefit stays separate from a goods discount', () async {
+    await checkout.confirm({...content(), 'deliveryBenefitId':'delivery-benefit'}, approveCommercial: (_) async => true);
+    expect(posts,hasLength(2));
+    for(final request in posts) { expect(request['deliveryBenefitId'],'delivery-benefit');expect(request['platformDiscountId'],isNull); }
+  },skip:!enabled);
+  test('cancelling review sends no order or reservation request', () async {
+    await expectLater(checkout.confirm({...content(),'platformDiscountId':'benefit-500'},approveCommercial:(_)async=>false),throwsStateError);
+    expect(posts,hasLength(1));expect(posts.single['action'],'preview_commercial');expect(saved,isEmpty);expect(checkout.pending,false);
+  },skip:!enabled);
   test('a driver tip and goods discount both reach final consent and the persisted order', () async {
     await checkout.confirm({...content(),'tip':500},approveCommercial:(proposal) async {
       expect(proposal['discount']['minorAmount'],500000);

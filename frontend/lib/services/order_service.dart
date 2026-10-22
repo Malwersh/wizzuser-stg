@@ -53,6 +53,8 @@ class OrderService extends ChangeNotifier {
     double discount = 0.0,
     String? deliveryInstructions,
     String? promoCode,
+    String? platformDiscountId,
+    String? deliveryBenefitId,
     String? discountId,
     // معلومات المستخدم الإضافية
     String? userId, // null للضيوف
@@ -187,6 +189,8 @@ class OrderService extends ChangeNotifier {
         'discount': discount,
         'deliveryInstructions': deliveryInstructions,
         'promoCode': promoCode,
+        if (platformDiscountId != null) 'platformDiscountId': platformDiscountId,
+        if (deliveryBenefitId != null) 'deliveryBenefitId': deliveryBenefitId,
         'discountId': discountId,
         'userId': userId,
         'customerName': customerName,
@@ -671,8 +675,24 @@ class OrderService extends ChangeNotifier {
   }
 
   /// التحقق من كود خصم منصة وحساب قيمته من الخادم
+  String _benefitMessage(dynamic code) => switch (code) {
+    'BENEFIT_EXHAUSTED' => 'اكتملت استخدامات الميزة أو لم يُمنح استحقاقها لحسابك.',
+    'BENEFIT_MINIMUM_ORDER' => 'قيمة الأصناف أقل من الحد الأدنى للميزة.',
+    'BENEFIT_WRONG_BRANCH' => 'الميزة غير متاحة لهذا المطعم.',
+    'BENEFIT_WRONG_REGION' => 'عنوان التوصيل غير مشمول بالميزة.',
+    'BENEFIT_DISTANCE_EXCEEDED' => 'مسافة التوصيل تتجاوز نطاق الميزة.',
+    'BENEFIT_DELIVERY_CAP_EXCEEDED' => 'رسوم التوصيل تتجاوز سقف الميزة.',
+    'BENEFIT_EXPIRED' => 'انتهت مدة الميزة.',
+    'BENEFIT_PAUSED' => 'الميزة متوقفة مؤقتًا.',
+    'BENEFIT_NO_SAVINGS' => 'الميزة لا تحقق توفيرًا إضافيًا لهذا الطلب.',
+    'BENEFIT_NOT_ELIGIBLE' => 'الميزة غير متاحة لحسابك.',
+    _ => 'تعذر تطبيق العرض على هذه السلة. تحقق من شروطه وأعد المحاولة.',
+  };
+
   Future<Map<String, dynamic>> validatePromoCode({
     required String code,
+    String? platformDiscountId,
+    String? addressId,
     required double orderTotal,
     required String storeId,
     required List<Map<String, dynamic>> items,
@@ -681,18 +701,23 @@ class OrderService extends ChangeNotifier {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/promo-codes/validate'),
-        headers: const {
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          if (SessionService.instance.isLoggedIn)
+            'Authorization': 'Bearer ${await SessionService.instance.getToken()}',
         },
         body: jsonEncode({
           'code': code,
+          if (platformDiscountId != null) 'platformDiscountId': platformDiscountId,
+          if (addressId != null) 'addressId': addressId,
+          if (SessionService.instance.isLoggedIn) 'userId': SessionService.instance.currentUserId,
           'storeId': storeId,
           'items': items,
           'orderTotal': orderTotal,
           'deliveryFee': deliveryFee,
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final responseData = jsonDecode(response.body);
 
@@ -702,6 +727,7 @@ class OrderService extends ChangeNotifier {
           (responseData['discountAmount'] as num).isFinite &&
           (responseData['discountAmount'] as num) >= 0) {
         return {
+          'deliveryBenefit': responseData['deliveryBenefit'] == true,
           'success': true,
           'valid': true,
           'discount':
@@ -712,7 +738,7 @@ class OrderService extends ChangeNotifier {
       return {
         'success': false,
         'valid': false,
-        'message': responseData['message'] ?? 'كود الخصم غير صالح',
+        'message': _benefitMessage(responseData['message']),
       };
     } catch (e) {
       return {
