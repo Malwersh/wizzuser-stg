@@ -48,11 +48,11 @@ void main() {
       await t.pumpWidget(app(() async => [PlatformBenefit.fromJson(record())]));
       await t.pumpAndSettle();
       expect(find.text('3 free deliveries remaining'), findsOneWidget);
-      expect(
-        find.text('Available: 3 • In progress: 0 • Used: 0'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('Support cap 7000 IQD'), findsOneWidget);
+      expect(find.text('Available'), findsOneWidget);
+      expect(find.text('In progress'), findsOneWidget);
+      expect(find.text('Used'), findsOneWidget);
+      expect(find.text('Maximum discount per order'), findsOneWidget);
+      expect(find.text('7,000 IQD'), findsNWidgets(2));
     },
   );
   testWidgets('goods amount is advertised as up to 7000, with no carry over', (
@@ -62,7 +62,7 @@ void main() {
       app(() async => [PlatformBenefit.fromJson(record(kind: 'GOODS_AMOUNT'))]),
     );
     await t.pumpAndSettle();
-    expect(find.text('Up to 7000 IQD off goods'), findsOneWidget);
+    expect(find.text('Up to 7,000 IQD off goods'), findsOneWidget);
     expect(
       find.text('One order only. Any unused amount does not carry over.'),
       findsOneWidget,
