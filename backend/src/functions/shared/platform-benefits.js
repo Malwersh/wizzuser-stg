@@ -17,10 +17,13 @@ async function resolve(db,campaign,context,{branchId,subtotal,items,deliveryFee,
  let rest=result.amountMinor;const lines=items.map((i,n)=>{const gross=i.price*i.quantity,saving=n===items.length-1?rest:Number(BigInt(result.amountMinor)*BigInt(gross)/BigInt(subtotal));rest-=saving;return {itemId:i.itemId||i.id,...(i.lineId?{lineId:i.lineId}:{}),grossFils:gross,savingsFils:saving,netFils:gross-saving};});
  return {amount:result.amountMinor,lines,campaign,expiresAt:Date.parse(campaign.endDate),operations:[{ConditionCheck:{TableName:TABLE,Key:{discountId:campaign.discountId},...fence(campaign)}},...result.operations],benefitReceipt:result.receipt,snapshot:{discountId:campaign.discountId,source:'PLATFORM',type:'fixedAmount',target:'GOODS',amount:result.amountMinor,version:campaign.version,updatedAt:campaign.updatedAt,provesFunding:false}};
 }
-function deliverySelection(db,selected,pricingRequest,previewOnly){
+function deliverySelection(db,selected,pricingRequest,previewOnly,baseSelection){
  return {async prepare(input){
-  const result=await preparePlatformBenefit(db,{campaign:selected.campaign,facts:await facts(selected.context,input.branchId,input.goodsGross.minorAmount,pricingRequest.deliveryRoute.distanceMeters),orderId:input.orderId,referenceDeliveryMinor:input.referenceFee.minorAmount,hasGoodsDiscount:input.hasGoodsDiscount,preview:previewOnly});
-  return {applied:true,deliveryFunding:result.deliveryFunding,customerFee:result.customerFee,validUntil:result.validUntil,operations:[{ConditionCheck:{TableName:TABLE,Key:{discountId:selected.campaign.discountId},...fence(selected.campaign)}},...result.operations],customerRule:selected.campaign.benefit.kind==='FREE_DELIVERIES'?'FREE':'AMOUNT_OFF',benefitReceipt:result.receipt};
+  const base=baseSelection?await baseSelection.prepare(input):null;
+  const reference=base?.agreement===true?base.customerFee:input.referenceFee;
+  const result=await preparePlatformBenefit(db,{campaign:selected.campaign,facts:await facts(selected.context,input.branchId,input.goodsGross.minorAmount,pricingRequest.deliveryRoute.distanceMeters),orderId:input.orderId,referenceDeliveryMinor:reference.minorAmount,hasGoodsDiscount:input.hasGoodsDiscount,preview:previewOnly});
+  const combined=base?.agreement===true?require('../create-order/quote-runtime/deliveryFundingComposition').composeDeliveryFunding(base.deliveryFunding,result.deliveryFunding):result.deliveryFunding;
+  return {...(base?.agreement===true?base:{}),applied:true,deliveryFunding:combined,customerFee:result.customerFee,validUntil:base?.agreement===true?new Date(Math.min(Date.parse(base.validUntil),Date.parse(result.validUntil))).toISOString():result.validUntil,operations:[...(base?.operations||[]),{ConditionCheck:{TableName:TABLE,Key:{discountId:selected.campaign.discountId},...fence(selected.campaign)}},...result.operations],customerRule:base?.agreement===true?base.customerRule:selected.campaign.benefit.kind==='FREE_DELIVERIES'?'FREE':'AMOUNT_OFF',benefitReceipt:result.receipt};
  }};
 }
 async function list(db,event){

@@ -608,9 +608,12 @@ exports.handler = async (event) => {
                 throw Object.assign(Error('COMMERCIAL_ORDER_UNSUPPORTED'),{statusCode:409});
             const pricingReads=body.action==='preview_commercial'?require('./checkout-pricing-reads').createCheckoutPricingReads(dynamoDb):null;
             const pricingDb=pricingReads?.db??dynamoDb;
-            const deliveryPromotion=selectedDeliveryBenefit?require('../shared/platform-benefits').deliverySelection(pricingDb,selectedDeliveryBenefit,quotedOrder.deliveryPromotionPricingRequest(),body.action==='preview_commercial'):resolvedDiscount.benefitReceipt&&!resolvedDiscount.campaign.benefit.allowGoodsStacking?undefined:deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:pricingDb,lifecycleReadMode:'CONDITION_CHECK',previewOnly:body.action==='preview_commercial',
+            // Commercial agreements are base terms, not stackable promotional benefits.
+            const agreementAwareSelection=deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:pricingDb,lifecycleReadMode:'CONDITION_CHECK',previewOnly:body.action==='preview_commercial',
+                agreementsOnly:!!selectedDeliveryBenefit||!!(resolvedDiscount.benefitReceipt&&!resolvedDiscount.campaign.benefit.allowGoodsStacking),
                 pricingRequest:quotedOrder.deliveryPromotionPricingRequest(),
                 customerFacts:()=>deliveryPromotionCustomerFacts(currentOffers,accountOrder)}):undefined;
+            const deliveryPromotion=selectedDeliveryBenefit?require('../shared/platform-benefits').deliverySelection(pricingDb,selectedDeliveryBenefit,quotedOrder.deliveryPromotionPricingRequest(),body.action==='preview_commercial',agreementAwareSelection):agreementAwareSelection;
             commercial = await createStagingCommercialSource({db:pricingDb,deliveryPromotion,enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1'}).prepare({orderId,branchId:body.storeId,
                 items:body.items.map(require('../shared/discount-contract').discountGoodsSelection),
                 quote:{createdAt:quotedOrder.createdAt,expiresAt:quotedOrder.expiresAt,deliveryFeeMinor:deliveryFee,
@@ -968,7 +971,7 @@ exports.handler = async (event) => {
             order.merchantId=commercial.merchantId;
             order.financialSnapshot=commercial.financialSnapshot;
             if(commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1')order.exceptionPolicy=require('./quote-runtime/orderExceptionPolicy').createOrderExceptionPolicy(order.createdAt);
-            order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.deliveryCashRounding?{deliveryCashRounding:commercial.deliveryCashRounding}:{}),...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
+            order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.deliveryAgreement?{deliveryAgreement:commercial.deliveryAgreement}:{}),...(commercial.deliveryCashRounding?{deliveryCashRounding:commercial.deliveryCashRounding}:{}),...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
                 calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1'?'BUDGET_COMMITTED_WITH_ORDER':commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
         }
 
