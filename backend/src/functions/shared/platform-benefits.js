@@ -27,8 +27,11 @@ async function list(db,event){
  const q=event.queryStringParameters||{},context=await require('./offer-context').offerContext(db,event,{userId:q.userId,addressId:q.addressId});const trusted=await facts(context,q.businessId),items=[];let cursor;
  for(let page=0;page<20;page++){
   const response=await db.send(new ScanCommand({TableName:TABLE,ConsistentRead:true,Limit:50,ExclusiveStartKey:cursor}));
-  for(const campaign of response.Items||[]){if(!campaign.benefit||campaign.isDeleted||campaign.deletedAt||!['active','paused'].includes(campaign.status))continue;
-   const balance=await platformBenefitBalance(db,campaign,trusted.sub);if(!balance.granted||balance.revoked)continue;
+  for(const campaign of response.Items||[]){
+   // The customer feed contains live published entitlements, not campaign history.
+   const now=Date.now(),start=Date.parse(campaign.startDate),end=Date.parse(campaign.endDate);
+   if(!campaign.benefit||campaign.isDeleted||campaign.deletedAt||campaign.status!=='active'||campaign.isActive!==true||!Number.isFinite(start)||!Number.isFinite(end)||start>now||end<=now)continue;
+   const balance=await platformBenefitBalance(db,campaign,trusted.sub);if(!balance.granted||balance.revoked||balance.remaining<1)continue;
    const reason=platformBenefitEligibility(campaign,trusted)||(balance.remaining<1?'BENEFIT_EXHAUSTED':null);
    // Never disclose a directly-targeted entitlement to another customer.
    if(['BENEFIT_NOT_ELIGIBLE','BENEFIT_WRONG_REGION','BENEFIT_WRONG_BRANCH'].includes(reason))continue;
