@@ -17,6 +17,12 @@ Parameters:
     AllowedValues: ['false', 'true']
     Description: Staging commercial writer; requires coordinated Quote activation and approved source records.
 
+  EnableFinancialCustomerCancellation:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Requires reviewed financial cancellation permissions.
+
   CentralNotificationsBaseUrl:
     Type: String
     Default: "https://x066k4dftk.execute-api.us-east-1.amazonaws.com/staging"
@@ -64,6 +70,8 @@ Conditions:
     - !Equals [!Ref 'AWS::AccountId', '699561669180']
     - !Equals [!Ref 'AWS::Region', us-east-1]
   IsCommercialStaging: !And [!Condition IsQuoteStaging, !Equals [!Ref EnableCommercialPricing, 'true']]
+
+  IsFinancialCustomerCancellation: !And [!Condition IsCommercialStaging, !Equals [!Ref EnableFinancialCustomerCancellation, 'true']]
 
 Resources:
   # API Gateway
@@ -4071,6 +4079,7 @@ Resources:
       FunctionName: !Sub "WizzUser-CancelOrder-${Environment}"
       Environment:
         Variables:
+          FINANCIAL_CUSTOMER_CANCELLATION_MODE: !If [IsFinancialCustomerCancellation, REQUIRED, 'OFF']
           WIZZORDERS_TABLE: "WizzOrders"
           WEBSOCKET_TABLE: !Ref WebSocketConnectionsTable
           WEBSOCKET_ENDPOINT: !Sub "https://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
@@ -4107,6 +4116,9 @@ Resources:
       CodeUri: src/
       Handler: functions/apply-promo-code/index.handler
       FunctionName: !Sub "WizzUser-ApplyPromoCode-${Environment}"
+      Environment:
+        Variables:
+          COMMERCIAL_PRICING_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
       Policies:
         - Statement:
           - Effect: Allow
@@ -4129,6 +4141,9 @@ Resources:
       CodeUri: src/
       Handler: functions/get-store-discounts/index.handler
       FunctionName: !Sub "WizzUser-GetStoreDiscounts-${Environment}"
+      Environment:
+        Variables:
+          COMMERCIAL_PRICING_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
       Policies:
         - Statement:
           - Effect: Allow
@@ -4145,6 +4160,9 @@ Resources:
       CodeUri: src/
       Handler: functions/get-active-promo-codes/index.handler
       FunctionName: !Sub "WizzUser-GetActivePromoCodes-${Environment}"
+      Environment:
+        Variables:
+          COMMERCIAL_PRICING_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
       Policies:
         - Statement:
           - Effect: Allow
@@ -4161,6 +4179,9 @@ Resources:
       CodeUri: src/
       Handler: functions/validate-promo-code/index.handler
       FunctionName: !Sub "WizzUser-ValidatePromoCode-${Environment}"
+      Environment:
+        Variables:
+          COMMERCIAL_PRICING_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
       Policies:
         - Statement:
           - Effect: Allow

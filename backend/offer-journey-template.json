@@ -1,0 +1,369 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Least-privilege staging offer ledger. No new writes to existing discount tables.",
+  "Resources": {
+    "Journey": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": "staging-WizzOfferJourney",
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "pk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "sk",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "pk",
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": "sk",
+            "KeyType": "RANGE"
+          }
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true
+        },
+        "SSESpecification": {
+          "SSEEnabled": true
+        },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        }
+      }
+    },
+    "OrderAccess": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "StagingOfferOrder",
+        "Roles": [
+          "WizzUser-backend-staging-CreateOrderFunctionRole-XxtsdKKNLkNN"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "USER#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "STATS#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Platform_Discounts",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Products",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Categories"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:ConditionCheckItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "ValidatePromoCodeAccess": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "StagingOfferPreview",
+        "Roles": [
+          "WizzUser-backend-staging-ValidatePromoCodeFunctionR-PPMtCp9yPQdF"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "USER#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Products",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Categories",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzOrders"
+              ],
+              "Condition": {
+                "ForAllValues:StringEquals": {
+                  "dynamodb:Attributes": [
+                    "orderId",
+                    "createdAt",
+                    "discountId",
+                    "promoCode",
+                    "userSub",
+                    "userId",
+                    "offerSnapshot",
+                    "offerUsageRelease"
+                  ]
+                },
+                "StringEquals": {
+                  "dynamodb:Select": "SPECIFIC_ATTRIBUTES"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ApplyPromoCodeAccess": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "StagingOfferPreview",
+        "Roles": [
+          "WizzUser-backend-staging-ApplyPromoCodeFunctionRole-c0r1YrvUyAR8"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "USER#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Products",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Categories",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzOrders"
+              ],
+              "Condition": {
+                "ForAllValues:StringEquals": {
+                  "dynamodb:Attributes": [
+                    "orderId",
+                    "createdAt",
+                    "discountId",
+                    "promoCode",
+                    "userSub",
+                    "userId",
+                    "offerSnapshot",
+                    "offerUsageRelease"
+                  ]
+                },
+                "StringEquals": {
+                  "dynamodb:Select": "SPECIFIC_ATTRIBUTES"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "SlideshowAccess": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "StagingOfferSlideshow",
+        "Roles": [
+          "staging-wizz-staff-service-StaffFunctionRole-hk0IFW4PhVQx"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "USER#*",
+                    "STATS#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:PutItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "EVENT#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/staging-WizzOfferJourney"
+              ],
+              "Condition": {
+                "ForAllValues:StringLike": {
+                  "dynamodb:LeadingKeys": [
+                    "STATS#*"
+                  ]
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WhizzMerchants_Products"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Scan"
+              ],
+              "Resource": [
+                "arn:aws:dynamodb:us-east-1:699561669180:table/WizzOrders"
+              ],
+              "Condition": {
+                "ForAllValues:StringEquals": {
+                  "dynamodb:Attributes": [
+                    "orderId",
+                    "createdAt",
+                    "discountId",
+                    "promoCode",
+                    "userSub",
+                    "userId",
+                    "offerSnapshot",
+                    "offerUsageRelease"
+                  ]
+                },
+                "StringEquals": {
+                  "dynamodb:Select": "SPECIFIC_ATTRIBUTES"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

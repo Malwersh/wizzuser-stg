@@ -1,12 +1,14 @@
+const {patchTerms,supported,removed,type:canonicalType}=require('./discount-contract');
 // Shared discount validation/calculation engine for WizzUser backend.
-// Ported from whizzMerchants-stg discount_management_handler.js so that
-// customer-facing Lambdas evaluate WhizzMerchants_Discounts identically.
+// Canonical redemption calculator; distributed by sync-discount-runtime.cjs.
 // All monetary inputs and outputs are in IQD fils (dinars x 1000).
 
 // The table stores snake_case (valid_from, minimum_order_amount, ...);
 // reading camelCase names directly would silently disable those checks.
 function normalizeDiscount(d) {
     if (!d) return d;
+    d=patchTerms(null,d,'merchant');
+    d.type=canonicalType(d.type||d.discountType);
     return {
         ...d,
         validFrom: d.validFrom || d.valid_from,
@@ -40,17 +42,20 @@ function validShape(d, total) {
         !['percentage','fixedAmount','freeDelivery'].includes(d.type) ||
         !['allItems','minimumOrder','specificItems','specificCategories'].includes(d.applicability || 'allItems') ||
         typeof d.value !== 'number' || !Number.isFinite(d.value) || d.value < 0 ||
+        (d.type !== 'freeDelivery' && d.value <= 0) ||
         (d.type === 'percentage' && d.value > 100) ||
         !Number.isFinite(d.minimumOrderAmount) || d.minimumOrderAmount < 0 ||
         !Number.isSafeInteger(d.usageCount) || d.usageCount < 0 ||
         (d.usageLimit !== null && (!Number.isSafeInteger(d.usageLimit) || d.usageLimit < 0)) ||
         [d.validFrom,d.validTo].some(v => !validDate(v)) ||
         (d.validFrom && d.validTo && Date.parse(d.validFrom) >= Date.parse(d.validTo))) return false;
+    try{if(d.maxDiscountAmount!=null)decimalThousand(d.maxDiscountAmount);if(d.maxDiscount!=null)decimalThousand(d.maxDiscount);}catch{return false;}
+    if(d.maxDiscountAmount!=null&&d.maxDiscount!=null&&d.maxDiscountAmount!==d.maxDiscount)return false;
     return true;
 }
 function validateDiscount(discount, orderTotalFils) {
     if (!validShape(discount, orderTotalFils)) return {valid:false,message:'Unsupported or invalid discount'};
-    if (discount.status !== 'active') {
+    if (removed(discount)||!supported(discount)||discount.isActive===false||discount.status !== 'active') {
         return { valid: false, message: 'Discount is not active' };
     }
 
@@ -58,7 +63,7 @@ function validateDiscount(discount, orderTotalFils) {
     if (discount.validFrom && now < new Date(discount.validFrom)) {
         return { valid: false, message: 'Discount is not valid yet' };
     }
-    if (discount.validTo && now > new Date(discount.validTo)) {
+    if (discount.validTo && now >= new Date(discount.validTo)) {
         return { valid: false, message: 'Discount has expired' };
     }
 
@@ -78,7 +83,7 @@ function validateDiscount(discount, orderTotalFils) {
 }
 
 // items: [{ id/itemId, categoryId, price (fils), quantity }]
-function calculateDiscountAmount(discount, orderTotalFils, items, deliveryFeeFils) {
+function calculateUncappedAmount(discount, orderTotalFils, items, deliveryFeeFils, roundFils = true) {
     let discountableAmount = 0;
 
     switch (discount.applicability) {
@@ -106,13 +111,10 @@ function calculateDiscountAmount(discount, orderTotalFils, items, deliveryFeeFil
     switch (discount.type) {
         case 'percentage':
             // Clamp: never discount more than the discountable amount
-            return Math.min(Number((BigInt(discountableAmount) * BigInt(decimalThousand(discount.value)) + 50000n) / 100000n), discountableAmount);
+            return Math.min(Number((BigInt(discountableAmount) * BigInt(decimalThousand(discount.value)) + (roundFils ? 50000n : 0n)) / 100000n), discountableAmount);
         case 'fixedAmount':
             // value is stored in dinars by the merchant app
             return Math.min(decimalThousand(discount.value), discountableAmount);
-        case 'buyXGetY':
-        case 'conditional':
-            return calculateBuyXGetYDiscount(discount, items);
         case 'freeDelivery':
             return Math.max(0, deliveryFeeFils || 0);
         default:
@@ -120,34 +122,25 @@ function calculateDiscountAmount(discount, orderTotalFils, items, deliveryFeeFil
     }
 }
 
-function calculateBuyXGetYDiscount(discount, items) {
-    const params = discount.conditionalParameters || {};
-    const buyItemId = params.buyItemId;
-    const buyQuantity = params.buyQuantity;
-    const getItemId = params.getItemId;
-    const getQuantity = params.getQuantity;
+function calculateAmount(discount, total, items, deliveryFee, roundFils) {
+ const amount=calculateUncappedAmount(discount,total,items,deliveryFee,roundFils);
+ const cap=discount.maxDiscountAmount??discount.maxDiscount;
+ if(discount.maxDiscountAmount!=null&&discount.maxDiscount!=null&&discount.maxDiscountAmount!==discount.maxDiscount)throw Error('INVALID_DISCOUNT_CAP');
+ return cap==null?amount:Math.min(amount,decimalThousand(cap));
+}
 
-    if (!buyItemId || !buyQuantity || !getItemId || !getQuantity) {
-        return 0;
-    }
+function calculateDiscountAmount(discount, total, items, deliveryFee) {
+ return calculateAmount(discount,total,items,deliveryFee,true);
+}
 
-    const buyItem = (items || []).find(item => (item.itemId || item.id) === buyItemId);
-    if (!buyItem || buyItem.quantity < buyQuantity) {
-        return 0;
-    }
-
-    const getItem = (items || []).find(item => (item.itemId || item.id) === getItemId);
-    if (!getItem) {
-        return 0;
-    }
-
-    const setsEligible = Math.floor(buyItem.quantity / buyQuantity);
-    const freeItems = Math.min(setsEligible * getQuantity, getItem.quantity);
-
-    if (discount.value === 0) {
-        return freeItems * getItem.price;
-    }
-    return freeItems * getItem.price * (discount.value / 100);
+// Customer checkout policy: multiples of 250 IQD, rounded down after eligibility and caps.
+// Keep the fils calculator above precise for internal calculations and legacy snapshots.
+function calculateCheckoutDiscountAmount(discount, total, items, deliveryFee) {
+ // Floor percentage arithmetic first: rounding a fractional fils up can cross
+ // a whole-IQD boundary and exceed the exact calculated saving.
+ const amount=calculateAmount(discount,total,items,deliveryFee,false);
+ if(!Number.isSafeInteger(amount)||amount<0)throw Error('INVALID_DISCOUNT_AMOUNT');
+ return Number(BigInt(amount)/250000n*250000n);
 }
 
 // Platform promos (WizzCentral_Platform_Discounts) are written by the
@@ -155,6 +148,7 @@ function calculateBuyXGetYDiscount(discount, items) {
 // usage/currentUsage, minOrderAmount/minOrderValue, ...). Unify them here.
 function normalizePlatformPromo(d) {
     if (!d) return d;
+    d=patchTerms(null,d,'platform');
     const rawType = String(d.type || d.discountType || 'percentage').trim().toLowerCase();
     let normalizedType = 'percentage';
     if (rawType === 'fixed_amount' || rawType === 'fixed' || rawType === 'fixedamount') {
@@ -181,7 +175,7 @@ function normalizePlatformPromo(d) {
 
 // Returns { valid: true } or { valid: false, message }
 function validatePlatformPromo(promo, orderTotalFils) {
-    if (!validShape(promo, orderTotalFils) ||
+    if (removed(promo)||!supported(promo)||!validShape(promo, orderTotalFils) ||
         (promo.usage !== undefined && promo.currentUsage !== undefined && promo.usage !== promo.currentUsage))
         return {valid:false,message:'Unsupported or invalid promo'};
     const statusOk = (promo.status === 'active' || (promo.status === undefined && promo.isActive === true)) && promo.isActive !== false;
@@ -193,7 +187,7 @@ function validatePlatformPromo(promo, orderTotalFils) {
     if (promo.validFrom && now < new Date(promo.validFrom)) {
         return { valid: false, message: 'Promo code is not valid yet' };
     }
-    if (promo.validTo && now > new Date(promo.validTo)) {
+    if (promo.validTo && now >= new Date(promo.validTo)) {
         return { valid: false, message: 'Promo code has expired' };
     }
 
@@ -213,11 +207,12 @@ function validatePlatformPromo(promo, orderTotalFils) {
 }
 
 module.exports = {
+    validShape,
     decimalThousand,
     normalizeDiscount,
     validateDiscount,
     calculateDiscountAmount,
-    calculateBuyXGetYDiscount,
+    calculateCheckoutDiscountAmount,
     normalizePlatformPromo,
     validatePlatformPromo,
 };

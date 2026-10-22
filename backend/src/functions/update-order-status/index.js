@@ -167,6 +167,8 @@ exports.handler = async (event) => {
 
         const currentOrder = getResult.Item;
         if (isFinancialOrder(currentOrder)) return {statusCode:409,headers,body:JSON.stringify({success:false,code:'FINANCIAL_ORDER_WORKFLOW_REQUIRED'})};
+        if (currentOrder.offerUsageReservation && ['cancelled','failed','expired'].includes(unifiedStatus))
+            return {statusCode:409,headers,body:JSON.stringify({success:false,code:'OFFER_CANCELLATION_WORKFLOW_REQUIRED',message:'Cancel through the Order Service so discount usage is restored atomically.'})};
         const currentRev = currentOrder.rev || 1;
         const newRev = currentRev + 1;
         const now = new Date().toISOString();

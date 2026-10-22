@@ -325,7 +325,7 @@ async function sendMerchantWebSocketNotification({ storeId, orderId, type, statu
  * - Returns holdReleased flag in response
  */
 exports.handler = async (event) => {
-    console.log('📥 Cancel order event received:', JSON.stringify(event, null, 2));
+    console.log('Cancel order request:', {method:event.httpMethod,orderId:event.pathParameters?.orderId||event.pathParameters?.id});
     
     const headers = {
         'Content-Type': 'application/json',
@@ -379,7 +379,8 @@ exports.handler = async (event) => {
             Key: {
                 PK: `ORDER#${orderId}`,
                 SK: 'META'
-            }
+            },
+            ConsistentRead: true
         });
 
         const currentOrderResult = await dynamoDb.send(getCommand);
@@ -396,7 +397,7 @@ exports.handler = async (event) => {
         }
 
         const currentOrder = currentOrderResult.Item;
-        if (isFinancialOrder(currentOrder)) return {statusCode:409,headers,body:JSON.stringify({success:false,code:'FINANCIAL_ORDER_WORKFLOW_REQUIRED'})};
+        const financialOrder = isFinancialOrder(currentOrder);
         const userId = currentOrder.customerId || currentOrder.userId;
 
         // Check if order can be cancelled based on current status
@@ -405,10 +406,11 @@ exports.handler = async (event) => {
         const allowedCancellationStatuses = [
             'pending',      // Order placed, waiting for restaurant
             'confirmed',    // Restaurant confirmed, waiting for driver
-            'accepted'      // Driver accepted - Hold exists, will be released
+            'accepted',     // Driver accepted - Hold exists, will be released
+            'canceled_by_customer' // Exact actor/reason replay is checked by the Order Service.
         ];
         
-        if (!allowedCancellationStatuses.includes(currentOrder.status)) {
+        if (!financialOrder && !allowedCancellationStatuses.includes(currentOrder.status)) {
             return {
                 statusCode: 400,
                 headers: headers,
@@ -425,16 +427,22 @@ exports.handler = async (event) => {
         
         let orderServiceResponse;
         try {
-            orderServiceResponse = await callOrderService(orderId, reason, userId,event.headers?.Authorization||event.headers?.authorization,body.guestToken);
+            if (financialOrder) {
+                const result = await require('../shared/financial-pending-cancellation').cancelFinancialPending({db:dynamoDb,event,order:currentOrder,reason});
+                orderServiceResponse = {...result,holdReleased:false};
+            } else {
+                orderServiceResponse = await callOrderService(orderId, reason, userId,event.headers?.Authorization||event.headers?.authorization,body.guestToken);
+            }
         } catch (orderServiceError) {
             console.error('❌ Order Service call failed:', orderServiceError);
             
             return {
-                statusCode: 500,
+                statusCode: financialOrder ? (orderServiceError.statusCode || 503) : 500,
                 headers: headers,
                 body: JSON.stringify({
-                    error: 'Failed to cancel order via Order Service',
-                    message: orderServiceError.message,
+                    error: 'Failed to cancel order',
+                    ...(financialOrder ? {code:orderServiceError.code || 'FINANCIAL_CANCELLATION_UNAVAILABLE'} : {}),
+                    message: financialOrder ? (orderServiceError.code || 'FINANCIAL_CANCELLATION_UNAVAILABLE') : orderServiceError.message,
                     success: false
                 })
             };
