@@ -172,7 +172,10 @@ const handler = async (event) => {
                 description: product.description || globalProduct.description || '',
                 price: product.price,
                 imageUrl: product.imageUrl || globalProduct.imageUrl || '',
-                is_available: product.isAvailable !== undefined ? product.isAvailable : true,
+                is_available: (product.isAvailable !== undefined ? product.isAvailable : true) && !(Array.isArray(product.optionGroups) && product.optionGroups.some(g=>g.required===true && (!Array.isArray(g.options)||!g.options.some(o=>o.isAvailable===true)))),
+                is_featured: product.isFeatured !== undefined ? product.isFeatured : (globalProduct.isFeatured === true),
+                addons: product.optionGroups ?? product.addons ?? [],
+                variations: product.variations || [],
                 created_at: product.createdAt,
                 updated_at: product.updatedAt,
             };

@@ -928,8 +928,6 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  // زر المتابعة مع التحقق من الحد الأدنى
-  // زر المتابعة مع التحقق من الحد الأدنىt context, AppStateProvider appState) {
   Widget _buildCheckoutButton(BuildContext context, AppStateProvider appState) {
     final minimum = _pricing.minimumIqd(_branch(appState), appState.cartItems);
     final below = minimum != null && appState.cartTotal < minimum;

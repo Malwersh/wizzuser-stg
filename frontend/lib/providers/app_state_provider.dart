@@ -31,6 +31,7 @@ class AppStateProvider extends ChangeNotifier {
   
   // Getters
   CartModel get cart => _cart;
+  String? get cartStoreName => _cart.storeName;
   Map<String, dynamic>? get currentUser => _currentUser;
   Map<String, dynamic>? get userData => _currentUser; // Alias for backward compatibility
   bool get isLoggedIn => _isLoggedIn;
@@ -227,6 +228,10 @@ class AppStateProvider extends ChangeNotifier {
       
       // إضافة العنصر للسلة
       _cart.addItem(cartItem);
+      // حفظ اسم المطعم صاحب السلة لعرضه في نافذة تعارض المطاعم
+      if (item['store_name'] is String) {
+        _cart.setStoreName(item['store_name'] as String);
+      }
       
       // مسح أي خطأ سابق
       clearError();

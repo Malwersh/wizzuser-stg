@@ -17,6 +17,69 @@ void main() {
     'customerTotal': money(6499000),
   };
   test(
+    'store delivery agreement accepts a bound fixed tariff and rejects malformed terms',
+    () {
+      final p = {
+        ...preview(),
+        'schemaVersion': 3,
+        'referenceDeliveryFee': money(2750000),
+        'deliveryAgreement': {
+          'policyId': 'agreement-1',
+          'version': 1,
+          'termsHash': 'a' * 64,
+          'kind': 'FIXED_TARIFF',
+        },
+        'deliveryFee': money(1500000),
+        'customerTotal': money(5249000),
+      };
+      validateCommercialCheckoutAmounts(p, 2750000);
+      // A fixed agreement tariff may also exceed the reference route tariff.
+      validateCommercialCheckoutAmounts({
+        ...p,
+        'deliveryFee': money(3000000),
+        'customerTotal': money(6749000),
+      }, 2750000);
+      for (final patch in [
+        {'deliveryAgreement': null},
+        {
+          'deliveryAgreement': {
+            'policyId': 'agreement-1',
+            'version': 1,
+            'termsHash': 'invalid',
+            'kind': 'FIXED_TARIFF',
+          },
+        },
+        {
+          'deliveryAgreement': {
+            'policyId': 'agreement-1',
+            'version': 1,
+            'termsHash': 'a' * 64,
+            'kind': 'FREE',
+          },
+        },
+        {'referenceDeliveryFee': money(3000000)},
+        {'referenceDeliveryFee': null},
+        {'customerTotal': money(6499000)},
+      ]) {
+        expect(
+          () => validateCommercialCheckoutAmounts({...p, ...patch}, 2750000),
+          throwsFormatException,
+        );
+      }
+      validateCommercialCheckoutAmounts({
+        ...p,
+        'deliveryAgreement': {
+          'policyId': 'agreement-1',
+          'version': 1,
+          'termsHash': 'a' * 64,
+          'kind': 'FREE',
+        },
+        'deliveryFee': money(0),
+        'customerTotal': money(3749000),
+      }, 2750000);
+    },
+  );
+  test(
     'consent validates service fee and tip once against the server quote',
     () {
       validateCommercialCheckoutAmounts(preview(), 2750000);

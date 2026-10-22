@@ -404,6 +404,9 @@ exports.handler = async (event) => {
         if (!['OFF', 'REQUIRED'].includes(quoteMode)) throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
         if (quoteMode === 'OFF' && body.quoteId !== undefined) throw Object.assign(Error('QUOTE_NOT_ENABLED'), {statusCode: 409});
         const commercialMode = process.env.COMMERCIAL_PRICING_MODE || 'OFF';
+        if ((commercialMode==='REQUIRED'||body.discountId||body.promoCode||body.platformDiscountId) &&
+            require('../shared/discount-contract').hasDiscountCustomizations(body.items))
+            throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
         if (!['OFF','REQUIRED'].includes(commercialMode) || (commercialMode==='REQUIRED' && quoteMode!=='REQUIRED'))
             throw Object.assign(Error('COMMERCIAL_NOT_CONFIGURED'),{statusCode:503});
         const deliveryPromotionMode=process.env.DELIVERY_PROMOTION_MODE||'OFF';
@@ -536,6 +539,7 @@ exports.handler = async (event) => {
                 unitPrice: unitPrice,
                 // ✅ إضافة صورة الطبق من تطبيق المستخدم
                 imageUrl: item.image || item.imageUrl || null,
+                ...(Object.keys(require('../shared/discount-contract').discountOptionSelection(item)).length?{selectedOptions:require('../shared/discount-contract').discountOptionSelection(item)}:{}),
                 modifiers: (item.modifiers || []).map(mod => ({
                     id: mod.id || uuidv4(),
                     name: mod.name || '',
@@ -570,22 +574,26 @@ exports.handler = async (event) => {
             ...(currentOffers.addressCondition ? [currentOffers.addressCondition] : [])
         ];
         let discountItems = [];
-        if (body.discountId || body.promoCode || body.platformDiscountId || minimumPolicy.minimumOrderIqd(minimumBranch)!==null) {
-            if (processedItems.some(i=>i.modifiers.length)) throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
+        if (body.discountId || body.promoCode || body.platformDiscountId || body.deliveryBenefitId || minimumPolicy.minimumOrderIqd(minimumBranch)!==null) {
+            if (require('../shared/discount-contract').hasDiscountCustomizations(body.items)) throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
             const catalog = await createStagingOrderGoodsPricing({db:dynamoDb}).price({branchId:body.storeId,
-                items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity}))});
-            if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some(l=>
-                processedItems.find(i=>i.itemId===l.productId)?.unitPrice !== l.unitPrice.minorAmount))
+                items:body.items.map(require('../shared/discount-contract').discountGoodsSelection)});
+            if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some((l,n)=>
+                processedItems[n]?.itemId!==l.productId || processedItems[n]?.unitPrice !== l.unitPrice.minorAmount))
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
             if(commercialMode!=='REQUIRED')minimumPolicy.assertMinimumOrder(minimumBranch,catalog.goodsGross.minorAmount);
+            catalog.lines.forEach((line,n)=>{if(line.lineId)processedItems[n].lineId=line.lineId;});
             discountItems = catalogItems(catalog);
             discountOperations.push(...catalog.conditions);
         }
         const resolvedDiscount = await resolveDiscount({db:dynamoDb,branchId:body.storeId,discountId:body.discountId,
             promoCode:body.promoCode,platformDiscountId:body.platformDiscountId,subtotal:goodsSubtotal,
-            items:discountItems,deliveryFee,...currentOffers});
+            items:discountItems,deliveryFee,orderId,preview:body.action==='preview_commercial',...currentOffers});
         discountOperations.push(...resolvedDiscount.operations,
             ...await require('../shared/offer-attribution').attribution(dynamoDb,body.offerSlideId,resolvedDiscount.snapshot));
+        if(body.deliveryBenefitId&&resolvedDiscount.platformDeliveryBenefit)throw Object.assign(Error('BENEFIT_STACKING_DENIED'),{statusCode:409});
+        const selectedDeliveryBenefit=body.deliveryBenefitId?await require('../shared/platform-benefits').loadDelivery(dynamoDb,body.deliveryBenefitId,currentOffers):resolvedDiscount.platformDeliveryBenefit;
+        if(selectedDeliveryBenefit&&resolvedDiscount.snapshot)require('../shared/platform-benefits').assertStacking(resolvedDiscount.campaign,selectedDeliveryBenefit.campaign);
         const discountFils = resolvedDiscount.amount;
         if (resolvedDiscount.snapshot &&
             (typeof body.discount !== 'number' || !Number.isFinite(body.discount) || Math.round(body.discount*1000) !== discountFils))
@@ -600,18 +608,23 @@ exports.handler = async (event) => {
                 throw Object.assign(Error('COMMERCIAL_ORDER_UNSUPPORTED'),{statusCode:409});
             const pricingReads=body.action==='preview_commercial'?require('./checkout-pricing-reads').createCheckoutPricingReads(dynamoDb):null;
             const pricingDb=pricingReads?.db??dynamoDb;
-            const deliveryPromotion=deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:pricingDb,lifecycleReadMode:'CONDITION_CHECK',previewOnly:body.action==='preview_commercial',
+            const deliveryPromotion=selectedDeliveryBenefit?require('../shared/platform-benefits').deliverySelection(pricingDb,selectedDeliveryBenefit,quotedOrder.deliveryPromotionPricingRequest(),body.action==='preview_commercial'):resolvedDiscount.benefitReceipt&&!resolvedDiscount.campaign.benefit.allowGoodsStacking?undefined:deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:pricingDb,lifecycleReadMode:'CONDITION_CHECK',previewOnly:body.action==='preview_commercial',
                 pricingRequest:quotedOrder.deliveryPromotionPricingRequest(),
                 customerFacts:()=>deliveryPromotionCustomerFacts(currentOffers,accountOrder)}):undefined;
             commercial = await createStagingCommercialSource({db:pricingDb,deliveryPromotion,enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1'}).prepare({orderId,branchId:body.storeId,
-                items:processedItems.map((i,n)=>({productId:i.itemId,quantity:body.items[n].quantity})),
+                items:body.items.map(require('../shared/discount-contract').discountGoodsSelection),
                 quote:{createdAt:quotedOrder.createdAt,expiresAt:quotedOrder.expiresAt,deliveryFeeMinor:deliveryFee,
                     origin:quotedOrder.origin,destination:quotedOrder.destination,destinationRegionId:quotedOrder.destinationRegionId},
                 discount:resolvedDiscount.snapshot?{snapshot:resolvedDiscount.snapshot,campaign:resolvedDiscount.campaign}:null,
                 tip:moneyFromMinor(tip)});
-            if(commercial.calculation.allocationInput.goodsGross.minorAmount!==goodsSubtotal || commercial.goodsLines.some(l=>processedItems.find(i=>i.itemId===l.productId)?.unitPrice!==l.unitPrice.minorAmount))
+            if(commercial.calculation.allocationInput.goodsGross.minorAmount!==goodsSubtotal || commercial.goodsLines.some((l,n)=>processedItems[n]?.itemId!==l.productId || processedItems[n]?.unitPrice!==l.unitPrice.minorAmount))
                 throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            commercial.goodsLines.forEach((line,n)=>{if(line.lineId)processedItems[n].lineId=line.lineId;});
             deliveryFee=commercial.calculation.allocationInput.customerDeliveryFee.minorAmount;
+            // Cash collection cannot require denominations below 250 IQD.
+            // Reject before consent or commit; never invent an unfunded adjustment.
+            if(commercial.calculation.customerTotal.minorAmount % 250000 !== 0)
+                throw Object.assign(Error('CASH_TOTAL_DENOMINATION_UNSUPPORTED'),{statusCode:409});
             if(body.action==='preview_commercial') return {statusCode:200,headers,body:JSON.stringify({success:true,
                 commercial:{schemaVersion:commercial.deliveryFunding?(commercial.deliveryAgreement?3:2):1,...(commercial.deliveryAgreement?{deliveryAgreement:commercial.deliveryAgreement}:{}),...(commercial.deliveryFunding?{referenceDeliveryFee:moneyFromMinor(quotedOrder.deliveryFeeMinor)}:{}),quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
                     customerTotal:commercial.calculation.customerTotal,goodsGross:commercial.calculation.allocationInput.goodsGross,
@@ -862,6 +875,17 @@ exports.handler = async (event) => {
             discountId: resolvedDiscount.snapshot?.source === 'MERCHANT' ? resolvedDiscount.snapshot.discountId : null,
             promoCode: resolvedDiscount.snapshot?.source === 'PLATFORM' ? resolvedDiscount.campaign?.code || null : null,
             offerSnapshot: resolvedDiscount.snapshot,
+            platformBenefitReceipt: resolvedDiscount.benefitReceipt || commercial?.platformBenefitReceipt || null,
+            platformDeliveryBenefitReceipt: commercial?.platformBenefitReceipt || null,
+            offerUsageReservation: {
+                schemaVersion: 1, userSub,
+                accountReserved: !!accountOrder,
+                customerReserved: resolvedDiscount.operations.some(op => op.Put?.TableName === 'staging-WizzOfferJourney' && op.Put.Item.sk?.startsWith('OFFER#')),
+                campaign: resolvedDiscount.snapshot && !resolvedDiscount.benefitReceipt ? {
+                    id: resolvedDiscount.snapshot.discountId, source: resolvedDiscount.snapshot.source,
+                    createdAt: resolvedDiscount.campaign.createdAt ?? resolvedDiscount.campaign.created_at ?? null
+                } : null
+            },
             offerSlideId: body.offerSlideId || null,
             
             // Payment (ز)
@@ -944,7 +968,7 @@ exports.handler = async (event) => {
             order.merchantId=commercial.merchantId;
             order.financialSnapshot=commercial.financialSnapshot;
             if(commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1')order.exceptionPolicy=require('./quote-runtime/orderExceptionPolicy').createOrderExceptionPolicy(order.createdAt);
-            order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
+            order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.deliveryCashRounding?{deliveryCashRounding:commercial.deliveryCashRounding}:{}),...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
                 calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1'?'BUDGET_COMMITTED_WITH_ORDER':commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
         }
 
@@ -1087,7 +1111,7 @@ exports.handler = async (event) => {
                 message: error.message,
                 errorName: error.name,
                 ...(error instanceof QuoteOrderError ? {code: error.code} :
-                    ['DELIVERY_POLICY_UNAVAILABLE','DELIVERY_POLICY_AUTHORITY_REVOKED','DELIVERY_POLICY_HISTORY_MISMATCH','MINIMUM_ORDER_NOT_MET','INVALID_MINIMUM_ORDER','FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
+                    ['DELIVERY_POLICY_UNAVAILABLE','DELIVERY_POLICY_AUTHORITY_REVOKED','DELIVERY_POLICY_HISTORY_MISMATCH','PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED','BENEFIT_EXHAUSTED', 'BENEFIT_EXPIRED', 'BENEFIT_PAUSED', 'BENEFIT_NOT_ELIGIBLE', 'BENEFIT_WRONG_BRANCH', 'BENEFIT_WRONG_REGION', 'BENEFIT_MINIMUM_ORDER', 'BENEFIT_DELIVERY_CAP_EXCEEDED', 'BENEFIT_DISTANCE_EXCEEDED', 'BENEFIT_NO_SAVINGS', 'BENEFIT_STACKING_DENIED', 'BENEFIT_LOGIN_REQUIRED','MINIMUM_ORDER_NOT_MET','INVALID_MINIMUM_ORDER','FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_NO_SAVINGS','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_DELIVERY_POLICY_REQUIRED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','CASH_TOTAL_DENOMINATION_UNSUPPORTED','UNSUPPORTED_DISCOUNT_ITEMS','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
                 success: false
             })
         };

@@ -1,4 +1,5 @@
 // lib/models/store_discount.dart
+import 'discount_terms.dart';
 
 /// A merchant-managed discount from WhizzMerchants_Discounts,
 /// exposed to the customer app via GET /business/{businessId}/discounts.
@@ -9,6 +10,7 @@ class StoreDiscount {
   final String businessId;
   final String title;
   final String description;
+  final String? imageUrl;
   final String type; // percentage | fixedAmount | conditional | freeDelivery | buyXGetY
   final double value;
   final String applicability; // allItems | specificItems | specificCategories | minimumOrder
@@ -16,12 +18,16 @@ class StoreDiscount {
   final double minimumOrderAmount;
   final DateTime? validFrom;
   final DateTime? validTo;
+  final DiscountTerms terms;
+  List<String> get applicableCategoryIds => terms.applicableCategoryIds;
+  String get termsSummary => terms.summary(minimum: minimumOrderAmount, applicability: applicability, end: validTo);
 
   const StoreDiscount({
     required this.discountId,
     required this.businessId,
     required this.title,
     this.description = '',
+    this.imageUrl,
     required this.type,
     required this.value,
     this.applicability = 'allItems',
@@ -29,14 +35,17 @@ class StoreDiscount {
     this.minimumOrderAmount = 0,
     this.validFrom,
     this.validTo,
+    this.terms = const DiscountTerms(),
   });
 
   factory StoreDiscount.fromJson(Map<String, dynamic> json) {
     return StoreDiscount(
+      terms: DiscountTerms.fromJson(json),
       discountId: (json['discountId'] ?? json['id'] ?? '').toString(),
       businessId: (json['businessId'] ?? '').toString(),
       title: (json['title'] ?? '').toString(),
       description: (json['description'] ?? '').toString(),
+      imageUrl: (json['imageUrl'] ?? json['image_url'] ?? json['image'])?.toString(),
       type: (json['type'] ?? '').toString(),
       value: double.tryParse(json['value']?.toString() ?? '') ?? 0,
       applicability: (json['applicability'] ?? 'allItems').toString(),
@@ -56,9 +65,9 @@ class StoreDiscount {
   String get displayValue {
     switch (type) {
       case 'percentage':
-        return 'خصم ${value.toStringAsFixed(0)}%';
+        return 'خصم ${formatDiscountNumber(value)}%';
       case 'fixedAmount':
-        return 'خصم ${value.toStringAsFixed(0)} د.ع';
+        return 'خصم ${formatDiscountNumber(value)} د.ع';
       case 'freeDelivery':
         return 'توصيل مجاني';
       case 'buyXGetY':

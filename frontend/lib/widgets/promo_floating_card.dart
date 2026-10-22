@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/pending_offer.dart';
 import '../constants/app_colors.dart';
 import '../models/platform_promo.dart';
 
@@ -73,24 +73,18 @@ class PromoFloatingCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        promo.description.isNotEmpty
-                            ? promo.description
-                            : promo.displayValue,
+                        [promo.displayValue, promo.description, promo.termsSummary]
+                            .where((text) => text.isNotEmpty).join('\n'),
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.85),
                           fontSize: 12,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
                       GestureDetector(
                         onTap: () async {
                           Clipboard.setData(ClipboardData(text: promo.code));
-                          try {
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setString('pending_promo_code', promo.code);
-                          } catch (_) {}
+                          PendingOffer.selectCode(promo.code, promo.endDate);
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -146,6 +140,7 @@ class PromoFloatingCard extends StatelessWidget {
             right: 4,
             child: IconButton(
               onPressed: onDismiss,
+              tooltip: 'إغلاق العرض',
               icon: const Icon(Icons.close, color: Colors.white, size: 18),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),

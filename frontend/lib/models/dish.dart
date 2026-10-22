@@ -64,6 +64,96 @@ class OptionGroup {
             .toList(),
       );
 
+  /// 🔥 محاولة تحويل بيانات الإضافات/الخيارات الخام من الباك إند إلى OptionGroup.
+  /// الشكل غير موحد في الـ API الحالي، لذلك هذه الدالة دفاعية:
+  /// تتعرف على مجموعات {title/options} وعلى القوائم المسطحة {name, price}
+  /// وتعيد قائمة فارغة عندما لا يتعرف على الشكل.
+  static List<OptionGroup> listFromAddons(dynamic raw) {
+    try {
+      if (raw == null) return const [];
+
+      // خريطة تحتوي على قائمة مجموعات
+      if (raw is Map) {
+        for (final key in const ['groups', 'optionGroups', 'addons', 'items']) {
+          final inner = raw[key];
+          if (inner is List) return listFromAddons(inner);
+        }
+        return const [];
+      }
+
+      if (raw is! List || raw.isEmpty) return const [];
+
+      final groups = <OptionGroup>[];
+      final flatOptions = <Option>[];
+
+      for (var i = 0; i < raw.length; i++) {
+        final item = raw[i];
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+
+        final nested = map['options'] ?? map['choices'] ?? map['items'];
+        if (nested is List) {
+          final options = <Option>[];
+          for (var j = 0; j < nested.length; j++) {
+            final opt = nested[j];
+            if (opt is! Map) continue;
+            final optMap = Map<String, dynamic>.from(opt);
+            if (optMap['isAvailable'] == false) continue;
+            final name = (optMap['name'] ?? optMap['label'] ?? optMap['title'])?.toString() ?? '';
+            if (name.isEmpty) continue;
+            options.add(Option(
+              id: (optMap['id'] ?? optMap['value'] ?? name).toString(),
+              name: name,
+              extraPrice: (optMap['extraPrice'] ?? optMap['price'] ?? optMap['additionalPrice']) is num
+                  ? ((optMap['extraPrice'] ?? optMap['price'] ?? optMap['additionalPrice']) as num).toDouble()
+                  : 0.0,
+            ));
+          }
+          if (options.isEmpty) continue;
+
+          final required = map['required'] == true || map['isRequired'] == true;
+          final rawMax = map['maxSelections'] ?? map['max'] ?? map['maxChoices'] ?? map['limit'];
+          final max = rawMax is num
+              ? rawMax.toInt()
+              : (required ? 1 : options.length);
+
+          groups.add(OptionGroup(
+            id: (map['id'] ?? map['name'] ?? 'group_$i').toString(),
+            title: (map['title'] ?? map['name'] ?? map['groupName'] ?? map['label'] ?? 'خيارات').toString(),
+            required: required,
+            maxSelections: max <= 0 ? 1 : max,
+            options: options,
+          ));
+        } else {
+          // عنصر مسطح: {name, price} → إضافة بسيطة
+          final name = (map['name'] ?? map['label'] ?? map['title'])?.toString() ?? '';
+          if (name.isEmpty) continue;
+          flatOptions.add(Option(
+            id: (map['id'] ?? map['value'] ?? name).toString(),
+            name: name,
+            extraPrice: (map['extraPrice'] ?? map['price'] ?? map['additionalPrice']) is num
+                ? ((map['extraPrice'] ?? map['price'] ?? map['additionalPrice']) as num).toDouble()
+                : 0.0,
+          ));
+        }
+      }
+
+      if (flatOptions.isNotEmpty) {
+        groups.add(OptionGroup(
+          id: 'addons_flat',
+          title: 'إضافات',
+          required: false,
+          maxSelections: flatOptions.length,
+          options: flatOptions,
+        ));
+      }
+
+      return groups;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,

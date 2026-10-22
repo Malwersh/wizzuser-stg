@@ -9,12 +9,13 @@ class InboxNotification {
     this.source = 'local',
     this.orderId,
     this.orderNumber,
+    this.campaignId,
     this.target = '',
   });
   final String id, title, body, type, source, target;
   final DateTime createdAt;
   final DateTime? readAt;
-  final String? orderId, orderNumber;
+  final String? orderId, orderNumber, campaignId;
   bool get isRead => readAt != null;
   String get category =>
       type == 'order_update' || orderId != null
@@ -35,6 +36,7 @@ class InboxNotification {
         source: j['source']?.toString() ?? 'local',
         orderId: j['orderId']?.toString(),
         orderNumber: j['orderNumber']?.toString(),
+        campaignId: j['campaignId']?.toString(),
         target: j['target']?.toString() ?? '',
       );
   Map<String, dynamic> toJson() => {
@@ -47,6 +49,7 @@ class InboxNotification {
     'source': source,
     'orderId': orderId,
     'orderNumber': orderNumber,
+    'campaignId': campaignId,
     'target': target,
   };
   InboxNotification read() => InboxNotification.fromJson({

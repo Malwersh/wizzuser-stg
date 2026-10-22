@@ -285,4 +285,38 @@ void main() {
     },
     skip: !enabled,
   );
+  test(
+    'store agreement preview reaches consent with its actual customer total',
+    () async {
+      quoteFee = 2000000;
+      await checkout.load('b1', 'a1', renew: true);
+      mutatePreview = (p) {
+        p['schemaVersion'] = 3;
+        p['referenceDeliveryFee'] = money(2000000);
+        p['deliveryAgreement'] = {
+          'policyId': 'agreement-1',
+          'version': 1,
+          'termsHash': 'a' * 64,
+          'kind': 'FIXED_TARIFF',
+        };
+        p['deliveryFee'] = money(1500000);
+        p['customerTotal'] = money(5500000);
+      };
+      var approved = false;
+      await checkout.confirm(
+        content(),
+        approveCommercial: (p) async {
+          approved = true;
+          expect(p['schemaVersion'], 3);
+          expect(p['deliveryFee']['minorAmount'], 1500000);
+          return true;
+        },
+      );
+      expect(approved, true);
+      expect(posts, hasLength(2));
+      expect(posts.last['commercialConsent']['customerTotalMinor'], 5500000);
+      expect(saved, isEmpty);
+    },
+    skip: !enabled,
+  );
 }

@@ -108,7 +108,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'اجمع النقاط واحصل على خصومات رائعة',
+                        'استعرض العروض وتحقق من شروطها عند الدفع',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -341,7 +341,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'اجمع النقاط',
+                            'قريباً',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 13,
@@ -440,7 +440,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'كل طلب يحتوي على نقاط مكافآت - ابدأ التسوق الآن!',
+                      'تُراجع أهلية الخصومات عند إتمام الطلب',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 13,

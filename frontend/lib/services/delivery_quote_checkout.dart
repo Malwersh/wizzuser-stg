@@ -5,8 +5,24 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../config/api_config.dart';
 import 'scoped_checkout_attempt.dart';
+import 'offer_checkout_failures.dart';
 
 void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
+  final agreement = proposal['schemaVersion'] == 3;
+  final funded = agreement || proposal['schemaVersion'] == 2;
+  if (agreement) {
+    final pin = proposal['deliveryAgreement'];
+    if (pin is! Map || pin.length != 4 ||
+        pin['policyId'] is! String ||
+        !RegExp(r'^[A-Za-z0-9_.:-]{1,150}$').hasMatch(pin['policyId']) ||
+        pin['version'] is! int ||
+        pin['version'] < 1 ||
+        pin['termsHash'] is! String ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(pin['termsHash']) ||
+        !['FREE', 'FIXED_TARIFF'].contains(pin['kind'])) {
+      throw const FormatException('INVALID_DELIVERY_AGREEMENT');
+    }
+  }
   const fields = [
     'customerTotal',
     'goodsGross',
@@ -16,7 +32,7 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   ];
   for (final key in [
     ...fields,
-    if ([2, 3].contains(proposal['schemaVersion'])) 'referenceDeliveryFee',
+    if (funded) 'referenceDeliveryFee',
     if (proposal.containsKey('driverTip')) 'driverTip',
   ]) {
     final money = proposal[key];
@@ -34,24 +50,13 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   BigInt amount(String key) => BigInt.from(proposal[key]['minorAmount'] as int);
   final tip =
       proposal.containsKey('driverTip') ? amount('driverTip') : BigInt.zero;
-  final agreement = proposal['schemaVersion'] == 3;
-  final funded = proposal['schemaVersion'] == 2 || agreement;
-  if (agreement) {
-    final pin = proposal['deliveryAgreement'];
-    if (pin is! Map || pin.length != 4 ||
-        pin['policyId'] is! String ||
-        !RegExp(r'^[A-Za-z0-9_.:-]{1,150}$').hasMatch(pin['policyId']) ||
-        pin['version'] is! int || pin['version'] < 1 ||
-        pin['termsHash'] is! String ||
-        !RegExp(r'^[a-f0-9]{64}$').hasMatch(pin['termsHash']) ||
-        !['FIXED_TARIFF','FREE'].contains(pin['kind']) ||
-        (pin['kind'] == 'FREE' && amount('deliveryFee') != BigInt.zero)) {
-      throw const FormatException('INVALID_DELIVERY_AGREEMENT_PREVIEW');
-    }
-  }
   if ((funded
           ? proposal['referenceDeliveryFee']['minorAmount'] != quotedFeeMinor ||
-              (!agreement && proposal['deliveryFee']['minorAmount'] >= quotedFeeMinor)
+              (!agreement &&
+                  proposal['deliveryFee']['minorAmount'] >= quotedFeeMinor) ||
+              (agreement &&
+                  proposal['deliveryAgreement']['kind'] == 'FREE' &&
+                  proposal['deliveryFee']['minorAmount'] != 0)
           : proposal['deliveryFee']['minorAmount'] != quotedFeeMinor) ||
       amount('discount') > amount('goodsGross') ||
       amount('goodsGross') -
@@ -596,6 +601,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
           data['activeOrder'] is Map;
       final definitive =
           activeConflict ||
+          isDefinitiveOfferRejection(data['code'], response.statusCode) ||
           response.statusCode < 500 &&
               [
                 'QUOTE_EXPIRED',
@@ -606,8 +612,10 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'INVALID_QUOTE_ORDER',
                 'QUOTE_NOT_ENABLED',
                 'CART_PRICE_CHANGED',
+                'CASH_TOTAL_DENOMINATION_UNSUPPORTED',
                 'DISCOUNT_PREVIEW_CHANGED',
                 'DISCOUNT_UNAVAILABLE',
+                'OFFER_NO_SAVINGS',
                 'COMMERCIAL_DISCOUNT_UNSUPPORTED',
                 'FUNDING_WALLET_PRECISION_UNSUPPORTED',
                 'DISCOUNT_FUNDING_UNAUTHORIZED',

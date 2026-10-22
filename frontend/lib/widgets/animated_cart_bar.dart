@@ -162,92 +162,54 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
 
   @override
   Widget build(BuildContext context) {
-    // Debug: AnimatedCartBar build: isExpanded = ${widget.isExpanded}
-    
-    // إذا كان لدينا معرف مطعم، نتحقق من عناصر هذا المطعم فقط
-    if (widget.storeId != null) {
-      return Selector<AppStateProvider, int>(
-        selector: (context, appState) => appState.getCartItemsCountForStore(widget.storeId!),
-        builder: (context, cartCount, child) {
-          if (cartCount == 0) return const SizedBox.shrink();
+    final storeId = widget.storeId;
 
-          final alignment = widget.isExpanded
-              ? Alignment.bottomCenter
-              : Alignment.bottomLeft;
-          final padding = widget.isExpanded
-              ? const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
-              : const EdgeInsets.only(left: 24, bottom: 12);
-
-          return Align(
-            alignment: alignment,
-            child: Padding(
-              padding: padding,
-              child: ScaleTransition(
-                scale: _scaleAnim,
-                child: GestureDetector(
-                  onTap: () {
-                    // Debug: AnimatedCartBar tapped! Navigating to CartScreen...
-                    final resolvedStoreName = _resolveStoreName();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CartScreen(
-                          storeName: resolvedStoreName,
-                          storeId: widget.storeId,
-                          stores: widget.stores,
-                        ),
-                      ),
-                    );
-                  },
-                  child: widget.isExpanded
-                      ? _buildExpanded(cartCount)
-                      : _buildCollapsed(cartCount),
-                ),
-              ),
-            ),
+    return Selector<AppStateProvider, ({int count, double total})>(
+      selector: (context, appState) {
+        if (storeId != null) {
+          return (
+            count: appState.getCartItemsCountForStore(storeId),
+            total: appState.getCartTotalForStore(storeId),
           );
-        },
-      );
-    }
-    
-    // الكود الأصلي للشريط العام (بدون معرف مطعم)
-    return Selector<AppStateProvider, int>(
-      selector: (context, appState) => appState.cartItems.length,
-      builder: (context, cartCount, child) {
+        }
+        return (
+          count: appState.cartItems.length,
+          total: appState.cartTotal,
+        );
+      },
+      builder: (context, cartData, child) {
+        final cartCount = cartData.count;
         if (cartCount == 0) return const SizedBox.shrink();
 
         final alignment = widget.isExpanded
             ? Alignment.bottomCenter
             : Alignment.bottomLeft;
+        final bottomSafe = MediaQuery.paddingOf(context).bottom;
         final padding = widget.isExpanded
-            ? const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
-            : const EdgeInsets.only(left: 24, bottom: 12);
+            ? EdgeInsets.fromLTRB(24, 12, 24, 12 + bottomSafe)
+            : EdgeInsets.only(left: 24, bottom: 12 + bottomSafe);
 
         return Align(
           alignment: alignment,
           child: Padding(
             padding: padding,
-            child: ScaleTransition(
-              scale: _scaleAnim,
-              child: GestureDetector(
-                onTap: () {
-                  // Debug: AnimatedCartBar tapped! Navigating to CartScreen...
-                  final resolvedStoreName = _resolveStoreName();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CartScreen(
-                        storeName: resolvedStoreName,
-                        storeId: widget.storeId,
-                        stores: widget.stores,
-                      ),
+            child: GestureDetector(
+              onTap: () {
+                final resolvedStoreName = _resolveStoreName();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CartScreen(
+                      storeName: resolvedStoreName,
+                      storeId: widget.storeId,
+                      stores: widget.stores,
                     ),
-                  );
-                },
-                child: widget.isExpanded
-                    ? _buildExpanded(cartCount)
-                    : _buildCollapsed(cartCount),
-              ),
+                  ),
+                );
+              },
+              child: widget.isExpanded
+                  ? _buildExpanded(cartCount, cartData.total)
+                  : _buildCollapsed(cartCount),
             ),
           ),
         );
@@ -255,7 +217,7 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
     );
   }
 
-  Widget _buildExpanded(int count) {
+  Widget _buildExpanded(int count, double total) {
     return Container(
       height: 56,
       decoration: BoxDecoration(
@@ -273,61 +235,89 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: ModernCartIcon(
-              color: AppColors.secondary,
-              size: 24,
-              hasGlowEffect: false,
-              isGlassmorphic: false,
+            padding: const EdgeInsets.only(right: 12),
+            child: ScaleTransition(
+              scale: _scaleAnim,
+              child: const ModernCartIcon(
+                color: AppColors.secondary,
+                size: 24,
+                hasGlowEffect: false,
+                isGlassmorphic: false,
+              ),
             ),
           ),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'عرض السلة',
-                  style: TextStyle(
-                    color: AppColors.secondary,
-                    fontSize: 11,
-                    letterSpacing: 0.5,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'عرض السلة • $count من العناصر',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  _resolveStoreName(),
-                  style: const TextStyle(
-                    color: AppColors.secondary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                  Text(
+                    _resolveStoreName(),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(left: 16),
+            padding: const EdgeInsets.only(left: 12),
             child: Container(
               constraints: const BoxConstraints(
-                minWidth: 32,
-                maxWidth: 48,
+                minWidth: 64,
+                maxWidth: 110,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  color: _primaryPink,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: _primaryPink,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '${total.toStringAsFixed(0)} د.ع',
+                    style: TextStyle(
+                      color: _primaryPink,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
           ),
@@ -337,31 +327,34 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
   }
 
   Widget _buildCollapsed(int count) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: _primaryPink,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          ModernCartIcon(
-            color: AppColors.secondary,
-            size: 28,
-            hasGlowEffect: false,
-            isGlassmorphic: false,
-            badgeCount: count,
-          ),
-        ],
+    return ScaleTransition(
+      scale: _scaleAnim,
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: _primaryPink,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            ModernCartIcon(
+              color: AppColors.secondary,
+              size: 28,
+              hasGlowEffect: false,
+              isGlassmorphic: false,
+              badgeCount: count,
+            ),
+          ],
+        ),
       ),
     );
   }

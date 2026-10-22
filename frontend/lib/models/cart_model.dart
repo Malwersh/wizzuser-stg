@@ -13,6 +13,10 @@ class CartModel extends ChangeNotifier {
   Future<void> _storageQueue = Future.value();
   int _revision = 0;
 
+  /// اسم المطعم صاحب السلة (لعرضه في نافذة تعارض المطاعم المختلفة)
+  String? _storeName;
+  String? get storeName => _storeName;
+
   /// عناصر السلة
   List<CartItem> get items => List.unmodifiable(_items);
 
@@ -72,9 +76,16 @@ class CartModel extends ChangeNotifier {
           }
         }
 
-        debugPrint(
-          'تم تحميل ${_items.length} عنصر من السلة للمستخدم: $cartKey',
-        );
+        // استرجاع اسم المطعم من البيانات الوصفية
+        try {
+          final metaData = prefs.getString('${cartKey}_meta');
+          if (metaData != null) {
+            final meta = json.decode(metaData) as Map<String, dynamic>;
+            _storeName = meta['storeName'] as String?;
+          }
+        } catch (_) {}
+
+        debugPrint('تم تحميل ${_items.length} عنصر من السلة للمستخدم: $cartKey');
       } else {
         debugPrint('لا توجد سلة محفوظة للمستخدم: $cartKey');
       }
@@ -101,14 +112,22 @@ class CartModel extends ChangeNotifier {
             ? 'cart_items_${session.currentUserId}'
             : 'cart_items_anonymous';
     final data = json.encode(_items.map((item) => item.toJson()).toList());
+    final metadata = json.encode({'storeName': _storeName});
     return _storageQueue = _storageQueue
         .then((_) async {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(key, data);
+          await prefs.setString('${key}_meta', metadata);
         })
         .catchError((Object e) {
           debugPrint('Cart persistence failed: $e');
         });
+  }
+
+  void setStoreName(String? name) {
+    final trimmed=name?.trim();
+    if(trimmed==null||trimmed.isEmpty||_storeName==trimmed)return;
+    _storeName=trimmed;notifyListeners();saveToStorage();
   }
 
   Future<void> clearStorage() {
@@ -123,6 +142,7 @@ class CartModel extends ChangeNotifier {
         .then((_) async {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove(key);
+          await prefs.remove('${key}_meta');
         })
         .catchError((Object e) {
           debugPrint('Cart persistence failed: $e');
@@ -201,6 +221,7 @@ class CartModel extends ChangeNotifier {
   void clear() {
     _items.clear();
     _revision++;
+    _storeName = null;
     notifyListeners();
     clearStorage(); // مسح من التخزين أيضاً
   }

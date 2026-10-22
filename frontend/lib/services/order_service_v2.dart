@@ -12,6 +12,8 @@ import '../models/address_model.dart';
 import 'session_service.dart';
 import 'push_notifications_service.dart';
 import '../config/api_config.dart';
+import 'cancellation_messages.dart';
+import 'discount_item_policy.dart';
 
 class OrderServiceV2 extends ChangeNotifier {
   static final OrderServiceV2 _instance = OrderServiceV2._internal();
@@ -182,7 +184,8 @@ class OrderServiceV2 extends ChangeNotifier {
           'price': item['price'],
           'quantity': item['quantity'],
           'customizations':
-              item['selected_options'] ?? item['customizations'] ?? [],
+              item['selected_options'] ?? item['selectedOptions'] ?? item['customizations'] ?? [],
+          ...discountSelectionFields(item),
           // تحويل special_instructions إلى specialInstructions للباك إند
           'specialInstructions': specialInstructions,
         };
@@ -359,6 +362,10 @@ class OrderServiceV2 extends ChangeNotifier {
         );
 
         _currentOrder = order;
+
+        // Start iOS Live Activity for this order
+        LiveActivityService.startForOrder(order);
+
         // إضافة الطلب للقائمة
         final existingIndex = _orders.indexWhere((o) => o.id == order.id);
         if (existingIndex != -1) {
@@ -895,6 +902,7 @@ class OrderServiceV2 extends ChangeNotifier {
         if (index != -1) {
           _orders[index] = _orders[index].copyWith(status: newStatus);
           notifyListeners();
+          _syncLiveActivity(_orders[index]);
         }
         return true;
       } else {
@@ -988,53 +996,20 @@ class OrderServiceV2 extends ChangeNotifier {
 
           print('   - استدعاء notifyListeners()...');
           notifyListeners();
+          _syncLiveActivity(_orders[index]);
           print('   ✅ تم إلغاء الطلب بنجاح!');
         } else {
           print('   ⚠️ لم يتم العثور على الطلب في القائمة المحلية');
         }
         return true;
       } else {
-        _setError(responseData['message'] ?? 'فشل في إلغاء الطلب');
+        _setError(cancellationMessage(responseData['code'], fallback: responseData['message']));
         return false;
       }
     } catch (e) {
       print('   ❌ خطأ في إلغاء الطلب: $e');
       _setError('خطأ في إلغاء الطلب: ${e.toString()}');
       return false;
-    }
-  }
-
-  /// تطبيق كود خصم
-  Future<Map<String, dynamic>> applyPromoCode(
-    String promoCode,
-    double orderTotal,
-  ) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/promo-codes/apply'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'promoCode': promoCode, 'orderTotal': orderTotal}),
-      );
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200 && responseData['success'] == true) {
-        return {
-          'success': true,
-          'discount': responseData['discount'],
-          'message': responseData['message'],
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['message'] ?? 'كود الخصم غير صالح',
-        };
-      }
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'خطأ في التحقق من كود الخصم: ${e.toString()}',
-      };
     }
   }
 
@@ -1124,6 +1099,7 @@ class OrderServiceV2 extends ChangeNotifier {
       }
 
       notifyListeners();
+      _syncLiveActivity(updatedOrder);
 
       // 🔧 NEW: Log order status changes for debugging
       debugPrint(
@@ -1169,6 +1145,18 @@ class OrderServiceV2 extends ChangeNotifier {
 
   void _clearError() {
     _error = null;
+  }
+
+  static double _statusProgress(OrderStatus status) =>
+      LiveActivityService.statusProgress(status);
+
+  static bool _isTerminalStatus(OrderStatus status) =>
+      LiveActivityService.isTerminal(status);
+
+  static String _etaText(OrderModel order) => LiveActivityService.etaText(order);
+
+  void _syncLiveActivity(OrderModel order) {
+    LiveActivityService.syncOrder(order);
   }
 
   /// تحديث الطلب الحالي
@@ -1386,6 +1374,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
       // 🔔 إشعار جميع المستمعين بالتحديث الفوري
       notifyListeners();
+      _syncLiveActivity(updatedOrder);
       print('📡 OrderService: تم إرسال notifyListeners() للتحديث الفوري');
     } else {
       print(

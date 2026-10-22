@@ -354,6 +354,18 @@ void main() {
       );
     },
   );
+  for (final code in ['CASH_TOTAL_DENOMINATION_UNSUPPORTED', 'OFFER_NO_SAVINGS', 'OFFER_ALREADY_USED', 'OFFER_FIRST_ORDER_ONLY', 'OFFER_NOT_ELIGIBLE', 'OFFER_WRONG_REGION', 'DISCOUNT_PREVIEW_CHANGED']) {
+    test('$code releases the attempt for a revised order', () async {
+      await checkout.load('b1', 'a1');
+      orders = (_) async => http.Response(jsonEncode({'success': false, 'code': code}), 409);
+      await checkout.confirm(content);
+      expect(checkout.pending, false);
+      expect(checkout.valid, false);
+      expect(storage, isEmpty);
+      await checkout.load('b1', 'a1');
+      expect(jsonDecode(requests.first.body)['requestId'], isNot(jsonDecode(requests.last.body)['requestId']));
+    });
+  }
   test(
     'unknown server failure keeps attempt; renewal cannot silently replace it',
     () async {
@@ -496,7 +508,7 @@ void main() {
               'userId': 'u1',
               'storeId': 'b1',
               'storeName': 'Test',
-              'items': [],
+              'items': [{'itemId':'p1','lineId':'CONFIG#server','name':'Saved meal','unitPrice':3500000,'quantity':1,'selectedOptions':{'sides':['rice']}}],
               'pricing': {
                 'goodsSubtotal': 3500000,
                 'deliveryFee': 0,
@@ -547,6 +559,9 @@ void main() {
       expect(order.total, 3500.125);
       expect(order.deliveryFee, 0);
       expect(order.subtotal, 3500);
+      expect(order.items.single.id, 'CONFIG#server');
+      expect(order.items.single.unitPrice, 3500);
+      expect(order.items.single.selectedOptions, {'sides':['rice']});
     },
   );
   test('invalid money currency and precision are rejected', () {
