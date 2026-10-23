@@ -176,8 +176,8 @@ class RestaurantSummaryCard extends StatelessWidget {
                 ),
               ),
             ),
-            const Spacer(),
-            TextButton(
+            const SizedBox(width: 8),
+            Expanded(child: TextButton(
               onPressed: onDetails,
               child: const Text(
                 'معلومات المطعم',
@@ -186,65 +186,41 @@ class RestaurantSummaryCard extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
+            )),
           ],
         ),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
+        LayoutBuilder(builder: (context, constraints) {
+          final width = constraints.maxWidth < 300
+              ? constraints.maxWidth
+              : (constraints.maxWidth - 12) / 2;
+          Widget fact(IconData icon, String label, StorefrontField field) =>
+              SizedBox(width: width, child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  StorefrontValue(
-                    branchId: store.id,
-                    field: StorefrontField.distance,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  StorefrontValue(
-                    branchId: store.id,
-                    field: StorefrontField.fee,
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
-                  ),
+                  Row(children: [Icon(icon, size: 17, color: Colors.black54),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(label, style: const TextStyle(
+                      color: Colors.black54, fontSize: 12))),
+                  ]),
+                  const SizedBox(height: 6),
+                  StorefrontValue(branchId: store.id, field: field,
+                    initialPreparationMinutes: store.averagePreparationMinutes,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                 ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  StorefrontValue(
-                    branchId: store.id,
-                    field: StorefrontField.arrival,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'الوصول المتوقع',
-                    style: TextStyle(color: Colors.black54, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        StorefrontValue(
-          branchId: store.id,
-          field: StorefrontField.preparation,
-          initialPreparationMinutes: store.averagePreparationMinutes,
-          style: const TextStyle(color: Colors.black54, fontSize: 12),
-        ),
+              ));
+          return Wrap(spacing: 12, runSpacing: 18, children: [
+            fact(Icons.delivery_dining, 'الوصول المتوقع إلى عنوانك', StorefrontField.arrival),
+            fact(Icons.route_outlined, 'مسافة الطريق إلى عنوانك', StorefrontField.distance),
+            fact(Icons.payments_outlined, 'رسوم التوصيل', StorefrontField.fee),
+            fact(Icons.restaurant_outlined, 'تحضير المطعم فقط', StorefrontField.preparation),
+          ]);
+        }),
+        const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
         StorefrontMinimum(branchId: store.id),
+        const SizedBox(height: 8),
+        const Text('وقت الوصول تقديري ويشمل التحضير والطريق؛ قد يتغير حسب توفر السائق.',
+          style: TextStyle(color: Colors.black54, fontSize: 11, height: 1.5)),
       ],
     ),
   );

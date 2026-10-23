@@ -103,7 +103,7 @@ class _StorefrontValueState extends State<StorefrontValue> {
       }
     }
 
-    String text = key == null ? 'اختر عنوان التوصيل' : '—';
+    String text = key == null ? 'اختر عنوان التوصيل' : 'جارٍ الحساب…';
     if (widget.field == StorefrontField.preparation &&
         widget.initialPreparationMinutes != null)
       text = 'نحو ${widget.initialPreparationMinutes} دقيقة';
@@ -149,7 +149,7 @@ class _StorefrontValueState extends State<StorefrontValue> {
   }
 }
 
-/// Takes no space when the branch has no configured minimum.
+/// Shared minimum presentation; missing configuration never becomes an invented amount.
 class StorefrontMinimum extends StatelessWidget {
   final String branchId;
   const StorefrontMinimum({super.key, required this.branchId});
@@ -165,17 +165,14 @@ class StorefrontMinimum extends StatelessWidget {
       listenable: StorefrontPricing.instance,
       builder: (context, _) {
         final minimum = StorefrontPricing.instance.minimumIqd(branchId, items);
-        if (minimum == null) return const SizedBox.shrink();
-        return Expanded(
-          child: Column(
-            children: [
-              const Text(
-                'الحد الأدنى',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              Text('$minimum د.ع', style: const TextStyle(fontSize: 12)),
-            ],
-          ),
+        return Row(
+          children: [
+            const Icon(Icons.shopping_basket_outlined, size: 17, color: Colors.black54),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('الحد الأدنى للأصناف', style: TextStyle(fontSize: 12))),
+            Flexible(child: Text(minimum == null ? 'غير محدد' : '$minimum د.ع',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+          ],
         );
       },
     );

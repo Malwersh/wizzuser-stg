@@ -1582,6 +1582,7 @@ class _MapScreenNewState extends State<MapScreenNew> {
       reviews: '500+',
       distance: business.distance,
       time: business.deliveryTime,
+      averagePreparationMinutes: business.averagePreparationMinutes,
       address: business.address,
       isOpen: business.isActive,
       combos: const [],

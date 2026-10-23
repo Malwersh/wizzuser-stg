@@ -1532,43 +1532,20 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                               const SizedBox(height: 20),
 
                               // معلومات تفصيلية
-                              _buildInfoRow(
-                                Icons.star,
-                                'التقييم',
-                                widget.store.ratingValue > 0
-                                    ? widget.store.rating
-                                    : 'التقييم غير متاح',
-                              ),
-                              _buildInfoRow(
-                                Icons.access_time,
-                                'الوصول المتوقع',
-                                '',
-                                content: StorefrontValue(
-                                  branchId: widget.store.id,
-                                  field: StorefrontField.arrival,
-                                ),
-                              ),
-                              _buildInfoRow(
-                                Icons.delivery_dining,
-                                'رسوم التوصيل',
-                                '',
-                                content: StorefrontValue(
-                                  branchId: widget.store.id,
-                                  field: StorefrontField.fee,
-                                ),
-                              ),
+                              _buildInfoRow(Icons.star, 'التقييم', widget.store.ratingValue > 0 ? widget.store.rating : 'جديد'),
+                              _buildInfoRow(Icons.timer_outlined, 'وقت التحضير', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.preparation,initialPreparationMinutes:widget.store.averagePreparationMinutes)),
+                              _buildInfoRow(Icons.access_time, 'الوصول المتوقع', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.arrival)),
+                              _buildInfoRow(Icons.delivery_dining, 'رسوم التوصيل', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.fee)),
+                              _buildInfoRow(Icons.route_outlined, 'المسافة', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.distance)),
+                              ListenableBuilder(listenable:StorefrontPricing.instance,builder:(context,_){
+                                final items=context.watch<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();
+                                final minimum=StorefrontPricing.instance.minimumIqd(widget.store.id,items);
+                                return _buildInfoRow(Icons.shopping_basket_outlined,'الحد الأدنى للأصناف',minimum==null?'غير محدد':'$minimum د.ع');
+                              }),
                               if (widget.store.address.isNotEmpty)
-                                _buildInfoRow(
-                                  Icons.location_on,
-                                  'العنوان',
-                                  widget.store.address,
-                                ),
+                                _buildInfoRow(Icons.location_on, 'العنوان', widget.store.address),
                               if (widget.store.category != null)
-                                _buildInfoRow(
-                                  Icons.restaurant_menu,
-                                  'الفئة',
-                                  widget.store.category!,
-                                ),
+                                _buildInfoRow(Icons.restaurant_menu, 'الفئة', widget.store.category=='restaurant'?'مطعم':widget.store.category!),
 
                               const SizedBox(height: 24),
 
@@ -1580,31 +1557,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                           ),
                         ),
                       ),
-                      
-                      const SizedBox(height: 20),
-                      
-                      // معلومات تفصيلية
-                      _buildInfoRow(Icons.star, 'التقييم', widget.store.ratingValue > 0 ? widget.store.rating : 'جديد'),
-                      _buildInfoRow(Icons.timer_outlined, 'وقت التحضير', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.preparation,initialPreparationMinutes:widget.store.averagePreparationMinutes)),
-                      _buildInfoRow(Icons.access_time, 'الوصول المتوقع', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.arrival)),
-                      _buildInfoRow(Icons.delivery_dining, 'رسوم التوصيل', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.fee)),
-                      _buildInfoRow(Icons.route_outlined, 'المسافة', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.distance)),
-                      ListenableBuilder(listenable:StorefrontPricing.instance,builder:(context,_){
-                        final items=context.watch<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();
-                        final minimum=StorefrontPricing.instance.minimumIqd(widget.store.id,items);
-                        return minimum==null?const SizedBox.shrink():_buildInfoRow(Icons.shopping_basket_outlined,'الحد الأدنى للطلب','$minimum د.ع');
-                      }),
-                      if (widget.store.address.isNotEmpty)
-                        _buildInfoRow(Icons.location_on, 'العنوان', widget.store.address),
-                      if (widget.store.category != null)
-                        _buildInfoRow(Icons.restaurant_menu, 'الفئة', widget.store.category=='restaurant'?'مطعم':widget.store.category!),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // قسم ساعات العمل المحسن
-                      _buildEnhancedWorkingHoursSection(setSheetState),
-                      
-                      const SizedBox(height: 20),
+
                     ],
                   ),
                 ),
