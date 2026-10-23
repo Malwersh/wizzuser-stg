@@ -70,6 +70,15 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   }
 }
 
+class InvoicePreviewUnavailable extends StateError {
+  final String? code;
+  InvoicePreviewUnavailable(this.code) : super('تعذر تحديث الفاتورة الآن');
+}
+
+class CommercialReviewCancelled extends StateError {
+  CommercialReviewCancelled() : super('أُلغي تأكيد السعر');
+}
+
 class DeliveryQuote {
   final String id, branchId, addressId;
   final DateTime expiresAt;
@@ -236,6 +245,28 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     return task.whenComplete(() {
       if (identical(_loadingQuote, task)) _loadingQuote = null;
     });
+  }
+
+  /// Only a matching account-scoped, server-issued quote may be adopted.
+  bool adoptCachedQuote(DeliveryQuote cached, String owner) {
+    if (!ready ||
+        _owner != owner ||
+        account() != owner ||
+        busy ||
+        pending ||
+        !now().isBefore(cached.expiresAt))
+      return false;
+    if (quote != null && quote!.id == cached.id) return true;
+    if (valid &&
+        quote!.branchId == cached.branchId &&
+        quote!.addressId == cached.addressId &&
+        quote!.expiresAt.isAfter(cached.expiresAt))
+      return false;
+    quote = cached;
+    _scope = '${cached.branchId}/${cached.addressId}';
+    _quoteAttempt = null;
+    error = null;
+    return true;
   }
 
   Future<void> ensureFresh(String branch, String address) async {
@@ -407,6 +438,10 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     _check(owner, generation);
     final data = jsonDecode(response.body);
     final proposal = data is Map ? data['commercial'] : null;
+    if (response.statusCode != 200)
+      throw InvoicePreviewUnavailable(
+        data is Map && data['code'] is String ? data['code'] : null,
+      );
     if (response.statusCode != 200 ||
         data is! Map ||
         data['success'] != true ||
@@ -428,6 +463,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
   Future<http.Response> confirm(
     Map<String, dynamic>? content, {
     Future<bool> Function(Map<String, dynamic>)? approveCommercial,
+    Map<String, dynamic>? initialCommercialPreview,
   }) async {
     if (_loadingQuote != null) await _loadingQuote;
     if (content != null && !pending && ready) {
@@ -445,6 +481,27 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
       throw StateError('تعذر تأكيد الطلب الآن');
     }
     final owner = _owner!;
+    Map<String, dynamic>? reusablePreview;
+    if (initialCommercialPreview != null &&
+        scopedAttempt == null &&
+        quote != null &&
+        _pending == null) {
+      try {
+        final p = Map<String, dynamic>.from(initialCommercialPreview);
+        validateCommercialCheckoutAmounts(p, quote!.feeMinor);
+        if ([1, 2, 3].contains(p['schemaVersion']) &&
+            p['quoteId'] == quote!.id &&
+            p['requestId'] is String &&
+            RegExp(r'^[a-fA-F0-9-]{36}$').hasMatch(p['requestId']) &&
+            p['digest'] is String &&
+            RegExp(r'^[a-f0-9]{64}$').hasMatch(p['digest']) &&
+            now().isBefore(DateTime.parse(p['expiresAt'])) &&
+            !DateTime.parse(p['expiresAt']).isAfter(quote!.expiresAt))
+          reusablePreview = p;
+      } catch (_) {
+        /* A stale hint never bypasses a fresh server preview. */
+      }
+    }
     var generation = _generation;
     if (!_confirmingAccounts.add(owner)) {
       throw StateError('توجد محاولة تأكيد قيد التنفيذ');
@@ -473,7 +530,9 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                     ...content,
                     'quoteId': quote!.id,
                     'idempotencyKey':
-                        scopedAttempt?.requestId ?? const Uuid().v4(),
+                        scopedAttempt?.requestId ??
+                        reusablePreview?['requestId'] ??
+                        const Uuid().v4(),
                     'deliveryFee': quote!.fee,
                   }),
                 )
@@ -515,17 +574,34 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 (b[k] as Map?)?['minorAmount'],
           );
           for (var round = 0; round < 3; round++) {
-            final previewResponse = await client
-                .post(
-                  Uri.parse(
-                    ApiConfig.buildUrl(
-                      '${ApiConfig.ordersEndpoint}/commercial-preview',
-                    ),
-                  ),
-                  headers: _headers(owner),
-                  body: jsonEncode({...saved, 'action': 'preview_commercial'}),
-                )
-                .timeout(ApiConfig.apiTimeout);
+            final usePrepared =
+                round == 0 &&
+                reusablePreview != null &&
+                reusablePreview['quoteId'] == saved['quoteId'] &&
+                reusablePreview['requestId'] == saved['idempotencyKey'];
+            final previewResponse =
+                usePrepared
+                    ? http.Response(
+                      jsonEncode({
+                        'success': true,
+                        'commercial': reusablePreview,
+                      }),
+                      200,
+                    )
+                    : await client
+                        .post(
+                          Uri.parse(
+                            ApiConfig.buildUrl(
+                              '${ApiConfig.ordersEndpoint}/commercial-preview',
+                            ),
+                          ),
+                          headers: _headers(owner),
+                          body: jsonEncode({
+                            ...saved,
+                            'action': 'preview_commercial',
+                          }),
+                        )
+                        .timeout(ApiConfig.apiTimeout);
             _check(owner, generation);
             final data = jsonDecode(previewResponse.body);
             if (data is Map && data['code'] == 'MINIMUM_ORDER_NOT_MET')
@@ -623,7 +699,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                     ? true
                     : await approveCommercial(currentProposal);
             _check(owner, generation);
-            if (!accepted) throw StateError('أُلغي تأكيد السعر');
+            if (!accepted) throw CommercialReviewCancelled();
             if (!valid ||
                 !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
               approvedProposal = currentProposal;

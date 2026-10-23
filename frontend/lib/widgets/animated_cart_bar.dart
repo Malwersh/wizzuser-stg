@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'basket_invoice.dart';
 // lib/widgets/animated_cart_bar.dart
 import '../constants/app_colors.dart';
 
@@ -162,15 +164,18 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
   Widget build(BuildContext context) {
     final storeId = widget.storeId;
 
-    return Selector<AppStateProvider, ({int count, double total})>(
+    return Selector<AppStateProvider, ({int count, String fingerprint})>(
       selector: (context, appState) {
         if (storeId != null) {
           return (
             count: _quantity(appState),
-            total: appState.getCartTotalForStore(storeId),
+            fingerprint: jsonEncode(appState.cartItems),
           );
         }
-        return (count: _quantity(appState), total: appState.cartTotal);
+        return (
+          count: _quantity(appState),
+          fingerprint: jsonEncode(appState.cartItems),
+        );
       },
       builder: (context, cartData, child) {
         final cartCount = cartData.count;
@@ -184,34 +189,42 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
                 ? EdgeInsets.fromLTRB(24, 12, 24, 12 + bottomSafe)
                 : EdgeInsets.only(left: 24, bottom: 12 + bottomSafe);
 
-        return Align(
-          alignment: alignment,
-          child: Padding(
-            padding: padding,
-            child: GestureDetector(
-              onTap: () {
-                final resolvedStoreName = _resolveStoreName();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder:
-                        (_) => CartScreen(
-                          storeName: resolvedStoreName,
-                          storeId: widget.storeId,
-                          stores: widget.stores,
-                        ),
-                  ),
-                );
-              },
-              child: Material(
-                type: MaterialType.transparency,
-                child:
-                    widget.isExpanded
-                        ? ScaleTransition(
-                          scale: _scaleAnim,
-                          child: _buildExpanded(cartCount),
-                        )
-                        : _buildCollapsed(cartCount),
+        return BasketInvoiceWarmup(
+          branch:
+              widget.storeId ??
+              context.read<AppStateProvider>().cart.currentStoreId ??
+              '',
+          items: context.read<AppStateProvider>().cartItems,
+          storeName: widget.storeName,
+          child: Align(
+            alignment: alignment,
+            child: Padding(
+              padding: padding,
+              child: GestureDetector(
+                onTap: () {
+                  final resolvedStoreName = _resolveStoreName();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => CartScreen(
+                            storeName: resolvedStoreName,
+                            storeId: widget.storeId,
+                            stores: widget.stores,
+                          ),
+                    ),
+                  );
+                },
+                child: Material(
+                  type: MaterialType.transparency,
+                  child:
+                      widget.isExpanded
+                          ? ScaleTransition(
+                            scale: _scaleAnim,
+                            child: _buildExpanded(cartCount),
+                          )
+                          : _buildCollapsed(cartCount),
+                ),
               ),
             ),
           ),

@@ -1,4 +1,4 @@
-import '../services/discount_item_policy.dart';
+import '../services/checkout_invoice_store.dart';
 import '../widgets/merchant_offer_picker.dart';
 import '../models/platform_benefit.dart';
 import '../widgets/checkout_benefits_sheet.dart';
@@ -58,111 +58,129 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _invoiceError;
   bool _invoiceLoading = false;
   Timer? _invoiceDebounce;
+  Timer? _invoiceRefreshTimer;
   int _invoiceGeneration = 0;
-  String _invoiceKey() => jsonEncode([
-    _discountContext(includeTip: true),
-    _platformDiscountId,
-    _deliveryBenefitId,
-    _quotedCheckout.quote?.id,
-    DeliveryAddressManager.instance.activeAddress?.toJson(),
-  ]);
+  final _invoices = CheckoutInvoiceStore.instance;
+  Map<String, dynamic>? _invoiceRequest() {
+    if (!mounted || _selectedAddress == null) return null;
+    final state = context.read<AppStateProvider>();
+    final branch = _branchId(state);
+    if (branch == null || state.cartItems.isEmpty) return null;
+    return invoiceRequest(
+      branch: branch,
+      items: state.cartItems,
+      storeName:
+          widget.storeName ?? state.cartItems.first['store_name'] ?? 'المطعم',
+      storeAddress:
+          state.cartItems.first['store_address'] ?? 'العنوان غير محدد',
+      address: {
+        'id': _selectedAddress!.id,
+        'latitude': _selectedAddress!.latitude,
+        'longitude': _selectedAddress!.longitude,
+        'fullAddress': _selectedAddress!.fullAddress,
+      },
+      tip: _driverTipIqd,
+      discount: _effectiveDiscount,
+      discountId: _selectedDiscountId,
+      platformDiscountId:
+          _selectedBenefit?.isDelivery == false
+              ? _selectedBenefit!.id
+              : _platformDiscountId,
+      deliveryBenefitId:
+          _selectedBenefit?.isDelivery == true
+              ? _selectedBenefit!.id
+              : _deliveryBenefitId,
+      promoCode: _appliedPromoCode,
+      offerSlideId:
+          PendingOffer.current?.merchantId == branch
+              ? PendingOffer.current?.slideId
+              : null,
+    );
+  }
+
+  String _invoiceKey() {
+    final request = _invoiceRequest();
+    return request == null ? '' : _invoices.key(request);
+  }
+
+  void _invoiceStoreChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _scheduleInvoice() {
     if (!mounted ||
         !ApiConfig.commercialPricingEnabled ||
         !_quotesEnabled ||
-        _quotedCheckout.pending)
+        !_quotedCheckout.ready ||
+        _quotedCheckout.pending ||
+        _quotedCheckout.busy ||
+        _isLoading ||
+        _preparingReview ||
+        _invoiceLoading ||
+        _invoiceDebounce?.isActive == true)
       return;
-    _invoiceDebounce?.cancel();
+    final request = _invoiceRequest();
+    if (request == null ||
+        _invoices.peek(request) != null ||
+        _invoices.loading(request) ||
+        _invoices.error(request) != null)
+      return;
     _invoiceDebounce = Timer(
       const Duration(milliseconds: 250),
       _refreshInvoice,
     );
   }
 
-  Future<void> _refreshInvoice() async {
+  Future<void> _refreshInvoice({
+    bool retry = false,
+    bool refresh = false,
+  }) async {
     if (!mounted ||
-        _selectedAddress == null ||
-        !_quoteMatches(context.read<AppStateProvider>()) ||
+        !_quotedCheckout.ready ||
+        _quotedCheckout.busy ||
+        _quotedCheckout.pending ||
+        _isLoading ||
+        _preparingReview ||
         !_discountCurrent)
       return;
-    final state = context.read<AppStateProvider>();
-    final scope = _invoiceKey();
-    if (_invoiceScope == scope &&
-        (_invoiceLoading ||
-            _invoiceError != null ||
-            _invoice != null &&
-                DateTime.now().isBefore(
-                  DateTime.parse(_invoice!['expiresAt']),
-                )))
-      return;
-    final generation = ++_invoiceGeneration;
+    final request = _invoiceRequest();
+    if (request == null) return;
+    final scope = _invoices.key(request), generation = ++_invoiceGeneration;
     setState(() {
-      _invoiceScope = scope;
-      _invoice = null;
-      _invoiceError = null;
       _invoiceLoading = true;
     });
-    try {
-      final proposal = await _quotedCheckout.previewInvoice({
-        'storeId': _branchId(state),
-        'storeName':
-            widget.storeName ?? state.cartItems.first['store_name'] ?? 'المطعم',
-        'storeAddress':
-            state.cartItems.first['store_address'] ?? 'العنوان غير محدد',
-        'paymentMethod': 'cash',
-        'deliveryAddress': {
-          'id': _selectedAddress!.id,
-          'latitude': _selectedAddress!.latitude,
-          'longitude': _selectedAddress!.longitude,
-          'fullAddress': _selectedAddress!.fullAddress,
-        },
-        'items':
-            state.cartItems
-                .map(
-                  (item) => {
-                    'id': item['id'],
-                    'name': item['name'],
-                    'price': item['price'].toString(),
-                    'quantity': item['quantity'],
-                    'customizations':
-                        item['selected_options'] ??
-                        item['selectedOptions'] ??
-                        item['customizations'] ??
-                        [],
-                    ...discountSelectionFields(item),
-                  },
-                )
-                .toList(),
-        'tip': _driverTipIqd,
-        'discount': _effectiveDiscount,
-        'discountId': _selectedDiscountId,
-        'promoCode': _appliedPromoCode,
-        if (_platformDiscountId != null)
-          'platformDiscountId': _platformDiscountId,
-        if (_deliveryBenefitId != null) 'deliveryBenefitId': _deliveryBenefitId,
-        'offerSlideId':
-            PendingOffer.current?.merchantId == _branchId(state)
-                ? PendingOffer.current?.slideId
-                : null,
-      });
-      if (!mounted ||
-          generation != _invoiceGeneration ||
-          scope != _invoiceKey())
-        return;
-      setState(() {
-        _invoice = proposal;
-        _invoiceLoading = false;
-      });
-    } catch (_) {
-      if (!mounted ||
-          generation != _invoiceGeneration ||
-          scope != _invoiceKey())
-        return;
-      setState(() {
-        _invoiceLoading = false;
-        _invoiceError = 'تعذر تحديث الفاتورة';
-      });
-    }
+    final result = await _invoices.ensure(
+      request,
+      retry: retry,
+      refresh: refresh,
+    );
+    if (!mounted || generation != _invoiceGeneration) return;
+    setState(() {
+      _invoiceLoading = false;
+      if (scope == _invoiceKey()) {
+        if (result != null) {
+          _quotedCheckout.adoptCachedQuote(
+            result.quote,
+            SessionService.instance.currentUserId!,
+          );
+          _invoice = result.proposal;
+          _invoiceScope = scope;
+        }
+        _invoiceError = _invoices.error(request);
+      }
+    });
+  }
+
+  void _rememberReviewedInvoice(Map<String, dynamic> proposal) {
+    final request = _invoiceRequest(), quote = _quotedCheckout.quote;
+    if (request == null || quote == null) return;
+    _invoices.remember(request, proposal, quote);
+    setState(() {
+      _invoice = Map<String, dynamic>.from(proposal);
+      _invoiceScope = _invoices.key(request);
+      _invoiceError = null;
+      _invoiceLoading = false;
+    });
   }
 
   void _quoteChanged() {
@@ -209,21 +227,43 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (branch != null) {
       // Prepare the binding quote while the customer reviews the form. The final
       // review still checks expiry and the server prices the exact basket.
-      await Future.wait([
-        StorefrontPricing.instance.load(
-          branch,
-          state.cartItems,
-          hasGoodsDiscount: _effectiveDiscount > 0,
-          force: renew,
-        ),
-        _quotedCheckout.ensureFresh(branch, _selectedAddress!.id),
-      ]);
+      if (!ApiConfig.commercialPricingEnabled) {
+        await _quotedCheckout.ensureFresh(branch, _selectedAddress!.id);
+        return;
+      }
+      final request = _invoiceRequest();
+      final cached = request == null ? null : _invoices.peek(request);
+      if (cached != null)
+        _quotedCheckout.adoptCachedQuote(
+          cached.quote,
+          SessionService.instance.currentUserId!,
+        );
+      if (cached == null) {
+        await _refreshInvoice(retry: renew);
+      }
       _scheduleInvoice();
     }
   }
 
   Future<void> _ensureQuoteFresh(String branch, String address) async {
     await SessionService.instance.getToken();
+    if (!mounted) return;
+    final request = _invoiceRequest();
+    if (ApiConfig.commercialPricingEnabled && request != null) {
+      final cached = _invoices.peek(request);
+      final fresh =
+          cached != null &&
+                  cached.quote.expiresAt.difference(DateTime.now()) >=
+                      const Duration(seconds: 45)
+              ? cached
+              : await _invoices.ensure(request, refresh: true, retry: true);
+      if (!mounted) return;
+      if (fresh != null)
+        _quotedCheckout.adoptCachedQuote(
+          fresh.quote,
+          SessionService.instance.currentUserId!,
+        );
+    }
     await _quotedCheckout.ensureFresh(branch, address);
   }
 
@@ -321,6 +361,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void initState() {
     super.initState();
     StorefrontPricing.instance.addListener(_quoteChanged);
+    _invoices.addListener(_invoiceStoreChanged);
+    _invoiceRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted ||
+          ModalRoute.of(context)?.isCurrent != true ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+          _quotedCheckout.busy ||
+          _isLoading ||
+          _preparingReview ||
+          _invoiceLoading)
+        return;
+      final request = _invoiceRequest();
+      if (request == null) return;
+      final invoice = _invoices.peek(request);
+      if (invoice == null ||
+          invoice.expiresAt.difference(DateTime.now()) <=
+              const Duration(seconds: 30)) {
+        unawaited(_refreshInvoice(refresh: true));
+      }
+    });
     _quotedCheckout = DeliveryQuoteCheckout(
       account: () => SessionService.instance.currentUserId,
       token: () => SessionService.instance.accessToken,
@@ -821,6 +880,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _invoiceRefreshTimer?.cancel();
+    _invoices.removeListener(_invoiceStoreChanged);
     _invoiceDebounce?.cancel();
     _invoiceGeneration++;
     _cartListener?.removeListener(_pendingCartChanged);
@@ -2002,11 +2063,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _buildPriceSummary(AppStateProvider appState) {
     _scheduleInvoice();
-    final invoiceCurrent =
+    final request = _invoiceRequest();
+    final shared = request == null ? null : _invoices.peek(request);
+    final localCurrent =
         _invoiceScope == _invoiceKey() &&
         _invoice != null &&
         DateTime.now().isBefore(DateTime.parse(_invoice!['expiresAt']));
-    final invoice = invoiceCurrent ? _invoice : null;
+    final invoice = shared?.proposal ?? (localCurrent ? _invoice : null);
+    final invoiceCurrent = invoice != null;
     double? invoiceAmount(String key) =>
         invoice == null ? null : (invoice[key]['minorAmount'] as num) / 1000;
 
@@ -2144,7 +2208,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               TextButton(
                 onPressed: () {
                   _invoiceScope = null;
-                  _scheduleInvoice();
+                  unawaited(_refreshInvoice(retry: true));
                 },
                 child: const Text('تعذر تحديث الفاتورة — إعادة المحاولة'),
               ),
@@ -2164,7 +2228,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               Text(
                 (ApiConfig.commercialPricingEnabled && !invoiceCurrent) ||
-                        _quotesEnabled &&
+                        !invoiceCurrent &&
+                            _quotesEnabled &&
                             StorefrontPricing.instance.feeIqd(
                                   _branchId(appState) ?? '',
                                   appState.cartItems,
@@ -3116,9 +3181,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryFee: _quotesEnabled ? _quotedCheckout.quote!.fee : 10.0,
         driverTipIqd: _driverTipIqd,
         quoteCheckout: _quotesEnabled ? _quotedCheckout : null,
+        initialCommercialPreview:
+            _invoiceRequest() == null
+                ? null
+                : _invoices.peek(_invoiceRequest()!)?.proposal,
         approveCommercial: (proposal) async {
           if (!mounted || commercialScope != _discountContext(includeTip: true))
             return false;
+          _rememberReviewedInvoice(proposal);
           final scope = commercialScope;
           final accepted = await showModalBottomSheet<bool>(
             context: context,
@@ -3171,7 +3241,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       print('CheckoutScreen: Order creation result: $result');
 
+      if (result['cancelled'] == true) return;
+      if (result['success'] != true &&
+          result['code'] != null &&
+          !_quotedCheckout.pending) {
+        _invoices.clear();
+        _invoice = null;
+        _invoiceScope = null;
+      }
       if (result['success']) {
+        _invoices.clear();
         PendingOffer.clear();
         final order = result['order'] as OrderModel;
 
@@ -3192,6 +3271,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
           ),
         );
+      } else if ([
+        'COMMERCIAL_CONSENT_REQUIRED',
+        'COMMERCIAL_QUOTE_EXPIRED',
+        'QUOTE_INVALIDATED',
+        'CART_PRICE_CHANGED',
+      ].contains(result['code'])) {
+        _invoices.clear();
+        _invoice = null;
+        _invoiceScope = null;
+        _showMessage(
+          'تغيّرت الفاتورة. راجع المبلغ المحدّث قبل تأكيد الطلب.',
+          isError: true,
+        );
+        _scheduleInvoice();
       } else if (result['code'] != null) {
         if (!_quotedCheckout.pending &&
             isDefinitiveOfferRejection(
@@ -3278,6 +3371,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final order = OrderModel.fromJson(
           Map<String, dynamic>.from(data['order']),
         );
+        _invoices.clear();
         _orderService.addOrderToList(order);
         // A restored attempt may belong to a previous cart. Keep today's cart intact.
         Navigator.pushReplacement(

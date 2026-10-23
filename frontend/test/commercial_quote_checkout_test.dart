@@ -1,3 +1,6 @@
+import 'package:foodapp_user/services/order_service.dart';
+import 'package:foodapp_user/models/address_model.dart';
+import 'package:foodapp_user/models/order_model.dart';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -456,5 +459,46 @@ void main() {
       expect(saved, isEmpty);
     },
     skip: !enabled,
+  );
+  test(
+    'OrderService treats review dismissal as normal cancellation without an error',
+    () async {
+      final date = DateTime.utc(2026, 10, 15);
+      final address = DetailedAddress(
+        id: 'a1',
+        userId: 'u1',
+        name: 'Test',
+        province: 'Test',
+        district: 'Test',
+        neighborhood: 'Test',
+        landmark: '',
+        fullAddress: 'Test address',
+        latitude: 31.925,
+        longitude: 44.457,
+        addressType: 'home',
+        createdAt: date,
+        updatedAt: date,
+      );
+      final result = await OrderService().createOrder(
+        storeId: 'b1',
+        storeName: 'Test',
+        cartItems: [
+          {'id': 'p1', 'name': 'Test', 'price': 3500, 'quantity': 1},
+        ],
+        deliveryAddress: address,
+        paymentMethod: PaymentMethod.cash,
+        userId: 'u1',
+        customerName: 'Test',
+        customerPhone: 'synthetic',
+        deliveryFee: 0,
+        quoteCheckout: checkout,
+        approveCommercial: (_) async => false,
+      );
+      expect(result['cancelled'], true);
+      expect(OrderService().error, isNull);
+      expect(checkout.pending, false);
+      expect(saved, isEmpty);
+      expect(posts.every((p) => p['action'] == 'preview_commercial'), true);
+    },
   );
 }

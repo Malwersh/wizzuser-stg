@@ -31,3 +31,7 @@ Restaurant cart lives outside Scaffold in a Stack: transparent Material restores
 
 ## Part330 — restaurant cart pill matches requested reference
 User requested DoorDash-style compact pill using our colors. Gold/navy restaurant bar now minimum56px at normal text scale, cart icon + centered view-cart/store label + small tinted count circle; white count/price box and displayed price removed. Accessible text can grow the bar. Quantity pulse and quiet add feedback retained.13 cart tests pass. Simulator240 installed and launched; data preserved. No pricing change. See docs/restaurant-cart-design-330.json.
+
+
+## Part331 — shared early invoice and normal review cancellation
+Client now warms invoice from existing home/restaurant/cart basket with saved destination, coalesces both invoice and road-quote requests, and caches bounded account/branch/address/basket/tip/benefit snapshots until server expiry. Cart shows service/total; checkout and review use the same prepared proposal and quote. Closing review is cancelled=true without toast/error/pending/order; final commit still performs existing server financial verification. Quiet foreground expiry refresh retains valid displayed result; real rejection invalidates it; unknown outcomes keep pending recovery.52 current +29 legacy Flutter tests passed;13 actual backend handler acceptance cases mocked (three new metadata/replay cases). No policy/backend deployment or real financial writes. Simulator241 installed and launched; app data preserved. See docs/shared-checkout-invoice-331.json.

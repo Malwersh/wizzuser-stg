@@ -1,3 +1,5 @@
+import '../services/checkout_invoice_store.dart';
+import '../widgets/basket_invoice.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../widgets/basket_line_card.dart';
@@ -59,7 +61,15 @@ class _CartScreenState extends State<CartScreen> {
         if (items.isEmpty) return;
         final fingerprint = jsonEncode(items),
             scope = _pricing.key(branch, items);
-        if (scope != null) {
+        final invoiceRequest = CheckoutInvoiceStore.instance.basketRequest(
+          branch,
+          items,
+        );
+        final prepared =
+            invoiceRequest == null
+                ? null
+                : CheckoutInvoiceStore.instance.peek(invoiceRequest);
+        if (scope != null && prepared == null) {
           final preview = await _pricing.load(branch, items);
           if (!mounted) return;
           if (branch != _branch(state) ||
@@ -177,7 +187,12 @@ class _CartScreenState extends State<CartScreen> {
             if (appState.cartItems.isEmpty) {
               return _buildEmptyCart(context);
             }
-            return _buildCartContent(context, appState);
+            return BasketInvoiceWarmup(
+              branch: _branch(appState),
+              items: appState.cartItems,
+              storeName: _resolveStoreName() ?? 'المطعم',
+              child: _buildCartContent(context, appState),
+            );
           },
         ),
       ),
@@ -901,24 +916,33 @@ class _CartScreenState extends State<CartScreen> {
                 style: TextStyle(fontSize: 15, color: Colors.black87),
               ),
               Flexible(
-                child: StorefrontValue(
-                  branchId: _branch(appState),
-                  field: StorefrontField.fee,
-                  pricing: _pricing,
-                  requestDebounce: const Duration(milliseconds: 250),
+                child: BasketInvoiceDelivery(
+                  branch: _branch(appState),
                   items: appState.cartItems,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                  fallback: StorefrontValue(
+                    branchId: _branch(appState),
+                    field: StorefrontField.fee,
+                    pricing: _pricing,
+                    requestDebounce: const Duration(milliseconds: 250),
+                    items: appState.cartItems,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
+          BasketInvoiceTotals(
+            branch: _branch(appState),
+            items: appState.cartItems,
+            storeName: _resolveStoreName() ?? 'المطعم',
+          ),
           const Divider(height: 24),
           const Text(
-            'رسوم الخدمة والخصومات والإكرامية تظهر في مراجعة الفاتورة قبل تأكيد الطلب.',
+            'تُحدّث الفاتورة عند تغيير الأصناف أو العنوان أو إضافة خصم أو إكرامية.',
             style: TextStyle(
               fontSize: 13,
               height: 1.6,
