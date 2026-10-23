@@ -219,7 +219,8 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
 
   Widget _buildExpanded(int count, double total) {
     return Container(
-      height: 56,
+      // Grow with both text lines and accessibility text size.
+      constraints: const BoxConstraints(minHeight: 64),
       decoration: BoxDecoration(
         color: _primaryPink,
         borderRadius: BorderRadius.circular(28),

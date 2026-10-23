@@ -3223,7 +3223,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             if (appState.cartItemsCount > 0)
               AnimatedCartBar(
                 storeName: _getStoreNameFromCart(appState),
-                isExpanded: true,
+                isExpanded: false,
                 storeId: _getStoreIdFromCart(appState),
                 stores:
                     _allRealBusinesses

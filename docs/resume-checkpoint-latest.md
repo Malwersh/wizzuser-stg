@@ -19,3 +19,7 @@ User objected to التوصيل التقديري and pending placeholder. Unifie
 
 ## Part327 — final cash invoice and service fee
 Central cash policy v1 active UP250 IQD, effective service minimum250. Existing commercial preview populates final service/total on checkout before review without persisting an attempt or consuming an offer. Required store metadata and saved address coordinates are included. Preview/confirmation still use trusted server allocation and immutable policy consent/fences. Order evidence persists base/delta/final service. Customer sees final service only. Canonical quote runtime and SAM synced. Debug simulator237 installed, data retained; commercial26 + legacy29 tests pass. See docs/cash-rounding-checkout-327.json and central docs/cash-rounding-327.json.
+
+
+## Part328 — home cart circle restored
+Restore home AnimatedCartBar.isExpanded=false from initial snapshot (integration f30e3b6 had selected expanded mode). Existing five-second pulse and cart navigation retained. Restaurant expanded variant uses minHeight64 instead of fixed56 to prevent Arabic two-line overflow. Twelve cart tests pass including320px and2x text. Customer simulator238 installed and launched; app data preserved. No pricing or financial changes. See docs/home-cart-restoration-328.json.

@@ -1,3 +1,4 @@
+import 'package:foodapp_user/widgets/animated_cart_bar.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -139,4 +140,19 @@ void main() {
       item:line(name:'كباب يلعب النفس مع الخبز والسلطة والأطباق الجانبية',note:'بدون ملح وبصل مع تغليف منفصل'),increase:(){},decrease:(){},remove:(){})))))));
     await t.pump();expect(t.takeException(),isNull);expect(find.byTooltip('زيادة كمية كباب يلعب النفس مع الخبز والسلطة والأطباق الجانبية'),findsOneWidget);
   });
+  testWidgets('restaurant cart bar fits a narrow screen with enlarged Arabic text', (t) async {
+    await t.binding.setSurfaceSize(const Size(320,640));
+    addTearDown(()=>t.binding.setSurfaceSize(null));
+    final state=AppStateProvider();state.cart.addItem(line());
+    for(final scale in [1.0,2.0]){
+      await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(
+        builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!),
+        home:const Scaffold(body:AnimatedCartBar(storeName:'فروج المدينة',storeId:'b1',isExpanded:true)),
+      )));
+      await t.pump();expect(t.takeException(),isNull);
+      expect(find.text('فروج المدينة'),findsOneWidget);
+    }
+    await t.pumpWidget(const SizedBox());state.dispose();
+  });
+
 }

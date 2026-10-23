@@ -1,0 +1,17 @@
+{
+  "part": 328,
+  "status": "IMPLEMENTED_SIMULATOR238_INSTALLED",
+  "history": "Home used isExpanded:false at initial snapshot; integration f30e3b6 changed it to true. Restore the compact circular home control.",
+  "changes": [
+    "Home cart circle restored with existing 5-second pulse and cart navigation",
+    "Expanded restaurant cart bar grows beyond minimum64px to fit two Arabic text lines and accessibility scaling, replacing fixed56px height"
+  ],
+  "validation": {
+    "cartTestsPassed": 12,
+    "regression": "320px width with normal and 2x text scaling; no Flutter layout exception",
+    "nativeBuild": 238,
+    "financialLogicChanged": false,
+    "nativeInstalledOn": "09DA4C20-FD4B-446E-8C2F-9D04E5CFC206",
+    "appDataPreserved": true
+  }
+}
