@@ -174,22 +174,28 @@ class BasketInvoiceDelivery extends StatelessWidget {
   final String branch;
   final List<Map<String, dynamic>> items;
   final Widget fallback;
+  final CheckoutInvoiceStore? store;
   const BasketInvoiceDelivery({
     super.key,
     required this.branch,
     required this.items,
     required this.fallback,
+    this.store,
   });
   @override
   Widget build(BuildContext context) {
-    final source = CheckoutInvoiceStore.instance;
+    if (!ApiConfig.commercialPricingEnabled) return fallback;
+    final source = store ?? CheckoutInvoiceStore.instance;
     return ListenableBuilder(
       listenable: source,
       builder: (context, _) {
         final request = source.basketRequest(branch, items);
         final invoice = request == null ? null : source.peek(request);
         return invoice == null
-            ? fallback
+            ? Text(
+              request == null ? 'اختر عنوان التوصيل' : 'تُحدّد مع الفاتورة',
+              style: const TextStyle(color: AppColors.textSecondary),
+            )
             : Text(
               basketMoney(
                 (invoice.proposal['deliveryFee']['minorAmount'] as num) / 1000,

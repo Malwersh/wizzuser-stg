@@ -279,7 +279,9 @@ class CheckoutInvoiceStore extends ChangeNotifier {
       checkout.adoptCachedQuote(quote, owner);
       final proposal = await checkout.previewInvoice(r);
       if (account() != owner || _generation != generation) return null;
-      remember(r, proposal, quote);
+      if (!remember(r, proposal, quote)) {
+        throw StateError('INVOICE_NOT_CURRENT');
+      }
       return _cache[k];
     } catch (e) {
       if (account() == owner && _generation == generation) {
@@ -350,14 +352,18 @@ class CheckoutInvoiceStore extends ChangeNotifier {
       storeName: storeName,
       storeAddress: storeAddress,
     );
-    if (r != null) {
-      final cached = peek(r);
-      await ensure(
-        r,
-        refresh:
-            cached != null &&
-            cached.expiresAt.difference(now()) < const Duration(seconds: 30),
-      );
-    }
+    if (r != null) await warmRequest(r);
+  }
+
+  /// Automatic warmups never retry a failed unchanged basket. The visible
+  /// retry control remains explicit; a different pricing context gets a new key.
+  Future<CheckoutInvoice?> warmRequest(Map<String, dynamic> request) async {
+    final cached = peek(request);
+    if (_errors.containsKey(key(request))) return cached;
+    return ensure(
+      request,
+      refresh: cached != null &&
+          cached.expiresAt.difference(now()) < const Duration(seconds: 30),
+    );
   }
 }

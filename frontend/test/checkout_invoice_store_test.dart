@@ -310,4 +310,34 @@ void main() {
       expect(store.error(r), isNotNull);
     },
   );
+  test('automatic warmups do not retry a failed unchanged basket after cooldown', () async {
+    fail = true;
+    final r = request();
+    await store.warmRequest(r);
+    clock = clock.add(const Duration(seconds: 130));
+    await store.warmRequest(r);
+    await store.warmRequest(r);
+    expect(previews, 1);
+    fail = false;
+    expect(await store.ensure(r, retry: true), isNotNull);
+    expect(previews, 2);
+  });
+  test('changing quantity after failure gets one fresh invoice using cached route', () async {
+    fail = true;
+    await store.warmRequest(request());
+    fail = false;
+    await Future.wait([store.warmRequest(request(quantity: 5)),store.warmRequest(request(quantity: 5))]);
+    expect(quotes, 1);
+    expect(previews, 2);
+    expect(store.peek(request(quantity: 5)), isNotNull);
+    expect(orders, 0);
+  });
+  test('reopening a valid basket reuses invoice without additional requests', () async {
+    await store.warmRequest(request());
+    for (var i=0;i<5;i++) { await store.warmRequest(request()); }
+    expect(quotes,1);
+    expect(previews,1);
+    expect(orders,0);
+  });
+
 }
