@@ -1,3 +1,4 @@
+import '../widgets/merchant_offer_picker.dart';
 import '../models/platform_benefit.dart';
 import '../widgets/checkout_benefits_sheet.dart';
 import '../widgets/basket_line_card.dart' show basketMoney;
@@ -49,10 +50,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ? null
           : state.cartItems.first['store_id'] as String?);
   void _quoteChanged() {
-    if (mounted) setState(() {
-      final pendingTip = _quotedCheckout.pendingTipIqd;
-      if (pendingTip != null) _driverTipIqd = pendingTip;
-    });
+    if (mounted)
+      setState(() {
+        final pendingTip = _quotedCheckout.pendingTipIqd;
+        if (pendingTip != null) _driverTipIqd = pendingTip;
+      });
   }
 
   Future<void> _syncActiveAddress() async {
@@ -132,7 +134,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   bool get _discountCurrent =>
-      (_selectedDiscountId == null && _appliedPromoCode == null && _selectedBenefit == null) ||
+      (_selectedDiscountId == null &&
+          _appliedPromoCode == null &&
+          _selectedBenefit == null) ||
       (_validatedDiscountContext == _discountContext());
   double get _effectiveDiscount => _discountCurrent ? _discount : 0;
   DetailedAddress? _selectedAddress;
@@ -572,7 +576,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
         title: const Text(
           'إتمام الطلب',
@@ -583,6 +587,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
         backgroundColor: Colors.white,
+        centerTitle: true,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black87),
@@ -593,110 +598,100 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         busy: _isLoading || _preparingReview,
         progress: _buildLoadingWidget(),
         child: Consumer<AppStateProvider>(
-                builder: (context, appState, child) {
-                  if (appState.cartItems.isEmpty) {
-                    return const Center(child: Text('السلة فارغة'));
-                  }
+          builder: (context, appState, child) {
+            if (appState.cartItems.isEmpty) {
+              return const Center(child: Text('السلة فارغة'));
+            }
 
-                  return Column(
-                    children: [
-                      Expanded(
-                        child: SingleChildScrollView(
-                          physics:
-                              const ClampingScrollPhysics(), // تحسين الأداء
-                          padding: const EdgeInsets.all(16),
-                          child: Form(
-                            // إضافة Form widget
-                            key: _formKey,
-                            child: RepaintBoundary(
-                              // تجنب إعادة رسم غير ضرورية
+            return Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(), // تحسين الأداء
+                    padding: const EdgeInsets.all(16),
+                    child: Form(
+                      // إضافة Form widget
+                      key: _formKey,
+                      child: RepaintBoundary(
+                        // تجنب إعادة رسم غير ضرورية
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // قسم معلومات الطلب - مع تحسين الأداء
+                            RepaintBoundary(
+                              child: _buildOrderSummary(appState),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // قسم معلومات المستخدم - مع تحسين الأداء
+                            RepaintBoundary(
+                              child:
+                                  _isGuestUser
+                                      ? _buildGuestInfoSection()
+                                      : _buildLoggedInUserInfoSection(),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // قسم العنوان
+                            RepaintBoundary(child: _buildAddressSection()),
+                            const SizedBox(height: 16),
+
+                            // قسم طريقة الدفع
+                            RepaintBoundary(child: _buildPaymentSection()),
+                            const SizedBox(height: 16),
+
+                            if (!_isGuestUser &&
+                                ApiConfig.commercialPricingEnabled &&
+                                _quotesEnabled) ...[
+                              _buildPlatformBenefitSection(),
+                              const SizedBox(height: 16),
+                            ],
+                            // قسم العروض والخصومات
+                            RepaintBoundary(child: _buildDiscountsSection()),
+                            const SizedBox(height: 16),
+
+                            if (ApiConfig.commercialPricingEnabled) ...[
+                              DriverTipSelector(
+                                amountIqd: _driverTipIqd,
+                                enabled:
+                                    !_isLoading &&
+                                    !_preparingReview &&
+                                    !_quotedCheckout.pending,
+                                onChanged:
+                                    (amount) =>
+                                        setState(() => _driverTipIqd = amount),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // قسم تعليمات التوصيل
+                            RepaintBoundary(child: _buildInstructionsSection()),
+                            const SizedBox(height: 16),
+
+                            // ملخص السعر
+                            RepaintBoundary(
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // قسم معلومات الطلب - مع تحسين الأداء
-                                  RepaintBoundary(
-                                    child: _buildOrderSummary(appState),
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // قسم معلومات المستخدم - مع تحسين الأداء
-                                  RepaintBoundary(
-                                    child:
-                                        _isGuestUser
-                                            ? _buildGuestInfoSection()
-                                            : _buildLoggedInUserInfoSection(),
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // قسم العنوان
-                                  RepaintBoundary(
-                                    child: _buildAddressSection(),
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // قسم طريقة الدفع
-                                  RepaintBoundary(
-                                    child: _buildPaymentSection(),
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  if (!_isGuestUser && ApiConfig.commercialPricingEnabled && _quotesEnabled) ...[
-                                    _buildPlatformBenefitSection(),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  // قسم العروض والخصومات
-                                  RepaintBoundary(
-                                    child: _buildDiscountsSection(),
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  if (ApiConfig.commercialPricingEnabled) ...[
-                                    DriverTipSelector(
-                                      amountIqd: _driverTipIqd,
-                                      enabled:
-                                          !_isLoading &&
-                                          !_preparingReview &&
-                                          !_quotedCheckout.pending,
-                                      onChanged:
-                                          (amount) => setState(
-                                            () => _driverTipIqd = amount,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-
-                                  // قسم تعليمات التوصيل
-                                  RepaintBoundary(
-                                    child: _buildInstructionsSection(),
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // ملخص السعر
-                                  RepaintBoundary(
-                                    child: Column(
-                                      children: [
-                                        if (_quotesEnabled)
-                                          _buildQuoteStatus(appState),
-                                        _buildPriceSummary(appState),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(
-                                    height: 100,
-                                  ), // مساحة للزر السفلي
+                                  if (_quotesEnabled)
+                                    _buildQuoteStatus(appState),
+                                  _buildPriceSummary(appState),
                                 ],
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 100), // مساحة للزر السفلي
+                          ],
                         ),
                       ),
+                    ),
+                  ),
+                ),
 
-                      // زر تأكيد الطلب
-                      _buildConfirmButton(appState),
-                    ],
-                  );
-                },
-              ),
+                // زر تأكيد الطلب
+                _buildConfirmButton(appState),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -728,10 +723,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -750,7 +745,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.shopping_bag,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -786,10 +781,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -808,7 +803,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.location_on,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -828,7 +823,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: const Text(
                     'تغيير',
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.secondary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -955,7 +950,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             children: [
               const Icon(
                 Icons.add_location_alt,
-                color: AppColors.primary,
+                color: AppColors.secondary,
                 size: 32,
               ),
               const SizedBox(height: 8),
@@ -963,7 +958,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 'أضف عنوان التوصيل',
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -995,7 +990,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             children: [
               const Icon(
                 Icons.add_location_alt,
-                color: AppColors.primary,
+                color: AppColors.secondary,
                 size: 32,
               ),
               const SizedBox(height: 8),
@@ -1003,7 +998,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 'اختر أو أضف عنوان',
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1024,10 +1019,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1046,7 +1041,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.payment,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -1096,7 +1091,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: Colors.orange.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(20),
                               border: Border.all(
                                 color: Colors.orange.withValues(alpha: 0.3),
                               ),
@@ -1124,7 +1119,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _choosePlatformBenefit() async {
-    if (_isLoading || _preparingReview || _isValidatingDiscount || _quotedCheckout.pending) return;
+    if (_isLoading ||
+        _preparingReview ||
+        _isValidatingDiscount ||
+        _quotedCheckout.pending)
+      return;
     final state = context.read<AppStateProvider>();
     final branch = _branchId(state);
     final account = SessionService.instance.currentUserId;
@@ -1140,77 +1139,160 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       useSafeArea: true,
       showDragHandle: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => FractionallySizedBox(heightFactor: .85, child: CheckoutBenefitsSheet(branchId: branch)),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder:
+          (_) => FractionallySizedBox(
+            heightFactor: .85,
+            child: CheckoutBenefitsSheet(branchId: branch),
+          ),
     );
-    if (!mounted || benefit == null || account != SessionService.instance.currentUserId || branch != _branchId(state) || _quotedCheckout.pending) return;
+    if (!mounted ||
+        benefit == null ||
+        account != SessionService.instance.currentUserId ||
+        branch != _branchId(state) ||
+        _quotedCheckout.pending)
+      return;
     final attempt = ++_discountAttempt;
     setState(() => _isValidatingDiscount = true);
     try {
       await _ensureQuoteFresh(branch, _selectedAddress!.id);
       if (!mounted || attempt != _discountAttempt) return;
-      if (!_quoteMatches(state) || account != SessionService.instance.currentUserId) {
-        _showMessage('تعذر التحقق من الميزة؛ حدّث العنوان وأعد المحاولة', isError: true);
+      if (!_quoteMatches(state) ||
+          account != SessionService.instance.currentUserId) {
+        _showMessage(
+          'تعذر التحقق من الميزة؛ حدّث العنوان وأعد المحاولة',
+          isError: true,
+        );
         return;
       }
       final scope = _discountContext();
       final result = await _orderService.validatePromoCode(
-        code: '', platformDiscountId: benefit.id, addressId: _selectedAddress!.id,
-        storeId: branch, items: state.cartItems, orderTotal: state.cartTotal,
+        code: '',
+        platformDiscountId: benefit.id,
+        addressId: _selectedAddress!.id,
+        storeId: branch,
+        items: state.cartItems,
+        orderTotal: state.cartTotal,
         deliveryFee: _actualDeliveryFee,
       );
-      if (!mounted || attempt != _discountAttempt || scope != _discountContext()) return;
-      if (result['valid'] != true || result['deliveryBenefit'] != benefit.isDelivery ||
+      if (!mounted ||
+          attempt != _discountAttempt ||
+          scope != _discountContext())
+        return;
+      if (result['valid'] != true ||
+          result['deliveryBenefit'] != benefit.isDelivery ||
           (!benefit.isDelivery && ((result['discount'] as num?) ?? 0) <= 0)) {
-        _showMessage(result['message'] as String? ?? 'تعذر تطبيق الميزة على هذه السلة', isError: true);
+        _showMessage(
+          result['message'] as String? ?? 'تعذر تطبيق الميزة على هذه السلة',
+          isError: true,
+        );
         return;
       }
       setState(() {
         _selectedBenefit = benefit;
         _validatedDiscountContext = scope;
-        _discount = benefit.isDelivery ? 0 : (result['discount'] as num).toDouble();
+        _discount =
+            benefit.isDelivery ? 0 : (result['discount'] as num).toDouble();
         _selectedDiscountId = null;
         _appliedPromoCode = null;
         _promoCodeController.clear();
         _merchantDiscountAmount = 0;
         _promoDiscountAmount = 0;
       });
-      _showMessage(benefit.isDelivery ? 'تم اختيار ميزة التوصيل؛ تظهر رسومها النهائية عند مراجعة الإجمالي' : 'تم تطبيق ميزة المنصة بنجاح');
+      _showMessage(
+        benefit.isDelivery
+            ? 'تم اختيار ميزة التوصيل؛ تظهر رسومها النهائية عند مراجعة الإجمالي'
+            : 'تم تطبيق ميزة المنصة بنجاح',
+      );
     } catch (_) {
-      if (mounted && attempt == _discountAttempt) _showMessage('تعذر التحقق من الميزة؛ تحقق من الاتصال وأعد المحاولة', isError: true);
+      if (mounted && attempt == _discountAttempt)
+        _showMessage(
+          'تعذر التحقق من الميزة؛ تحقق من الاتصال وأعد المحاولة',
+          isError: true,
+        );
     } finally {
-      if (mounted && attempt == _discountAttempt) setState(() => _isValidatingDiscount = false);
+      if (mounted && attempt == _discountAttempt)
+        setState(() => _isValidatingDiscount = false);
     }
   }
 
   Widget _buildPlatformBenefitSection() {
-    final locked = _isLoading || _preparingReview || _isValidatingDiscount || _quotedCheckout.pending;
+    final locked =
+        _isLoading ||
+        _preparingReview ||
+        _isValidatingDiscount ||
+        _quotedCheckout.pending;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Icon(Icons.card_giftcard, color: AppColors.secondary),
-          const SizedBox(width: 12),
-          const Expanded(child: Text('مزايا المنصة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-          if (_isValidatingDiscount) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-        ]),
-        if (_selectedBenefit != null) ...[
-          const SizedBox(height: 8),
-          Text(_selectedBenefit!.title),
-          if (_selectedBenefit!.isDelivery) const Text('يُحسب خصم التوصيل في مراجعة الإجمالي النهائي.'),
-          if (!_discountCurrent) const Text('تغيرت بيانات الطلب؛ أعد اختيار الميزة للتحقق من شروطها.', style: TextStyle(color: Colors.red)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.card_giftcard, color: AppColors.secondary),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'مزايا المنصة',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (_isValidatingDiscount)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          if (_selectedBenefit != null) ...[
+            const SizedBox(height: 8),
+            Text(_selectedBenefit!.title),
+            if (_selectedBenefit!.isDelivery)
+              const Text('يُحسب خصم التوصيل في مراجعة الإجمالي النهائي.'),
+            if (!_discountCurrent)
+              const Text(
+                'تغيرت بيانات الطلب؛ أعد اختيار الميزة للتحقق من شروطها.',
+                style: TextStyle(color: Colors.red),
+              ),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.secondaryDark,
+                  ),
+                  onPressed: locked ? null : _choosePlatformBenefit,
+                  icon: const Icon(Icons.local_offer_outlined),
+                  label: Text(
+                    _selectedBenefit == null ? 'استعرض مزاياك' : 'تغيير الميزة',
+                  ),
+                ),
+              ),
+              if (_selectedBenefit != null)
+                TextButton(
+                  onPressed:
+                      locked
+                          ? null
+                          : () => setState(() {
+                            _discountAttempt++;
+                            _selectedBenefit = null;
+                            _discount = 0;
+                            _validatedDiscountContext = null;
+                          }),
+                  child: const Text('إزالة'),
+                ),
+            ],
+          ),
         ],
-        Row(children: [
-          Expanded(child: TextButton.icon(onPressed: locked ? null : _choosePlatformBenefit, icon: const Icon(Icons.local_offer_outlined), label: Text(_selectedBenefit == null ? 'عرض مزاياي واختيار ميزة' : 'تغيير الميزة'))),
-          if (_selectedBenefit != null) TextButton(onPressed: locked ? null : () => setState(() {
-            _discountAttempt++;
-            _selectedBenefit = null;
-            _discount = 0;
-            _validatedDiscountContext = null;
-          }), child: const Text('إزالة')),
-        ]),
-      ]),
+      ),
     );
   }
 
@@ -1230,7 +1312,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: const Center(
           child: SizedBox(
@@ -1246,10 +1328,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1268,7 +1350,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.local_offer,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -1342,34 +1424,55 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ..._availableDiscounts.map((discount) {
-            return RadioListTile<String>(
-              value: discount.discountId,
-              groupValue: _selectedDiscountId,
-              onChanged:
-                  _isValidatingDiscount
-                      ? null
-                      : (_) => _selectDiscount(discount),
+          if (_availableDiscounts.isNotEmpty)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFFFF5CC),
+                child: Icon(
+                  Icons.local_offer_outlined,
+                  color: AppColors.secondaryDark,
+                ),
+              ),
               title: Text(
-                discount.title.isNotEmpty
-                    ? discount.title
-                    : discount.displayValue,
+                _selectedDiscountId == null
+                    ? 'اختر عرض المطعم'
+                    : _availableDiscounts
+                            .where((d) => d.discountId == _selectedDiscountId)
+                            .map((d) => d.title)
+                            .firstOrNull ??
+                        'العرض المختار',
                 style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black87,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.secondaryDark,
                 ),
               ),
               subtitle: Text(
-                discount.description.isNotEmpty
-                    ? discount.description
-                    : discount.displayValue,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                '${_availableDiscounts.length} عروض متاحة • يُطبّق عرض واحد على الطلب',
               ),
-              activeColor: AppColors.primary,
-              contentPadding: EdgeInsets.zero,
-            );
-          }),
+              trailing: const Icon(
+                Icons.chevron_left,
+                color: AppColors.secondary,
+              ),
+              onTap:
+                  _isValidatingDiscount
+                      ? null
+                      : () async {
+                        final offer = await showModalBottomSheet<StoreDiscount>(
+                          context: context,
+                          isScrollControlled: true,
+                          useSafeArea: true,
+                          backgroundColor: Colors.transparent,
+                          builder:
+                              (_) => MerchantOfferPicker(
+                                offers: _availableDiscounts,
+                                selectedId: _selectedDiscountId,
+                              ),
+                        );
+                        if (mounted && offer != null)
+                          await _selectDiscount(offer);
+                      },
+            ),
           if (_selectedDiscountId != null) ...[
             TextButton(
               onPressed:
@@ -1397,7 +1500,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   const Icon(Icons.check_circle, color: Colors.green, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'تم تطبيق خصم ${_effectiveDiscount.toStringAsFixed(3)} د.ع',
+                    'تم تطبيق خصم ${basketMoney(_effectiveDiscount)}',
                     style: const TextStyle(
                       color: Colors.green,
                       fontWeight: FontWeight.w600,
@@ -1417,10 +1520,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1439,7 +1542,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.note_add,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -1494,7 +1597,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Text(
               _quotedCheckout.pending
                   ? 'توجد محاولة تأكيد سابقة. تابعها لاستعادة نتيجتها قبل بدء طلب آخر.'
-                  : (_quotedCheckout.error ?? 'تعذر تحميل سعر التوصيل؛ أعد المحاولة'),
+                  : (_quotedCheckout.error ??
+                      'تعذر تحميل سعر التوصيل؛ أعد المحاولة'),
             ),
             if (!_quotedCheckout.pending)
               TextButton(
@@ -1512,7 +1616,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _buildPriceSummary(AppStateProvider appState) {
     final subtotal = appState.cartTotal;
-    final deliveryFee = _quotesEnabled ? (StorefrontPricing.instance.feeIqd(_branchId(appState)??'',appState.cartItems,hasGoodsDiscount:_effectiveDiscount>0) ?? 0) : 10.0;
+    final deliveryFee =
+        _quotesEnabled
+            ? (StorefrontPricing.instance.feeIqd(
+                  _branchId(appState) ?? '',
+                  appState.cartItems,
+                  hasGoodsDiscount: _effectiveDiscount > 0,
+                ) ??
+                0)
+            : 10.0;
     final discount = _effectiveDiscount;
     final total = subtotal + deliveryFee + _driverTipIqd - discount;
 
@@ -1520,10 +1632,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1542,7 +1654,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.receipt_long,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -1615,13 +1727,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               Text(
-                _quotesEnabled && StorefrontPricing.instance.feeIqd(_branchId(appState)??'',appState.cartItems,hasGoodsDiscount:_effectiveDiscount>0)==null
+                _quotesEnabled &&
+                        StorefrontPricing.instance.feeIqd(
+                              _branchId(appState) ?? '',
+                              appState.cartItems,
+                              hasGoodsDiscount: _effectiveDiscount > 0,
+                            ) ==
+                            null
                     ? '—'
                     : basketMoney(total),
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                 ),
               ),
             ],
@@ -1668,7 +1786,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               foregroundColor: AppColors.secondary,
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(20),
               ),
               elevation: canConfirm ? 2 : 0,
             ),
@@ -1705,10 +1823,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1727,7 +1845,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.person,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -1855,7 +1973,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               children: [
                 const Icon(
                   Icons.info_outline,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -1868,7 +1986,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
+                          color: AppColors.secondary,
                         ),
                       ),
                       const Text(
@@ -1887,7 +2005,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: const Text(
                     'تسجيل دخول',
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.secondary,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),
@@ -1907,10 +2025,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: const Color(0xFF00296B).withValues(alpha: 0.035),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1929,7 +2047,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 child: const Icon(
                   Icons.verified_user,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                   size: 20,
                 ),
               ),
@@ -1947,7 +2065,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.green.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
                   'مسجل دخول',
@@ -2310,9 +2428,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         await _resumeQuotedOrder();
         return;
       }
-      final businessStatusFuture = widget.storeId == null
-          ? Future<Map<String, dynamic>?>.value(null)
-          : BusinessStatusService.getBusinessStatus(widget.storeId!);
+      final businessStatusFuture =
+          widget.storeId == null
+              ? Future<Map<String, dynamic>?>.value(null)
+              : BusinessStatusService.getBusinessStatus(widget.storeId!);
       if (_quotesEnabled && _selectedAddress != null) {
         if (!mounted) return;
         final branch = _branchId(appState);
@@ -2556,7 +2675,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         driverTipIqd: _driverTipIqd,
         quoteCheckout: _quotesEnabled ? _quotedCheckout : null,
         approveCommercial: (proposal) async {
-          if (!mounted || commercialScope != _discountContext(includeTip: true)) return false;
+          if (!mounted || commercialScope != _discountContext(includeTip: true))
+            return false;
           final scope = commercialScope;
           final accepted = await showModalBottomSheet<bool>(
             context: context,
@@ -2585,11 +2705,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           .toList(),
                 ),
           );
-          return mounted && scope == _discountContext(includeTip: true) && accepted == true;
+          return mounted &&
+              scope == _discountContext(includeTip: true) &&
+              accepted == true;
         },
         promoCode: _appliedPromoCode,
-        platformDiscountId: _selectedBenefit?.isDelivery == false ? _selectedBenefit!.id : null,
-        deliveryBenefitId: _selectedBenefit?.isDelivery == true ? _selectedBenefit!.id : null,
+        platformDiscountId:
+            _selectedBenefit?.isDelivery == false ? _selectedBenefit!.id : null,
+        deliveryBenefitId:
+            _selectedBenefit?.isDelivery == true ? _selectedBenefit!.id : null,
         discountId: _selectedDiscountId,
         discount: _effectiveDiscount,
         // إضافة معلومات المستخدم الحقيقية
@@ -2713,13 +2837,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError ? Colors.red : Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
   }
 
   /// قائمة سفلية لطيفة تُعرض عند محاولة إنشاء طلب جديد بينما يوجد طلب نشط
@@ -2813,7 +2937,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     children: [
                       const Icon(
                         Icons.shopping_bag_rounded,
-                        color: AppColors.primary,
+                        color: AppColors.secondary,
                         size: 22,
                       ),
                       const SizedBox(width: 12),
@@ -2913,15 +3037,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 class CheckoutLoadingBody extends StatelessWidget {
   final bool busy;
   final Widget child, progress;
-  const CheckoutLoadingBody({super.key, required this.busy, required this.child, required this.progress});
+  const CheckoutLoadingBody({
+    super.key,
+    required this.busy,
+    required this.child,
+    required this.progress,
+  });
   @override
   Widget build(BuildContext context) => AbsorbPointer(
     absorbing: busy,
-    child: Stack(fit: StackFit.expand, children: [
-      child,
-      if (busy) Positioned.fill(child: ColoredBox(
-        color: const Color(0xB3FAFAFA), child: progress,
-      )),
-    ]),
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        if (busy)
+          Positioned.fill(
+            child: ColoredBox(color: const Color(0xB3FAFAFA), child: progress),
+          ),
+      ],
+    ),
   );
 }
