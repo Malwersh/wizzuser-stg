@@ -98,7 +98,7 @@ class OrderItem {
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     // Handle customizations as both list and map
     Map<String, List<String>>? parsedOptions;
-    final customizations = json['customizations'] ?? json['selected_options'];
+    final customizations = json['customizations'] ?? json['selected_options'] ?? json['selectedOptions'];
     if (customizations != null) {
       if (customizations is List) {
         // If customizations is a list, convert to map
@@ -124,9 +124,9 @@ class OrderItem {
     }
 
     return OrderItem(
-      id: json['id'] ?? json['productId'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['lineId'] ?? json['id'] ?? json['productId'] ?? json['itemId'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
       dishId: json['dish_id'] ?? json['productId'] ?? json['id'] ?? '',
-      productId: json['product_id'] ?? json['productId'] ?? json['dish_id'] ?? json['id'] ?? '',
+      productId: json['product_id'] ?? json['productId'] ?? json['itemId'] ?? json['dish_id'] ?? json['id'] ?? '',
       dishName: json['dish_name'] ?? json['productName'] ?? json['name'] ?? 'طبق غير محدد',
       dishDescription: json['dish_description'] ?? json['description'],
       dishImage: json['dish_image'] ?? json['image'],
