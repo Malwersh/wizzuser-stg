@@ -95,7 +95,7 @@ exports.handler = async (event) => {
     if (sort === 'distance') {
       nearbyBusinesses.sort((a, b) => a.distance - b.distance);
     } else if (sort === 'rating') {
-      nearbyBusinesses.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      nearbyBusinesses.sort((a, b) => (b.customerRating ?? b.rating ?? 0) - (a.customerRating ?? a.rating ?? 0));
     }
 
     // Step 4: Apply limit

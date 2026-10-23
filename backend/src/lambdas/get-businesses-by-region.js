@@ -103,7 +103,7 @@ exports.handler = async (event) => {
 
     // Step 3: Sort businesses
     if (sort === 'rating') {
-      filteredBusinesses.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      filteredBusinesses.sort((a, b) => (b.customerRating ?? b.rating ?? 0) - (a.customerRating ?? a.rating ?? 0));
     } else if (sort === 'delivery_time') {
       filteredBusinesses.sort((a, b) => (a.deliveryTime || 999) - (b.deliveryTime || 999));
     }

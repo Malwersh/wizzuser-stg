@@ -61,7 +61,7 @@ class BusinessModel {
       return 0.0;
     }
 
-    final rating = parseRating(json['rating']);
+    final rating = parseRating(json['customerRating'] ?? json['rating']);
     
     // تحليل العنوان المحسن
     String addressString = 'العنوان غير متوفر';
@@ -146,7 +146,7 @@ class BusinessModel {
         'storefrontDeliveryAgreements': json['storefrontDeliveryAgreements'] ?? json['metadata']?['storefrontDeliveryAgreements'] ?? [],
         'averagePreparationMinutes':json['averagePreparationMinutes'] ?? json['orderReceptionSettings']?['defaultPreparationMinutes'] ?? json['metadata']?['averagePreparationMinutes'],
         'orderReceptionSettings':json['orderReceptionSettings'],
-        'reviewCount': json['reviewCount'] ?? json['reviewsCount'] ?? json['ratingCount'],
+        'reviewCount': json['customerRatingCount'] ?? json['reviewCount'] ?? json['reviewsCount'] ?? json['ratingCount'] ?? json['metadata']?['reviewCount'],
         'sponsored': parseBool(json['sponsored'], defaultValue: false),
         'popular': rating >= 4.0,
         'owner_name': json['ownerName']?.toString() ?? json['owner_name']?.toString() ?? '',
@@ -180,6 +180,7 @@ class BusinessModel {
       'business_type': businessType,
       'is_active': isActive,
       'rating': rating,
+      'reviewCount': reviewCount,
       'distance': distance,
       'delivery_fee': deliveryFee,
       'delivery_time': deliveryTime,
