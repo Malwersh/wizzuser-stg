@@ -27,3 +27,7 @@ Restore home AnimatedCartBar.isExpanded=false from initial snapshot (integration
 
 ## Part329 — restaurant cart overlay and quiet add feedback
 Restaurant cart lives outside Scaffold in a Stack: transparent Material restores inherited typography and removes yellow debug underlines. Navy label/store name directly on gold; count/amount badge navy. Successful direct add snackbar removed; error/different-store actions retained. Whole bar pulses subtly on any quantity increase (same dish included); badge counts units.13 cart tests pass including actual outside-Scaffold overlay,320px/2x text, repeated-unit pulse. Simulator239 installed and launched; data preserved. No financial changes. See docs/restaurant-cart-feedback-329.json.
+
+
+## Part330 — restaurant cart pill matches requested reference
+User requested DoorDash-style compact pill using our colors. Gold/navy restaurant bar now minimum56px at normal text scale, cart icon + centered view-cart/store label + small tinted count circle; white count/price box and displayed price removed. Accessible text can grow the bar. Quantity pulse and quiet add feedback retained.13 cart tests pass. Simulator240 installed and launched; data preserved. No pricing change. See docs/restaurant-cart-design-330.json.

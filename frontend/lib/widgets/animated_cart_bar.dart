@@ -209,7 +209,7 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
                     widget.isExpanded
                         ? ScaleTransition(
                           scale: _scaleAnim,
-                          child: _buildExpanded(cartCount, cartData.total),
+                          child: _buildExpanded(cartCount),
                         )
                         : _buildCollapsed(cartCount),
               ),
@@ -220,97 +220,79 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
     );
   }
 
-  Widget _buildExpanded(int count, double total) {
+  Widget _buildExpanded(int count) {
     return Container(
-      // Grow with both text lines and accessibility text size.
-      constraints: const BoxConstraints(minHeight: 64),
+      key: const ValueKey('restaurant-cart-pill'),
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: _primaryPink,
+        color: AppColors.primary,
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black26,
-            blurRadius: 8,
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: const ModernCartIcon(
+          const SizedBox(
+            width: 32,
+            child: Icon(
+              Icons.shopping_cart_outlined,
               color: AppColors.secondary,
               size: 24,
-              hasGlowEffect: false,
-              isGlassmorphic: false,
             ),
           ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'عرض السلة',
-                    style: const TextStyle(
-                      color: AppColors.secondary,
-                      fontSize: 11,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'عرض السلة',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.secondary,
+                    fontSize: 11,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
                   ),
-                  Text(
-                    _resolveStoreName(),
-                    style: const TextStyle(
-                      color: AppColors.secondary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _resolveStoreName(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.secondary,
+                    fontSize: 15,
+                    height: 1.2,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 64, maxWidth: 110),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$count',
-                    style: TextStyle(
-                      color: AppColors.secondary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    '${total.toStringAsFixed(0)} د.ع',
-                    style: TextStyle(
-                      color: AppColors.secondary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 10,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+          const SizedBox(width: 12),
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.secondary.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              count > 99 ? '99+' : '$count',
+              maxLines: 1,
+              style: const TextStyle(
+                color: AppColors.secondary,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
