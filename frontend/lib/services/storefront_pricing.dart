@@ -238,6 +238,18 @@ class StorefrontPricing extends ChangeNotifier {
         : (agreement['deliveryFeeIqd'] as int).toDouble();
   }
 
+  /// Informational reuse only; checkout still requires its complete invoice.
+  /// A plain calculated empty-basket tariff can be shown while that invoice
+  /// prepares. Basket-dependent promotions are never borrowed from another basket.
+  double? cachedDisplayFeeIqd(String branch, List<dynamic> items) {
+    final exact = feeIqd(branch, items);
+    if (exact != null) return exact;
+    final restaurant = peek(branch, const []);
+    return restaurant?.data['pricingMode'] == 'CALCULATED'
+        ? restaurant!.fee
+        : null;
+  }
+
   int? minimumIqd(
     String branch,
     List<dynamic> items, {

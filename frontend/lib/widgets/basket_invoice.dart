@@ -6,6 +6,7 @@ import '../constants/app_colors.dart';
 import '../services/checkout_invoice_store.dart';
 import '../services/delivery_address_manager.dart';
 import '../services/session_service.dart';
+import '../services/storefront_pricing.dart';
 import 'basket_line_card.dart' show basketMoney;
 
 /// Prepares only the current basket while its screen is visible. The same
@@ -175,25 +176,30 @@ class BasketInvoiceDelivery extends StatelessWidget {
   final List<Map<String, dynamic>> items;
   final Widget fallback;
   final CheckoutInvoiceStore? store;
+  final StorefrontPricing? pricing;
   const BasketInvoiceDelivery({
     super.key,
     required this.branch,
     required this.items,
     required this.fallback,
     this.store,
+    this.pricing,
   });
   @override
   Widget build(BuildContext context) {
     if (!ApiConfig.commercialPricingEnabled) return fallback;
     final source = store ?? CheckoutInvoiceStore.instance;
+    final display = pricing ?? StorefrontPricing.instance;
     return ListenableBuilder(
-      listenable: source,
+      listenable: Listenable.merge([source, display]),
       builder: (context, _) {
         final request = source.basketRequest(branch, items);
         final invoice = request == null ? null : source.peek(request);
+        final cachedFee = display.cachedDisplayFeeIqd(branch, items);
         return invoice == null
             ? Text(
-              request == null ? 'اختر عنوان التوصيل' : 'تُحدّد مع الفاتورة',
+              request == null ? 'اختر عنوان التوصيل' :
+                  cachedFee != null ? '${basketMoney(cachedFee)} (تقديري)' : 'بانتظار سعر التوصيل',
               style: const TextStyle(color: AppColors.textSecondary),
             )
             : Text(

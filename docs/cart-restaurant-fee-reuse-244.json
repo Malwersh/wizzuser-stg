@@ -1,0 +1,26 @@
+{
+  "status": "BUILT_INSTALLED_LAUNCHED",
+  "nativeBuild": 244,
+  "fix": "Commercial cart reads existing restaurant delivery price cache without mounting another network request",
+  "reuseOrder": [
+    "Current shared final invoice",
+    "Exact current basket preview or active applicable agreement",
+    "Unexpired CALCULATED empty-basket restaurant preview, visibly marked estimated"
+  ],
+  "isolation": [
+    "account",
+    "branch",
+    "address identity and revision",
+    "region",
+    "server expiry"
+  ],
+  "neverReuseAcrossBaskets": [
+    "PROMOTION",
+    "basket-dependent delivery offers"
+  ],
+  "tests": 26,
+  "backendChanges": false,
+  "financialOrDiscountUsageWrites": false,
+  "manualUiRetest": "PENDING_AFTER_INSTALL",
+  "analyzer": "No errors or warnings; brace style info only"
+}

@@ -917,6 +917,7 @@ class _CartScreenState extends State<CartScreen> {
               ),
               Flexible(
                 child: BasketInvoiceDelivery(
+                  pricing: _pricing,
                   branch: _branch(appState),
                   items: appState.cartItems,
                   fallback: StorefrontValue(
