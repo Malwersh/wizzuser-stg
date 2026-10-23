@@ -53,6 +53,15 @@ void main() {
       final result=await OrderService().validatePromoCode(code:'',platformDiscountId:'platform-id',storeId:'b',items:[{'id':'p','quantity':1}],orderTotal:10000,addressId:'address');expect(result['valid'],true);
     },()=>MockClient((request)async{final body=jsonDecode(request.body);expect(body['platformDiscountId'],'platform-id');expect(body['addressId'],'address');expect(body['code'],'');return http.Response('{"valid":true,"discountAmount":2000,"lines":[]}',200);}));
   });
+  test('benefit validation sends its ID, address and basket without creating an order',()async{
+    await http.runWithClient(()async{
+      final result=await OrderService().validatePromoCode(code:'',platformDiscountId:'benefit-500',addressId:'address',storeId:'branch',items:[{'id':'item','quantity':2}],orderTotal:7000,deliveryFee:1500);
+      expect(result['valid'],true);expect(result['discount'],500);expect(result['deliveryBenefit'],false);
+    },()=>MockClient((request)async{
+      expect(request.url.path,endsWith('/promo-codes/validate'));final data=jsonDecode(request.body);expect(data['platformDiscountId'],'benefit-500');expect(data['addressId'],'address');expect(data['storeId'],'branch');expect(data['deliveryFee'],1500);
+      return http.Response(jsonEncode({'valid':true,'discountAmount':500}),200);
+    }));
+  });
   test(
     'promo preview sends branch, catalog selectors and actual zero delivery fee',
     () async {

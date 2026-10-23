@@ -496,6 +496,8 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'CART_PRICE_CHANGED' => 'تغيّرت أسعار بعض الأصناف. ارجع إلى المطعم وحدّث السلة قبل المتابعة.',
                 'UNSUPPORTED_DISCOUNT_ITEMS' || 'COMMERCIAL_ORDER_UNSUPPORTED' => 'تعذر تسعير أحد الأصناف أو إضافاته. راجع الأصناف المختارة قبل المتابعة.',
                 'CASH_TOTAL_DENOMINATION_UNSUPPORTED' => 'تعذر اعتماد مبلغ الدفع النقدي. راجع الإكرامية والخصم ثم أعد المحاولة.',
+                'BENEFIT_EXHAUSTED' || 'BENEFIT_EXPIRED' || 'BENEFIT_PAUSED' || 'BENEFIT_NOT_ELIGIBLE' => 'الميزة لم تعد متاحة؛ أزلها أو اختر ميزة أخرى ثم راجع الإجمالي.',
+                'BENEFIT_MINIMUM_ORDER' || 'BENEFIT_WRONG_BRANCH' || 'BENEFIT_WRONG_REGION' || 'BENEFIT_DISTANCE_EXCEEDED' || 'BENEFIT_DELIVERY_CAP_EXCEEDED' || 'BENEFIT_NO_SAVINGS' || 'BENEFIT_STACKING_DENIED' => 'شروط الميزة لا تنطبق على هذا الطلب. أزلها أو اختر ميزة أخرى.',
                 'AUTH_REQUIRED' || 'ACCOUNT_UNAVAILABLE' => 'يرجى تسجيل الدخول مجددًا قبل تأكيد الطلب.',
                 _ => null,
               };

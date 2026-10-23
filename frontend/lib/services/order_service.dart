@@ -200,8 +200,8 @@ class OrderService extends ChangeNotifier {
         'discount': discount,
         'deliveryInstructions': deliveryInstructions,
         'promoCode': promoCode,
-        'platformDiscountId': platformDiscountId,
-        'deliveryBenefitId': deliveryBenefitId,
+        if (platformDiscountId != null) 'platformDiscountId': platformDiscountId,
+        if (deliveryBenefitId != null) 'deliveryBenefitId': deliveryBenefitId,
         'discountId': discountId,
         'offerSlideId':
             PendingOffer.current?.merchantId == storeId &&
@@ -745,6 +745,8 @@ class OrderService extends ChangeNotifier {
         'BENEFIT_DISTANCE_EXCEEDED':'مسافة التوصيل خارج نطاق المنفعة.',
         'BENEFIT_EXPIRED':'المنفعة غير سارية الآن.',
         'BENEFIT_PAUSED':'المنفعة متوقفة مؤقتاً.',
+        'BENEFIT_NO_SAVINGS':'المنفعة لا تحقق توفيراً إضافياً لهذا الطلب.',
+        'BENEFIT_NOT_ELIGIBLE':'المنفعة غير متاحة لحسابك.',
         'OFFER_NO_SAVINGS':
             'هذا العرض لا يحقق توفيراً لهذه السلة بعد التقريب نزولاً إلى مضاعفات 250 د.ع. اختر عرضاً آخر أو أزل العرض للمتابعة.',
         'OFFER_ALREADY_USED':
