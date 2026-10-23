@@ -23,3 +23,7 @@ Central cash policy v1 active UP250 IQD, effective service minimum250. Existing 
 
 ## Part328 — home cart circle restored
 Restore home AnimatedCartBar.isExpanded=false from initial snapshot (integration f30e3b6 had selected expanded mode). Existing five-second pulse and cart navigation retained. Restaurant expanded variant uses minHeight64 instead of fixed56 to prevent Arabic two-line overflow. Twelve cart tests pass including320px and2x text. Customer simulator238 installed and launched; app data preserved. No pricing or financial changes. See docs/home-cart-restoration-328.json.
+
+
+## Part329 — restaurant cart overlay and quiet add feedback
+Restaurant cart lives outside Scaffold in a Stack: transparent Material restores inherited typography and removes yellow debug underlines. Navy label/store name directly on gold; count/amount badge navy. Successful direct add snackbar removed; error/different-store actions retained. Whole bar pulses subtly on any quantity increase (same dish included); badge counts units.13 cart tests pass including actual outside-Scaffold overlay,320px/2x text, repeated-unit pulse. Simulator239 installed and launched; data preserved. No financial changes. See docs/restaurant-cart-feedback-329.json.

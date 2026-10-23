@@ -147,11 +147,26 @@ void main() {
     for(final scale in [1.0,2.0]){
       await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(
         builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!),
-        home:const Scaffold(body:AnimatedCartBar(storeName:'فروج المدينة',storeId:'b1',isExpanded:true)),
+        home:const Stack(children:[Scaffold(),AnimatedCartBar(storeName:'فروج المدينة',storeId:'b1',isExpanded:true)]),
       )));
       await t.pump();expect(t.takeException(),isNull);
       expect(find.text('فروج المدينة'),findsOneWidget);
+      final style=DefaultTextStyle.of(t.element(find.text('فروج المدينة'))).style;
+      expect(style.decoration?.contains(TextDecoration.underline)??false,isFalse);
     }
+    await t.pumpWidget(const SizedBox());state.dispose();
+  });
+
+  testWidgets('adding another unit of the same dish pulses the cart and updates its quantity', (t) async {
+    final state=AppStateProvider();final item=line();state.cart.addItem(item);
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:const MaterialApp(
+      home:Stack(children:[Scaffold(),AnimatedCartBar(storeName:'فروج المدينة',storeId:'b1',isExpanded:true)]))));
+    state.changeCartLineQuantity(item,1);
+    await t.pump();await t.pump(const Duration(milliseconds:150));
+    expect(find.text('2'),findsOneWidget);
+    expect(t.widget<ScaleTransition>(find.descendant(of:find.byType(AnimatedCartBar),matching:find.byType(ScaleTransition))).scale.value,greaterThan(1));
+    expect(find.byType(SnackBar),findsNothing);
+    expect(t.takeException(),isNull);
     await t.pumpWidget(const SizedBox());state.dispose();
   });
 

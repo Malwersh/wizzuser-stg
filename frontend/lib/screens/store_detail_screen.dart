@@ -3238,37 +3238,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
 
       developer.log('✅ تم إضافة ${product.name} إلى السلة');
 
-      // عرض رسالة تأكيد
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.shopping_cart, color: AppColors.secondary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'تم إضافة ${product.name} إلى السلة',
-                    style: const TextStyle(color: AppColors.secondary),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.primary,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              MediaQuery.of(context).padding.bottom + 100,
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      // The cart pulse confirms a successful addition without a snackbar.
     } catch (e) {
       developer.log('❌ خطأ في إضافة المنتج للسلة: $e');
 
