@@ -136,19 +136,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        final items =
-            context
-                .read<AppStateProvider>()
-                .cartItems
-                .where((item) => item['store_id'] == widget.store.id)
-                .toList();
-        unawaited(
-          StorefrontPricing.instance.load(widget.store.id, items, force: true),
-        );
-      }
-    });
     developer.log('🏗️ StoreDetailScreen initState');
 
     // تهيئة SubscriptionManager

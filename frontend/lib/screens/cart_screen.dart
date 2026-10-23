@@ -897,19 +897,21 @@ class _CartScreenState extends State<CartScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'التوصيل التقديري',
+                'رسوم التوصيل',
                 style: TextStyle(fontSize: 15, color: Colors.black87),
               ),
-              StorefrontValue(
-                branchId: _branch(appState),
-                field: StorefrontField.fee,
-                pricing: _pricing,
-                requestDebounce: const Duration(milliseconds: 250),
-                items: appState.cartItems,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+              Flexible(
+                child: StorefrontValue(
+                  branchId: _branch(appState),
+                  field: StorefrontField.fee,
+                  pricing: _pricing,
+                  requestDebounce: const Duration(milliseconds: 250),
+                  items: appState.cartItems,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
             ],

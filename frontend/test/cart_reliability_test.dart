@@ -44,6 +44,33 @@ void main() {
     final cart=CartModel();cart.addItem(line());cart.clear();cart.addItem(line(note:'طلب جديد'));await cart.saveToStorage();
     final restored=CartModel();await restored.loadFromStorage();expect(restored.items.single.specialInstructions,'طلب جديد');
   });
+  testWidgets('delivery fee has explicit loading and the same label as the restaurant', (t) async {
+    final pending=Completer<http.Response>();var calls=0;
+    final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,20),client:MockClient((_) {calls++;return pending.future;}));
+    final state=AppStateProvider();state.cart.addItem(line());
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
+    expect(find.text('رسوم التوصيل'),findsOneWidget);
+    expect(find.text('التوصيل التقديري'),findsNothing);
+    expect(find.text('جارٍ حساب الرسوم…'),findsOneWidget);
+    expect(find.byType(CircularProgressIndicator),findsOneWidget);
+    await t.pump(const Duration(milliseconds:300));await t.pump();expect(calls,1);
+    pending.complete(http.Response(jsonEncode({'success':true,'preview':preview()}),200));
+    await t.pumpAndSettle();expect(find.text('1500 د.ع'),findsOneWidget);
+    expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
+  });
+  testWidgets('opening cart with a fresh matching server fee is immediate and sends no new request', (t) async {
+    var calls=0;
+    final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,20),client:MockClient((_)async{calls++;return http.Response(jsonEncode({'success':true,'preview':preview()}),200);}));
+    final state=AppStateProvider();state.cart.addItem(line());
+    await pricing.load('b1',state.cartItems);
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
+    expect(find.text('1500 د.ع'),findsOneWidget);expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    await t.pumpAndSettle();expect(calls,1);
+    await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
+  });
   testWidgets('rapid quantity edits debounce informational pricing instead of requesting every intermediate basket', (t) async {
     var calls=0;final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
       now:()=>DateTime.utc(2026,10,20),client:MockClient((_) async {calls++;return http.Response(jsonEncode({'success':true,'preview':preview()}),200);}));
