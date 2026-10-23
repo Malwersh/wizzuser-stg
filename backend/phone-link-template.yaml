@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Staging customer verified phone enrollment, preserving existing identities
+Resources:
+  Sessions:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WizzUser_phone_link_staging
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: id, AttributeType: S}]
+      KeySchema: [{AttributeName: id, KeyType: HASH}]
+      TimeToLiveSpecification: {AttributeName: expiresAt, Enabled: true}
+      SSESpecification: {SSEEnabled: true}
+  Api:
+    Type: AWS::Serverless::Api
+    Properties: {StageName: staging}
+  Link:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: WizzUser-phone-link-staging
+      CodeUri: phone-link/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Timeout: 20
+      MemorySize: 256
+      Environment:
+        Variables:
+          ENVIRONMENT: staging
+          OTP_TABLE: !Ref Sessions
+          USERS_TABLE: WizzUser_users_staging
+          DELETION_TABLE: staging-AccountDeletion
+          USER_POOL_ID: us-east-1_TpyyrVkEE
+          CLIENT_ID: 4a9e8o3em311eq2rgckp0pd2s9
+          OTP_SECRET_ARN: arn:aws:secretsmanager:us-east-1:699561669180:secret:wizz/staging/otpiq-SB1iGZ
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref Sessions}
+        - Statement:
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: arn:aws:secretsmanager:us-east-1:699561669180:secret:wizz/staging/otpiq-SB1iGZ
+        - Statement:
+            Effect: Allow
+            Action: [dynamodb:ConditionCheckItem]
+            Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
+            Condition:
+              ForAllValues:StringLike:
+                dynamodb:LeadingKeys: ["ACCOUNT_LIFECYCLE#CUSTOMER#*"]
+        - Statement:
+            Effect: Allow
+            Action: [cognito-idp:ListUsers, cognito-idp:AdminUpdateUserAttributes]
+            Resource: arn:aws:cognito-idp:us-east-1:699561669180:userpool/us-east-1_TpyyrVkEE
+        - Statement:
+            Effect: Allow
+            Action: [dynamodb:Query, dynamodb:UpdateItem]
+            Resource:
+              - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging
+              - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging/index/email-index
+      Events:
+        Send:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /phone/send, Method: POST}
+        Verify:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /phone/verify, Method: POST}
+        Status:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /phone/status, Method: GET}
+Outputs:
+  ApiUrl:
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/staging'

@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+import 'live_activity_service.dart';
 // lib/services/order_service_v2.dart
 
 import 'dart:convert';
@@ -10,6 +12,8 @@ import '../models/address_model.dart';
 import 'session_service.dart';
 import 'push_notifications_service.dart';
 import '../config/api_config.dart';
+import 'cancellation_messages.dart';
+import 'discount_item_policy.dart';
 
 class OrderServiceV2 extends ChangeNotifier {
   static final OrderServiceV2 _instance = OrderServiceV2._internal();
@@ -49,6 +53,9 @@ class OrderServiceV2 extends ChangeNotifier {
   OrderModel? _currentOrder;
   bool _isLoading = false;
   String? _error;
+  bool lastCancellationPending = false;
+  String? lastCancellationMessage;
+  final Map<String,String> _cancellationKeys = {};
   String? _guestToken; // Token for guest order tracking
 
   // Getters
@@ -177,7 +184,8 @@ class OrderServiceV2 extends ChangeNotifier {
           'price': item['price'],
           'quantity': item['quantity'],
           'customizations':
-              item['selected_options'] ?? item['customizations'] ?? [],
+              item['selected_options'] ?? item['selectedOptions'] ?? item['customizations'] ?? [],
+          ...discountSelectionFields(item),
           // تحويل special_instructions إلى specialInstructions للباك إند
           'specialInstructions': specialInstructions,
         };
@@ -350,12 +358,14 @@ class OrderServiceV2 extends ChangeNotifier {
           customerEmail: customerEmail,
           isGuestOrder: userId == null,
           createdAt: DateTime.now(),
-          estimatedDeliveryTime: DateTime.now().add(
-            const Duration(minutes: 30),
-          ),
+          estimatedDeliveryTime: DateTime.tryParse(orderInfo['estimatedDeliveryTime']?.toString() ?? ''),
         );
 
         _currentOrder = order;
+
+        // Start iOS Live Activity for this order
+        LiveActivityService.startForOrder(order);
+
         // إضافة الطلب للقائمة
         final existingIndex = _orders.indexWhere((o) => o.id == order.id);
         if (existingIndex != -1) {
@@ -488,7 +498,7 @@ class OrderServiceV2 extends ChangeNotifier {
       final fullUrl = '$_baseUrl/orders/$orderId';
 
       print('📡 OrderService: Making GET request to: $fullUrl');
-      print('📋 OrderService: Headers: $headers');
+
 
       final response = await http
           .get(Uri.parse(fullUrl), headers: headers)
@@ -556,6 +566,7 @@ class OrderServiceV2 extends ChangeNotifier {
             _orders.insert(0, order);
             print('➕ OrderService: Added new order to list');
           }
+          unawaited(LiveActivityService.syncOrder(order));
           notifyListeners();
 
           return order;
@@ -806,7 +817,7 @@ class OrderServiceV2 extends ChangeNotifier {
         // تحديث فقط الطلبات المكتملة في القائمة
         _orders.removeWhere(
           (order) =>
-              ['delivered', 'cancelled', 'failed'].contains(order.status.value),
+              ['delivered', 'cancelled', 'failed', 'returned'].contains(order.status.value),
         );
         _orders.addAll(completedOrders);
 
@@ -830,6 +841,7 @@ class OrderServiceV2 extends ChangeNotifier {
     'failed',
     'expired',
     'rejected',
+    'returned',
   ];
 
   /// الحصول على الطلبات النشطة من القائمة المحلية
@@ -879,11 +891,18 @@ class OrderServiceV2 extends ChangeNotifier {
       final responseData = json.decode(response.body);
 
       if (response.statusCode == 200 && responseData['success'] == true) {
+        if (responseData['cancellationStatus'] == 'REQUESTED' && responseData['cancelled'] == false) {
+          lastCancellationPending = true;
+          lastCancellationMessage = responseData['message'] as String?;
+          notifyListeners();
+          return true;
+        }
         // تحديث الطلب في القائمة المحلية
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
           _orders[index] = _orders[index].copyWith(status: newStatus);
           notifyListeners();
+          _syncLiveActivity(_orders[index]);
         }
         return true;
       } else {
@@ -898,6 +917,8 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// إلغاء طلب
   Future<bool> cancelOrder(String orderId, String reason) async {
+    lastCancellationPending = false;
+    lastCancellationMessage = null;
     print('🔴 OrderService.cancelOrder():');
     print('   - معرف الطلب: $orderId');
     print('   - سبب الإلغاء: $reason');
@@ -907,7 +928,7 @@ class OrderServiceV2 extends ChangeNotifier {
       final sessionService = SessionService.instance;
       final userId = sessionService.currentUserId;
 
-      if (userId == null) {
+      if (userId == null && _guestToken == null) {
         throw Exception('User ID not found in session');
       }
 
@@ -915,18 +936,15 @@ class OrderServiceV2 extends ChangeNotifier {
         'orderId': orderId,
         'canceledBy': 'customer',
         'reason': reason,
-        'requestedBy': userId,
+        'cancellationProtocolVersion': 1,
+        'idempotencyKey': _cancellationKeys.putIfAbsent(orderId, () => const Uuid().v4()),
+        'requestedBy': userId ?? _guestToken,
+        if (_guestToken != null) 'guestToken': _guestToken,
       });
 
-      print('🔴 Request body: $requestBody');
 
-      // Order Service doesn't require Authorization header (no authorizer configured)
-      // Using basic headers to avoid AWS signature validation errors
-      final headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      print('🔴 Request headers: $headers');
+
+      final headers = await _getHeaders();
       print('🔴 Request URL: $_orderServiceUrl/order/cancel');
 
       final response = await http
@@ -978,13 +996,14 @@ class OrderServiceV2 extends ChangeNotifier {
 
           print('   - استدعاء notifyListeners()...');
           notifyListeners();
+          _syncLiveActivity(_orders[index]);
           print('   ✅ تم إلغاء الطلب بنجاح!');
         } else {
           print('   ⚠️ لم يتم العثور على الطلب في القائمة المحلية');
         }
         return true;
       } else {
-        _setError(responseData['message'] ?? 'فشل في إلغاء الطلب');
+        _setError(cancellationMessage(responseData['code'], fallback: responseData['message']));
         return false;
       }
     } catch (e) {
@@ -994,46 +1013,13 @@ class OrderServiceV2 extends ChangeNotifier {
     }
   }
 
-  /// تطبيق كود خصم
-  Future<Map<String, dynamic>> applyPromoCode(
-    String promoCode,
-    double orderTotal,
-  ) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/promo-codes/apply'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'promoCode': promoCode, 'orderTotal': orderTotal}),
-      );
-
-      final responseData = json.decode(response.body);
-
-      if (response.statusCode == 200 && responseData['success'] == true) {
-        return {
-          'success': true,
-          'discount': responseData['discount'],
-          'message': responseData['message'],
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['message'] ?? 'كود الخصم غير صالح',
-        };
-      }
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'خطأ في التحقق من كود الخصم: ${e.toString()}',
-      };
-    }
-  }
-
   /// الحصول على الطلبات النشطة (غير مكتملة)
   List<OrderModel> get activeOrders {
     return _orders
         .where(
           (order) =>
               order.status != OrderStatus.delivered &&
+              order.status != OrderStatus.returned &&
               order.status != OrderStatus.cancelled &&
               order.status != OrderStatus.failed,
         )
@@ -1046,6 +1032,7 @@ class OrderServiceV2 extends ChangeNotifier {
         .where(
           (order) =>
               order.status == OrderStatus.delivered ||
+              order.status == OrderStatus.returned ||
               order.status == OrderStatus.cancelled ||
               order.status == OrderStatus.failed ||
               order.status == OrderStatus.expired ||
@@ -1076,6 +1063,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// مسح البيانات عند تسجيل الخروج
   void clearData() {
+    unawaited(LiveActivityService.endAll());
     _orders.clear();
     _currentOrder = null;
     _clearError();
@@ -1084,6 +1072,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// مسح جميع الطلبات (عند تغيير المستخدم أو تسجيل الخروج)
   void clearOrders() {
+    unawaited(LiveActivityService.endAll());
     final oldCount = _orders.length;
     _orders.clear();
     _currentOrder = null;
@@ -1096,6 +1085,7 @@ class OrderServiceV2 extends ChangeNotifier {
   void updateOrderFromWebSocket(Map<String, dynamic> orderData) {
     try {
       final updatedOrder = OrderModel.fromJson(orderData);
+      unawaited(LiveActivityService.syncOrder(updatedOrder));
       final index = _orders.indexWhere((o) => o.id == updatedOrder.id);
 
       if (index != -1) {
@@ -1109,6 +1099,7 @@ class OrderServiceV2 extends ChangeNotifier {
       }
 
       notifyListeners();
+      _syncLiveActivity(updatedOrder);
 
       // 🔧 NEW: Log order status changes for debugging
       debugPrint(
@@ -1154,6 +1145,18 @@ class OrderServiceV2 extends ChangeNotifier {
 
   void _clearError() {
     _error = null;
+  }
+
+  static double _statusProgress(OrderStatus status) =>
+      LiveActivityService.statusProgress(status);
+
+  static bool _isTerminalStatus(OrderStatus status) =>
+      LiveActivityService.isTerminal(status);
+
+  static String _etaText(OrderModel order) => LiveActivityService.etaText(order);
+
+  void _syncLiveActivity(OrderModel order) {
+    LiveActivityService.syncOrder(order);
   }
 
   /// تحديث الطلب الحالي
@@ -1337,7 +1340,8 @@ class OrderServiceV2 extends ChangeNotifier {
   void setGuestToken(String? token) {
     _guestToken = token;
     _saveGuestTokenToStorage(token); // Save guest token to storage
-    print('OrderService: Guest token updated: $token');
+    if(token!=null) unawaited(LiveActivityService.setGuestToken(token));
+    debugPrint('OrderService: Guest session updated');
   }
 
   /// مسح guestToken
@@ -1356,6 +1360,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// تحديث طلب في القائمة المحلية (للتحديثات الفورية)
   void updateOrderInList(OrderModel updatedOrder) {
+    unawaited(LiveActivityService.syncOrder(updatedOrder));
     final index = _orders.indexWhere((order) => order.id == updatedOrder.id);
     if (index != -1) {
       final oldStatus = _orders[index].status;
@@ -1369,6 +1374,7 @@ class OrderServiceV2 extends ChangeNotifier {
 
       // 🔔 إشعار جميع المستمعين بالتحديث الفوري
       notifyListeners();
+      _syncLiveActivity(updatedOrder);
       print('📡 OrderService: تم إرسال notifyListeners() للتحديث الفوري');
     } else {
       print(

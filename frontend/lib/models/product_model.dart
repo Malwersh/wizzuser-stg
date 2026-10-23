@@ -10,6 +10,9 @@ class ProductModel {
   final String imageUrl;
   final double price;
   final bool isAvailable;
+  final bool isFeatured; // 🔥 الأكثر مبيعاً/مميز
+  final List<dynamic>? addons; // 🔥 إضافات/خيارات خام من الباك إند (شكل غير مضمون)
+  final List<dynamic>? variations; // 🔥 متغيرات خام من الباك إند
   final int preparationTime;
   final Map<String, dynamic>? nutritionInfo;
   final List<String> allergens;
@@ -29,6 +32,9 @@ class ProductModel {
     required this.imageUrl,
     required this.price,
     this.isAvailable = true,
+    this.isFeatured = false,
+    this.addons,
+    this.variations,
     this.preparationTime = 0,
     this.nutritionInfo,
     this.allergens = const [],
@@ -50,6 +56,9 @@ class ProductModel {
       imageUrl: json['imageUrl']?.toString() ?? json['image_url']?.toString() ?? '',
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       isAvailable: json['is_available'] ?? true,
+      isFeatured: json['is_featured'] == true || json['isFeatured'] == true,
+      addons: json['addons'] is List ? List<dynamic>.from(json['addons'] as List) : null,
+      variations: json['variations'] is List ? List<dynamic>.from(json['variations'] as List) : null,
       preparationTime: (json['preparation_time'] as num?)?.toInt() ?? 0,
       nutritionInfo: json['nutrition_info'] as Map<String, dynamic>?,
       allergens: json['allergens'] != null 

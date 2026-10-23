@@ -1,0 +1,12 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const C=path.resolve(__dirname,'../../whizzCentralPlatform-stg'),sdk=require(C+'/backend/wallet-service/node_modules/@aws-sdk/lib-dynamodb'),{DynamoDBClient}=require(C+'/backend/wallet-service/node_modules/@aws-sdk/client-dynamodb');
+Object.assign(process.env,JSON.parse(fs.readFileSync('/private/tmp/checkout-269/writer-config.private.json')).Environment.Variables);
+let s=fs.readFileSync('/private/tmp/checkout-269/writer-base.js','utf8');
+const a=s.indexOf('// ../wizzuser-stg/backend/src/functions/create-order/quote-runtime/deliveryFundingReader.js'),b=s.indexOf('// ../wizzuser-stg/backend/src/functions/create-order/quote-runtime/deliveryPromotion.js',a);
+let reader=s.slice(a,b);reader=reader.replaceAll('} catch (e7) {\n          if (e7 instanceof DeliveryFundingReaderError)', '} catch (e7) {\n          console.error("LOCAL_READER_CAUSE",e7.name,e7.message,e7.stack?.split("\\n").slice(0,4));\n          if (e7 instanceof DeliveryFundingReaderError)');s=s.slice(0,a)+reader+s.slice(b);
+const start=s.indexOf('// ../wizzuser-stg/backend/src/functions/create-order/index.js');assert(start>0);
+const runtime=Function('require','module','exports','__dirname',s.slice(0,start)+'\nreturn {reader:require_deliveryFundingReader(),rollout:require_financeRollout()};')(require,{exports:{}},{},path.resolve(__dirname));
+const real=sdk.DynamoDBDocumentClient.from(new DynamoDBClient({region:'us-east-1'}));let stage='',reads=0;
+const db={send:async c=>{const kind=c.constructor.name.replace(/\d+$/,'');stage=kind+':'+(c.input.TableName||'CONDITION_ONLY');assert(['GetCommand','TransactWriteCommand'].includes(kind));if(kind==='TransactWriteCommand')assert(c.input.TransactItems.every(x=>x.ConditionCheck));else reads++;
+try{return await real.send(new sdk[kind](c.input));}catch(e){console.error('AWS_FAILURE',stage,e.name);throw e;}}};
+(async()=>{const input=JSON.parse(fs.readFileSync('/private/tmp/checkout-267/policy-pin.private.json'));try{await runtime.reader.createStagingDeliveryFundingReader({db,lifecycleReadMode:'CONDITION_CHECK'}).prepare(input);console.log('PASS full bundled reader with actual bundled dependencies',reads);}catch(e){console.error('FULL_BUNDLE_FAILURE',stage,e.code||e.name,'reads',reads);process.exitCode=1;}})();

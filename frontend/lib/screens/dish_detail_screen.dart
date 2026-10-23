@@ -16,9 +16,49 @@ import '../models/product_model.dart';
 import '../services/business_service.dart';
 import '../services/restaurant_availability_service.dart';
 import '../providers/app_state_provider.dart';
-import '../widgets/modern_cart_icon.dart';
-// import '../widgets/product_image.dart';  // استبدال مؤقت
-import 'cart_screen.dart';
+import '../widgets/clear_cart_sheet.dart';
+
+Future<bool?> showDishDetailBottomSheet(
+  BuildContext context, {
+  required Dish dish,
+  required String storeId,
+  String? storeName,
+  String? storeAddress,
+  bool isInitiallyFav = false,
+  ProductModel? productData,
+}) {
+  final mediaQuery = MediaQuery.of(context);
+  final availableHeight = mediaQuery.size.height - mediaQuery.padding.top;
+
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: false,
+    showDragHandle: false,
+    backgroundColor: Colors.white,
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    clipBehavior: Clip.antiAlias,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (sheetContext) => SizedBox(
+      height: availableHeight * 0.85,
+      child: MediaQuery.removePadding(
+        context: sheetContext,
+        removeTop: true,
+        child: DishDetailScreen(
+          dish: dish,
+          storeId: storeId,
+          storeName: storeName,
+          storeAddress: storeAddress,
+          isInitiallyFav: isInitiallyFav,
+          productData: productData,
+          isBottomSheet: true,
+        ),
+      ),
+    ),
+  );
+}
 
 class DishDetailScreen extends StatefulWidget {
   final Dish dish;
@@ -27,6 +67,7 @@ class DishDetailScreen extends StatefulWidget {
   final String? storeAddress; // إضافة عنوان المتجر للسائقين
   final bool isInitiallyFav;
   final ProductModel? productData; // إضافة بيانات المنتج الجاهزة
+  final bool isBottomSheet;
 
   const DishDetailScreen({
     super.key,
@@ -36,6 +77,7 @@ class DishDetailScreen extends StatefulWidget {
     this.storeAddress, // إضافة عنوان المتجر كمعطى اختياري
     this.isInitiallyFav = false,
     this.productData, // معطى اختياري
+    this.isBottomSheet = false,
   });
 
   @override
@@ -60,10 +102,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    for (var g in widget.dish.optionGroups) {
-      _selectedOptions[g.id] = <String>{};
-    }
-    
+
     // استخدام البيانات الممررة إذا كانت متوفرة، وإلا جلبها من API
     developer.log('🔍 DishDetailScreen.initState:');
     developer.log('  widget.productData != null: ${widget.productData != null}');
@@ -73,13 +112,37 @@ class _DishDetailScreenState extends State<DishDetailScreen>
       developer.log('  widget.productData.imageUrl.isNotEmpty: ${widget.productData!.imageUrl.isNotEmpty}');
     }
     developer.log('  widget.dish.imageUrls: ${widget.dish.imageUrls}');
-    
+
     if (widget.productData != null) {
       developer.log('✅ استخدام بيانات المنتج الممررة مباشرة');
       _productData = widget.productData;
     } else {
       developer.log('🔄 جلب تفاصيل المنتج من API');
       _loadProductDetails();
+    }
+
+    _ensureOptionKeys();
+  }
+
+  /// 🔥 مجموعات الخيارات الفعّالة: الخيارات المضمنة في Dish أولاً،
+  /// وإلا تُشتق من بيانات الإضافات/المتغيرات الخام القادمة من الباك إند
+  List<OptionGroup> get _optionGroups {
+    if (widget.dish.optionGroups.isNotEmpty) return widget.dish.optionGroups;
+    return OptionGroup.listFromAddons(
+      _productData?.addons ?? _productData?.variations,
+    );
+  }
+
+  OptionGroup? _groupById(String id) {
+    for (final g in _optionGroups) {
+      if (g.id == id) return g;
+    }
+    return null;
+  }
+
+  void _ensureOptionKeys() {
+    for (var g in _optionGroups) {
+      _selectedOptions.putIfAbsent(g.id, () => <String>{});
     }
   }
 
@@ -111,6 +174,8 @@ class _DishDetailScreenState extends State<DishDetailScreen>
           _productData = productData;
           _isLoadingProduct = false;
         });
+        // إذا وصلت مجموعات خيارات جديدة من الباك إند، تهيئة مفاتيحها
+        _ensureOptionKeys();
       }
     } catch (e) {
       developer.log('❌ خطأ في جلب تفاصيل المنتج: $e');
@@ -163,7 +228,8 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   double _calculateTotal() {
     var total = _productPrice;
     _selectedOptions.forEach((gid, opts) {
-      final group = widget.dish.optionGroups.firstWhere((g) => g.id == gid);
+      final group = _groupById(gid);
+      if (group == null) return;
       for (var o in group.options.where((o) => opts.contains(o.id))) {
         total += o.extraPrice;
       }
@@ -209,127 +275,46 @@ class _DishDetailScreenState extends State<DishDetailScreen>
     return widget.storeName ?? 'المطعم';
   }
 
-  void _showDifferentStoreDialog() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Directionality(
-          textDirection: ui.TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // أيقونة سلة مع علامة إلغاء
-              Stack(alignment: Alignment.center, children: [
-                Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryLight.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                ModernCartIcon(
-                  color: AppColors.primaryDark,
-                  size: 32,
-                  isGlassmorphic: false,
-                ),
-                const Positioned(
-                  right: 0, top: 0,
-                  child: Icon(Icons.close, size: 20, color: Colors.redAccent),
-                ),
-              ]),
-              const SizedBox(height: 16),
-              const Text(
-                'لا يمكن إضافة الطلب إلى السلة',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'سلة التسوق تحتوي طلبات من متجر آخر.\n'
-                'هل تريد تفريغ السلة والبدء من المتجر الحالي أم عرض السلة الحالية؟',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.black87),
-              ),
-              const SizedBox(height: 24),
-              Row(children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      developer.log('🗑️ تفريغ السلة وإضافة المنتج الجديد');
-                      
-                      final appState = Provider.of<AppStateProvider>(dialogContext, listen: false);
-                      appState.clearCart();
-                      
-                      // إضافة العنصر للسلة باستخدام AppStateProvider مع تجاهل فحص المطعم
-                      final cartItem = {
-                        'id': widget.dish.id,
-                        'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
-                        'price': _calculateTotal(),
-                        'description': _productDescription.isNotEmpty ? _productDescription : 'وصف غير متوفر',
-                        'image': _productImageUrl,
-                        'quantity': _quantity > 0 ? _quantity : 1,
-                        'store_id': widget.storeId,
-                        'store_name': _getStoreName(),
-                        'store_address': widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
-                        'special_instructions': _specialInstructions?.trim(),
-                        'base_price': _productPrice, // إضافة السعر الأساسي
-                        'selected_options': _selectedOptions.map((k, v) => MapEntry(k, v.toList())), // الخيارات المختارة
-                        'added_at': DateTime.now().toIso8601String(), // وقت الإضافة
-                      };
-                      
-                      developer.log('🛒 إضافة منتج للسلة (من dialog المتجر المختلف)');
-                      developer.log('  التعليمات الخاصة: "${_specialInstructions ?? 'لا توجد ملاحظات'}"');
-                      
-                      final navigator = Navigator.of(dialogContext);
-                      await appState.addToCart(cartItem);
-                      navigator.pop(); // يغلق الـ Dialog فقط
-                      
-                      if (mounted) {
-                        final favoritesModel = Provider.of<FavoritesModel>(context, listen: false);
-                        Navigator.pop(context, favoritesModel.isDishFavorite(widget.dish.id)); // يغلق شاشة الطبق
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryPink,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('تفريغ السلة', style: TextStyle(color: AppColors.secondary)),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(dialogContext); // يغلق الـ Dialog فقط
-                      if (mounted) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CartScreen(
-                              storeId: widget.storeId,
-                              stores: null, // لا توجد قائمة متاجر هنا، سيظهر الاسم الافتراضي إذا لم يتم تمريره
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryPink,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('عرض السلة', style: TextStyle(color: AppColors.secondary)),
-                  ),
-                ),
-              ]),
-            ]),
-          ),
-        ),
-      ),
+  /// بناء عنصر السلة الموحد (يُستخدم في زر الإضافة وفي نافذة تعارض المطاعم)
+  Map<String, dynamic> _buildCartItemMap() {
+    return {
+      'id': widget.dish.id,
+      'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
+      'price': _calculateTotal(),
+      'description': _productDescription.isNotEmpty ? _productDescription : 'وصف غير متوفر',
+      'image': _productImageUrl,
+      'quantity': _quantity > 0 ? _quantity : 1,
+      'store_id': widget.storeId,
+      'store_name': _getStoreName(),
+      'store_address': widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
+      'special_instructions': _specialInstructions?.trim(),
+      'base_price': _productPrice, // إضافة السعر الأساسي
+      'selected_options': _selectedOptions.map((k, v) => MapEntry(k, v.toList())), // الخيارات المختارة
+      'added_at': DateTime.now().toIso8601String(), // وقت الإضافة
+    };
+  }
+
+  /// 🔥 عرض نافذة تعارض المطاعم (سلة واحدة لكل مطعم) ومعالجة اختيار المستخدم
+  Future<void> _showDifferentStoreDialog() async {
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    final otherStoreName = appState.cartStoreName ?? 'مطعم آخر';
+
+    final clearAndAdd = await showClearCartConflictSheet(
+      context,
+      otherStoreName: otherStoreName,
     );
+
+    if (clearAndAdd != true || !mounted) return;
+
+    developer.log('🗑️ تفريغ السلة وإضافة المنتج الجديد');
+
+    // تفريغ السلة ثم إضافة العنصر الجديد
+    appState.clearCart();
+    await appState.addToCart(_buildCartItemMap());
+
+    if (!mounted) return;
+    final favoritesModel = Provider.of<FavoritesModel>(context, listen: false);
+    Navigator.pop(context, favoritesModel.isDishFavorite(widget.dish.id)); // يغلق شاشة الطبق
   }
 
   @override
@@ -443,13 +428,14 @@ class _DishDetailScreenState extends State<DishDetailScreen>
                   ),
                 ),
                 Positioned(
-                  top: 40, right: 16,
+                  top: widget.isBottomSheet ? 12 : 40, right: 16,
                   child: CircleAvatar(
                     backgroundColor: Colors.white,
                     child: IconButton(
+                      tooltip: 'إغلاق',
                       icon: const Icon(Icons.close, color: AppColors.secondary),
                       onPressed: () {
-                        developer.log('❌ إغلاق شاشة تفاصيل الطبق (زر X)');
+                        developer.log('❌ إغلاق تفاصيل الطبق (زر X)');
                         Navigator.pop(context);
                       },
                     ),
@@ -505,7 +491,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
             _buildQuantitySelector(),
             const SizedBox(height: 16),
             // الخيارات (نفس منطقك القديم)
-            for (var g in widget.dish.optionGroups) ...[
+            for (var g in _optionGroups) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Text(
@@ -766,21 +752,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
                 developer.log('  طول الملاحظات: ${_specialInstructions?.length ?? 0} حرف');
                 
                 // إنشاء عنصر السلة مع التأكد من صحة جميع البيانات
-                final cartItem = {
-                  'id': widget.dish.id,
-                  'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
-                  'price': _calculateTotal(),
-                  'description': _productDescription.isNotEmpty ? _productDescription : 'وصف غير متوفر',
-                  'image': _productImageUrl,
-                  'quantity': _quantity > 0 ? _quantity : 1,
-                  'store_id': widget.storeId,
-                  'store_name': _getStoreName(),
-                  'store_address': widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
-                  'special_instructions': _specialInstructions?.trim(),
-                  'base_price': _productPrice, // إضافة السعر الأساسي
-                  'selected_options': _selectedOptions.map((k, v) => MapEntry(k, v.toList())), // الخيارات المختارة
-                  'added_at': DateTime.now().toIso8601String(), // وقت الإضافة
-                };
+                final cartItem = _buildCartItemMap();
                 
                 // محاولة إضافة العنصر للسلة
                 final scaffoldMessenger = ScaffoldMessenger.of(context);

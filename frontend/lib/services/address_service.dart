@@ -262,7 +262,7 @@ class EnhancedAddressService extends ChangeNotifier {
       }
 
       // الحصول على token وuser_id من الجلسة النشطة
-      String? token = SessionService.instance.accessToken;
+      String? token = await SessionService.instance.getToken();
       String? userId = SessionService.instance.currentUserId;
       
       // التحقق من وجود البيانات المطلوبة
@@ -273,7 +273,6 @@ class EnhancedAddressService extends ChangeNotifier {
         return null;
       }
       
-      print('🔑 Token: ${token.length > 20 ? token.substring(0, 20) + '...' : token}');
       print('🆔 User ID: $userId');
       
       if (token.isEmpty) {

@@ -6,6 +6,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, DeleteCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
+const {writeContext}=require('../create-order/guarded-write');
 const client = new DynamoDBClient({ 
     region: 'us-east-1'
 });
@@ -33,7 +34,7 @@ const CORS_HEADERS = {
 /**
  * Set a new default address if needed
  */
-async function setNewDefaultAddress(userId, deletedAddressId) {
+async function setNewDefaultAddress(userId, deletedAddressId,write) {
     try {
         // Find other addresses for this user
         const queryParams = {
@@ -66,7 +67,7 @@ async function setNewDefaultAddress(userId, deletedAddressId) {
                 }
             };
             
-            await dynamodb.send(new UpdateCommand(updateParams));
+            await write('Update',{...updateParams,ConditionExpression:'attribute_exists(addressId) AND userId = :owner',ExpressionAttributeValues:{...updateParams.ExpressionAttributeValues,':owner':userId}});
             console.log(`✅ Set address ${newDefaultAddress.addressId} as new default`);
             return newDefaultAddress.addressId;
         }
@@ -82,7 +83,7 @@ async function setNewDefaultAddress(userId, deletedAddressId) {
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Account mutation request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -113,6 +114,7 @@ exports.handler = async (event) => {
         }
 
         // First, verify that the address exists and belongs to the user
+        const write=await writeContext(dynamodb,event,userId);
         const getParams = {
             TableName: TABLE_NAME,
             Key: { addressId: addressId }
@@ -153,13 +155,13 @@ exports.handler = async (event) => {
             Key: { addressId: addressId }
         };
 
-        await dynamodb.send(new DeleteCommand(deleteParams));
+        await write('Delete',{...deleteParams,ConditionExpression:'attribute_exists(addressId) AND userId = :owner',ExpressionAttributeValues:{':owner':userId}});
         console.log(`✅ Address ${addressId} deleted successfully`);
 
         // If the deleted address was default, set another address as default
         let newDefaultAddressId = null;
         if (wasDefault) {
-            newDefaultAddressId = await setNewDefaultAddress(userId, addressId);
+            newDefaultAddressId = await setNewDefaultAddress(userId, addressId,write);
         }
 
         return {
@@ -180,7 +182,7 @@ exports.handler = async (event) => {
         console.error('💥 Error deleting address:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,

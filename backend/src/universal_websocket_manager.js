@@ -13,8 +13,9 @@
  */
 
 const { DynamoDBClient, DescribeTableCommand } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, BatchWriteCommand, TransactWriteCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const {websocketIdentity}=require('./websocket-lifecycle-auth');
 
 class UniversalWebSocketManager {
     constructor() {
@@ -187,7 +188,7 @@ class UniversalWebSocketManager {
             const headers = event.headers || {};
             
             // 🔍 DEBUG: سجل query params بوضوح
-            console.log(`🔍 [DEBUG] Query params object:`, JSON.stringify(queryParams, null, 2));
+            console.log('WebSocket parameter names',Object.keys(queryParams));
             console.log(`🔍 [DEBUG] Query params keys:`, Object.keys(queryParams));
             
             // استخراج المعلومات الأساسية
@@ -432,6 +433,19 @@ class UniversalWebSocketManager {
                 }
             }
 
+            const expectedKind=['business','merchant'].includes(finalEntityType)?'MERCHANT':finalEntityType==='driver'?'DRIVER':'CUSTOMER';
+            if(token&&(!verified||verified.userPoolKind!==expectedKind))throw new Error('UNAUTHORIZED');
+            if(userCategory!=='guest'&&!verified)throw new Error('UNAUTHORIZED');
+            if(verified&&expectedKind==='DRIVER'&&finalUserId!==verified.sub)throw new Error('UNAUTHORIZED');
+            if(verified&&expectedKind==='MERCHANT'){
+                if(typeof businessId!=='string'||!businessId)throw new Error('BUSINESS_REQUIRED');
+                const {Item:business}=await this.dynamoDB.send(new GetCommand({TableName:'WhizzMerchants_Businesses',Key:{businessId},ConsistentRead:true}));
+                if(!business||business.deletionRequestId||business.isActive===false||![business.ownerId,business.cognitoUserId].includes(verified.sub))throw new Error('UNAUTHORIZED');
+                const ownerField=business.ownerId===verified.sub?'ownerId':'cognitoUserId';
+                verified.businessGuard={ConditionCheck:{TableName:'WhizzMerchants_Businesses',Key:{businessId},ConditionExpression:'#owner = :owner AND attribute_not_exists(deletionRequestId)',ExpressionAttributeNames:{'#owner':ownerField},ExpressionAttributeValues:{':owner':verified.sub}}};
+            }
+
+
             // البحث عن اتصالات موجودة لنفس المستخدم
             await this.disconnectExistingConnections(finalUserId, finalEntityType, connectionId);
 
@@ -445,10 +459,9 @@ class UniversalWebSocketManager {
             );
 
             // حفظ الاتصال في قاعدة البيانات
-            await this.dynamoDB.send(new PutCommand({
-                TableName: this.connectionsTable,
-                Item: connectionData
-            }));
+            if(verified?.lifecycleGuard){
+                await this.dynamoDB.send(new TransactWriteCommand({TransactItems:[verified.lifecycleGuard,...(verified.businessGuard?[verified.businessGuard]:[]),{Put:{TableName:this.connectionsTable,Item:connectionData}}]}));
+            }else await this.dynamoDB.send(new PutCommand({TableName:this.connectionsTable,Item:connectionData}));
 
             console.log(`✅ تم حفظ الاتصال: ${connectionId} للمستخدم: ${finalUserId}`);
             
@@ -871,21 +884,7 @@ class UniversalWebSocketManager {
     }
 
     async verifyJwt(token) {
-        try {
-            // للاختبار: استخراج البيانات من JWT بسيط
-            if (token && token.startsWith('eyJ')) {
-                const parts = token.split('.');
-                if (parts.length >= 2) {
-                    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-                    return payload;
-                }
-            }
-            // في الإنتاج: استخدم AWS Cognito أو مكتبة JWT حقيقية
-            return null;
-        } catch (error) {
-            console.warn('فشل في التحقق من JWT:', error.message);
-            return null;
-        }
+        return websocketIdentity(token,this.dynamoDB);
     }
 
     /**
@@ -1115,40 +1114,11 @@ class UniversalWebSocketManager {
             return;
         }
 
-        try {
-            // DynamoDB BatchWrite يقبل 25 عنصر كحد أقصى
-            const batchSize = 25;
-            
-            for (let i = 0; i < subscriptions.length; i += batchSize) {
-                const batch = subscriptions.slice(i, i + batchSize);
-                
-                const putRequests = batch.map(sub => ({
-                    PutRequest: { Item: sub }
-                }));
-
-                await this.dynamoDB.send(new BatchWriteCommand({
-                    RequestItems: {
-                        [this.subscriptionsTable]: putRequests
-                    }
-                }));
-            }
-
-            console.log(`✅ تم حفظ ${subscriptions.length} اشتراك في الدفعة`);
-
-        } catch (error) {
-            console.error('❌ خطأ في Batch Write للاشتراكات:', error);
-            
-            // إعادة المحاولة واحداً تلو الآخر في حالة الفشل
-            for (const subscription of subscriptions) {
-                try {
-                    await this.dynamoDB.send(new PutCommand({
-                        TableName: this.subscriptionsTable,
-                        Item: subscription
-                    }));
-                } catch (err) {
-                    console.error(`❌ فشل حفظ اشتراك: ${subscription.PK}`, err.message);
-                }
-            }
+        // A batch write cannot fence against deletion and must not be a fallback.
+        const {connectionScopedClient}=require('./functions/websocket-default/subscription-lifecycle');
+        for(const subscription of subscriptions){
+            const guarded=connectionScopedClient(this.dynamoDB,{connectionId:subscription.connectionId,connectionsTable:this.connectionsTable,subscriptionsTable:this.subscriptionsTable});
+            await guarded.send(new PutCommand({TableName:this.subscriptionsTable,Item:subscription}));
         }
     }
 
@@ -1168,7 +1138,7 @@ class UniversalWebSocketManager {
             
             // تحديث WizzDriverLiveState - فقط connectionId و lastConnected
             // البيانات الكاملة تأتي من REST API /driver/start-searching
-            await this.dynamoDB.send(new UpdateCommand({
+            await this.dynamoDB.send(new TransactWriteCommand({TransactItems: [{ConditionCheck: {TableName: 'staging-AccountDeletion', Key: {pk: 'ACCOUNT_LIFECYCLE#DRIVER#' + driverId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}}, {Update: {
                 TableName: liveStateTable,
                 Key: { 
                     driverId: driverId
@@ -1191,7 +1161,7 @@ class UniversalWebSocketManager {
                     ':active': true,
                     ':now': now
                 }
-            }));
+            }}]}));
             
             console.log(`✅ تم تحديث ${liveStateTable} للسائق ${driverId} بـ connectionId: ${connectionId}`);
             

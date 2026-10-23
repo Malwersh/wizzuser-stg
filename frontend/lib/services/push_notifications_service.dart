@@ -10,13 +10,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/api_config.dart';
 import 'session_service.dart';
+import 'android_order_tracking.dart';
+import 'notification_inbox_service.dart';
+import 'notification_navigation.dart';
+import '../constants/app_colors.dart';
+import 'package:flutter/material.dart';
 
+@pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
   } catch (_) {
     // ignore
   }
+  await NotificationInboxService.recordPush(message);
+  await AndroidOrderTracking.fromPush(message.data);
 }
 
 class PushNotificationsService {
@@ -95,13 +103,26 @@ class PushNotificationsService {
       await _attemptRegisterForCurrentSession(newToken);
     });
 
+    FirebaseMessaging.onMessage.listen((message) async {
+      await AndroidOrderTracking.fromPush(message.data);
+      final item = await NotificationInboxService.recordPush(message);
+      if (item == null) return;
+      NotificationNavigation.messengerKey.currentState?.showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating, backgroundColor: AppColors.secondary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: Text('${item.title}\n${item.body}', maxLines: 3, overflow: TextOverflow.ellipsis),
+        action: SnackBarAction(label: 'عرض', textColor: AppColors.primary, onPressed: () => NotificationNavigation.open(item)),
+      ));
+    });
     FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+      await NotificationInboxService.recordPush(message);
       final handler = _onNotificationTap;
       if (handler != null) await handler(message);
     });
 
     final initialMessage = await messaging.getInitialMessage();
     if (initialMessage != null) {
+      await NotificationInboxService.recordPush(initialMessage);
       final handler = _onNotificationTap;
       if (handler != null) await handler(initialMessage);
     }
@@ -109,6 +130,7 @@ class PushNotificationsService {
     // If the user signs in later, retry token registration.
     _sessionSub?.cancel();
     _sessionSub = SessionService.instance.sessionStateStream.listen((_) async {
+      await NotificationInboxService.bindCurrentAccount();
       final tokenToRegister = _lastKnownFcmToken;
       if (tokenToRegister != null && tokenToRegister.isNotEmpty) {
         await _attemptRegisterForCurrentSession(tokenToRegister);
@@ -169,7 +191,7 @@ class PushNotificationsService {
   }
 
   static Future<void> _registerToken(String token) async {
-    print('PushNotificationsService: registering token for logged-in user…');
+    await NotificationInboxService.bindCurrentAccount();
     final jwt = await _getJwt();
     if (jwt == null || jwt.isEmpty) {
       print('Push token register skipped: no auth session (jwt missing)');
@@ -182,6 +204,7 @@ class PushNotificationsService {
     final payload = <String, dynamic>{
       'token': token,
       'platform': _platform(),
+      'orderTrackingVersion': 1,
       'app': 'user',
       'env': ApiConfig.environment,
       if (deviceId != null && deviceId.isNotEmpty) 'deviceId': deviceId,
@@ -239,6 +262,10 @@ class PushNotificationsService {
       final data = message.data;
       final type = (data['type'] ?? '').toString();
 
+      if (data['action'] == 'open_wallet' || type == 'wallet_transfer_completed') {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('pendingWalletFromPushTap', true);
+      }
       // Order updates should open the Orders tab.
       final targetTab = type == 'order_update' ? 4 : 0;
 
@@ -337,6 +364,7 @@ class PushNotificationsService {
     final payload = <String, dynamic>{
       'token': fcmToken,
       'platform': _platform(),
+      'orderTrackingVersion': 1,
       'guestToken': guestToken,
       'env': ApiConfig.environment,
       if (deviceId != null && deviceId.isNotEmpty) 'deviceId': deviceId,

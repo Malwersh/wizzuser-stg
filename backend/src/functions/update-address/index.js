@@ -5,6 +5,7 @@
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const {writeContext}=require('../create-order/guarded-write');
 
 const client = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(client);
@@ -99,7 +100,7 @@ function buildFullAddress(addressData) {
 /**
  * Clear existing default addresses for user
  */
-async function clearDefaultAddresses(userId, excludeAddressId) {
+async function clearDefaultAddresses(userId, excludeAddressId, write) {
     try {
         // First, find all default addresses for this user
         const queryParams = {
@@ -127,7 +128,9 @@ async function clearDefaultAddresses(userId, excludeAddressId) {
                     }
                 };
                 
-                await dynamodb.send(new UpdateCommand(updateParams));
+                updateParams.ConditionExpression='attribute_exists(addressId) AND userId = :owner';
+                updateParams.ExpressionAttributeValues[':owner']=userId;
+                await write('Update',updateParams);
             }
         }
         
@@ -142,7 +145,7 @@ async function clearDefaultAddresses(userId, excludeAddressId) {
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Update address request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -172,6 +175,7 @@ exports.handler = async (event) => {
             };
         }
 
+        const write=await writeContext(dynamodb,event,userId);
         // Parse request body
         let updateData;
         try {
@@ -231,7 +235,7 @@ exports.handler = async (event) => {
 
         // Check if setting as default
         if (updateData.is_default === true) {
-            await clearDefaultAddresses(userId, addressId);
+            await clearDefaultAddresses(userId, addressId,write);
         }
 
         // Build update expressions for provided fields
@@ -313,7 +317,9 @@ exports.handler = async (event) => {
 
         console.log('🔄 DynamoDB Update Parameters:', JSON.stringify(updateParams, null, 2));
 
-        const result = await dynamodb.send(new UpdateCommand(updateParams));
+        updateParams.ConditionExpression='attribute_exists(addressId) AND userId = :owner';
+        updateParams.ExpressionAttributeValues[':owner']=userId;
+        const result = await write('Update',updateParams);
         const updatedAddress = result.Attributes;
 
         // Format response
@@ -355,7 +361,7 @@ exports.handler = async (event) => {
         console.error('💥 Error updating address:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,

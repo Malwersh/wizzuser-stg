@@ -14,8 +14,9 @@
  * 6. Return results with listingVersion
  */
 
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
+const {DynamoDBDocumentClient,ScanCommand,BatchGetCommand}=require('@aws-sdk/lib-dynamodb');
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Table names
 const REGION_LISTINGS_TABLE = process.env.REGION_LISTINGS_TABLE || 'WhizzMerchants_RegionListings';
@@ -26,7 +27,7 @@ const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Busines
  */
 exports.handler = async (event) => {
   console.log('🍽️ Get Businesses By Region');
-  console.log('Event:', JSON.stringify(event, null, 2));
+
 
   try {
     // Extract parameters
@@ -54,16 +55,14 @@ exports.handler = async (event) => {
     // Note: This is not optimal - TODO: Add GSI on regionId for better performance
     console.log('⚡ Scanning businesses table with regionId filter...');
     
-    const scanResult = await dynamodb
-      .scan({
+    const scanResult = await dynamodb.send(new ScanCommand({
         TableName: BUSINESSES_TABLE,
         FilterExpression: 'regionId = :rid AND isActive = :active',
         ExpressionAttributeValues: {
           ':rid': region_id,
           ':active': true,
         },
-      })
-      .promise();
+      }));
 
     let businesses = scanResult.Items || [];
     console.log(`📊 Found ${businesses.length} businesses in region ${region_id}`);
@@ -154,15 +153,13 @@ async function batchGetBusinesses(businessIds) {
   for (const chunk of chunks) {
     const keys = chunk.map((id) => ({ businessId: id }));
 
-    const result = await dynamodb
-      .batchGet({
+    const result = await dynamodb.send(new BatchGetCommand({
         RequestItems: {
           [BUSINESSES_TABLE]: {
             Keys: keys,
           },
         },
-      })
-      .promise();
+      }));
 
     if (result.Responses && result.Responses[BUSINESSES_TABLE]) {
       businesses.push(...result.Responses[BUSINESSES_TABLE]);

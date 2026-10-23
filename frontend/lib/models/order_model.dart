@@ -19,6 +19,9 @@ enum OrderStatus {
   onTheWay('on_the_way', 'في الطريق'),  // Legacy - maps to headingToCustomer
   headingToCustomer('heading_to_customer', 'السائق في الطريق للعميل'),
   arrivedAtCustomer('arrived_at_customer', 'السائق وصل للعميل'),
+  returning('returning', 'السائق يعيد الطلب للمطعم'),
+  returnArrived('return_arrived', 'بانتظار تأكيد استلام المطعم'),
+  returned('returned', 'تم إرجاع الطلب للمطعم'),
   delivered('delivered', 'تم التوصيل'),
   cancelled('cancelled', 'ملغي'),
   failed('failed', 'فشل'),
@@ -95,7 +98,7 @@ class OrderItem {
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     // Handle customizations as both list and map
     Map<String, List<String>>? parsedOptions;
-    final customizations = json['customizations'] ?? json['selected_options'];
+    final customizations = json['customizations'] ?? json['selected_options'] ?? json['selectedOptions'];
     if (customizations != null) {
       if (customizations is List) {
         // If customizations is a list, convert to map
@@ -121,15 +124,21 @@ class OrderItem {
     }
 
     return OrderItem(
-      id: json['id'] ?? json['productId'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['lineId'] ?? json['id'] ?? json['productId'] ?? json['itemId'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
       dishId: json['dish_id'] ?? json['productId'] ?? json['id'] ?? '',
-      productId: json['product_id'] ?? json['productId'] ?? json['dish_id'] ?? json['id'] ?? '',
+      productId: json['product_id'] ?? json['productId'] ?? json['itemId'] ?? json['dish_id'] ?? json['id'] ?? '',
       dishName: json['dish_name'] ?? json['productName'] ?? json['name'] ?? 'طبق غير محدد',
       dishDescription: json['dish_description'] ?? json['description'],
       dishImage: json['dish_image'] ?? json['image'],
-      unitPrice: (json['unit_price'] ?? json['price'] ?? 0 as num).toDouble(),
+      unitPrice: json['unit_price'] != null || json['price'] != null
+          ? (json['unit_price'] ?? json['price'] as num).toDouble()
+          : ((json['unitPrice'] ?? 0) as num).toDouble() / 1000,
       quantity: (json['quantity'] ?? 1) as int,
-      totalPrice: (json['total_price'] ?? json['totalPrice'] ?? json['price'] ?? 0 as num).toDouble(),
+      totalPrice: (json['total_price'] ?? json['totalPrice']) != null
+          ? ((json['total_price'] ?? json['totalPrice']) as num).toDouble()
+          : json['unitPrice'] != null && json['unit_price'] == null && json['price'] == null
+              ? (json['unitPrice'] as num).toDouble() / 1000 * ((json['quantity'] ?? 1) as num)
+              : ((json['price'] ?? 0) as num).toDouble(),
       selectedOptions: parsedOptions,
       specialInstructions: json['special_instructions'] ?? json['specialInstructions'],
     );
@@ -182,12 +191,16 @@ class OrderModel {
   final List<OrderItem> items;
   final double subtotal;
   final double deliveryFee;
+  final double serviceFee;
+  final double tip;
   final double tax;
   final double discount;
   final double total;
   final OrderStatus status;
+  final String? returnStatus;
   final PaymentMethod paymentMethod;
   final String? paymentStatus;
+  final bool driverSearchUnavailable;
   final DetailedAddress deliveryAddress;
   final String? deliveryInstructions;
   final String? customerPhone;
@@ -195,10 +208,16 @@ class OrderModel {
   final String? customerEmail;
   final bool isGuestOrder;
   final DateTime createdAt;
+  final DateTime? updatedAt;
   final DateTime? confirmedAt;
   final DateTime? estimatedDeliveryTime;
+  final Map<String, dynamic>? deliveryEstimate;
+  final DateTime? estimatedReadyAt;
+  final int? estimatedPreparationTime;
   final DateTime? actualDeliveryTime;
   final String? cancelReason;
+  final String? cancellationStatus;
+  final String? cancellationCaseId;
   final Map<String, dynamic>? metadata;
   
   // معلومات السائق
@@ -217,12 +236,16 @@ class OrderModel {
     required this.items,
     required this.subtotal,
     required this.deliveryFee,
+    this.serviceFee = 0,
+    this.tip = 0,
     required this.tax,
     required this.discount,
     required this.total,
     required this.status,
+    this.returnStatus,
     required this.paymentMethod,
     this.paymentStatus,
+    this.driverSearchUnavailable = false,
     required this.deliveryAddress,
     this.deliveryInstructions,
     this.customerPhone,
@@ -230,10 +253,16 @@ class OrderModel {
     this.customerEmail,
     this.isGuestOrder = false,
     required this.createdAt,
+    this.updatedAt,
     this.confirmedAt,
     this.estimatedDeliveryTime,
+    this.deliveryEstimate,
+    this.estimatedReadyAt,
+    this.estimatedPreparationTime,
     this.actualDeliveryTime,
     this.cancelReason,
+    this.cancellationStatus,
+    this.cancellationCaseId,
     this.metadata,
     this.driverId,
     this.driverName,
@@ -269,6 +298,8 @@ class OrderModel {
       deliveryFee: pricing != null 
           ? (pricing['deliveryFee'] ?? 0 as num).toDouble() / 1000  // Convert from fils to IQD
           : (json['delivery_fee'] ?? json['deliveryFee'] ?? 0 as num).toDouble(),
+      serviceFee: pricing != null ? ((pricing['serviceFee'] ?? 0) as num).toDouble() / 1000 : ((json['service_fee'] ?? 0) as num).toDouble(),
+      tip: pricing != null ? ((pricing['tip'] ?? 0) as num).toDouble() / 1000 : ((json['tip'] ?? 0) as num).toDouble(),
       tax: pricing != null 
           ? (pricing['tax'] ?? 0 as num).toDouble() / 1000  // Convert from fils to IQD
           : (json['tax'] ?? 0 as num).toDouble(),
@@ -279,14 +310,19 @@ class OrderModel {
           ? (pricing['total'] ?? 0 as num).toDouble() / 1000  // Convert from fils to IQD
           : (json['total'] ?? json['totalAmount'] ?? 0 as num).toDouble(),
       status: OrderStatus.fromString(json['status'] ?? 'pending'),
+      returnStatus: json['returnStatus']?.toString(),
       paymentMethod: PaymentMethod.fromString(json['payment_method'] ?? json['paymentMethod'] ?? 'cash'),
       paymentStatus: json['payment_status'] ?? json['paymentStatus'],
+      driverSearchUnavailable: json['driverSearchUnavailable'] == true &&
+          (json['driver_id'] ?? json['driverId'] ?? json['assignedDriverId']) == null &&
+          ['ready_for_pickup', 'ready', 'reassigning'].contains(json['status']),
       deliveryAddress: DetailedAddress.fromJson(json['deliveryAddress'] ?? json['delivery_address'] ?? {}),
       deliveryInstructions: json['delivery_instructions'] ?? json['deliveryInstructions'],
       customerPhone: json['customer_phone'] ?? json['customerPhone'],
       customerName: json['customer_name'] ?? json['customerName'],
       customerEmail: json['customer_email'] ?? json['customerEmail'],
       isGuestOrder: json['is_guest_order'] ?? json['isGuestOrder'] ?? false,
+      updatedAt: DateTime.tryParse((json['updatedAt']??json['updated_at']??'').toString()),
       createdAt: DateTime.tryParse(json['created_at'] ?? json['createdAt'] ?? json['orderDate'] ?? '') ?? DateTime.now(),
       confirmedAt: (json['confirmed_at'] ?? json['confirmedAt']) != null
           ? DateTime.tryParse(json['confirmed_at'] ?? json['confirmedAt'])
@@ -294,10 +330,15 @@ class OrderModel {
       estimatedDeliveryTime: (json['estimated_delivery_time'] ?? json['estimatedDeliveryTime']) != null
           ? DateTime.tryParse(json['estimated_delivery_time'] ?? json['estimatedDeliveryTime'])
           : null,
+      deliveryEstimate: json['deliveryEstimate'] is Map ? Map<String,dynamic>.from(json['deliveryEstimate']) : null,
+      estimatedReadyAt: DateTime.tryParse(json['estimatedReadyAt']?.toString() ?? ''),
+      estimatedPreparationTime: (json['estimatedPreparationTime'] as num?)?.toInt(),
       actualDeliveryTime: (json['actual_delivery_time'] ?? json['actualDeliveryTime']) != null
           ? DateTime.tryParse(json['actual_delivery_time'] ?? json['actualDeliveryTime'])
           : null,
       cancelReason: json['cancel_reason'] ?? json['cancelReason'],
+      cancellationStatus: json['exceptionCancellation'] is Map ? json['exceptionCancellation']['state'] as String? : null,
+      cancellationCaseId: json['exceptionCancellation'] is Map ? json['exceptionCancellation']['caseId'] as String? : null,
       metadata: json['metadata'] as Map<String, dynamic>?,
       driverId: json['driver_id'] ?? json['driverId'],
       driverName: json['driver_name'] ?? json['driverName'] ?? json['name'],
@@ -322,13 +363,17 @@ class OrderModel {
       'user_id': userId,
       'store_id': storeId,
       'store_name': storeName,
+      'driverSearchUnavailable': driverSearchUnavailable,
       'items': items.map((item) => item.toJson()).toList(),
       'subtotal': subtotal,
       'delivery_fee': deliveryFee,
+      'service_fee': serviceFee,
+      'tip': tip,
       'tax': tax,
       'discount': discount,
       'total': total,
       'status': status.value,
+      'returnStatus': returnStatus,
       'payment_method': paymentMethod.value,
       'payment_status': paymentStatus,
       'delivery_address': deliveryAddress.toJson(),
@@ -340,8 +385,12 @@ class OrderModel {
       'created_at': createdAt.toIso8601String(),
       'confirmed_at': confirmedAt?.toIso8601String(),
       'estimated_delivery_time': estimatedDeliveryTime?.toIso8601String(),
+      'deliveryEstimate': deliveryEstimate,
+      'estimatedReadyAt': estimatedReadyAt?.toIso8601String(),
+      'estimatedPreparationTime': estimatedPreparationTime,
       'actual_delivery_time': actualDeliveryTime?.toIso8601String(),
       'cancel_reason': cancelReason,
+      if(cancellationStatus != null) 'exceptionCancellation': {'state':cancellationStatus,'caseId':cancellationCaseId},
       'metadata': metadata,
     };
   }
@@ -395,13 +444,14 @@ class OrderModel {
       customerPhone: customerPhone,
       customerName: customerName,
       createdAt: now,
-      estimatedDeliveryTime: now.add(const Duration(minutes: 30)),
+      estimatedDeliveryTime: null,
     );
   }
 
   /// نسخة محدثة من الطلب
   OrderModel copyWith({
     OrderStatus? status,
+    String? returnStatus,
     String? paymentStatus,
     DateTime? confirmedAt,
     DateTime? estimatedDeliveryTime,
@@ -418,28 +468,45 @@ class OrderModel {
       items: items,
       subtotal: subtotal,
       deliveryFee: deliveryFee,
+      serviceFee: serviceFee,
+      tip: tip,
       tax: tax,
       discount: discount,
       total: total,
       status: status ?? this.status,
+      returnStatus: returnStatus ?? this.returnStatus,
       paymentMethod: paymentMethod,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      driverSearchUnavailable: driverSearchUnavailable,
       deliveryAddress: deliveryAddress,
       deliveryInstructions: deliveryInstructions,
       customerPhone: customerPhone,
       customerName: customerName,
       createdAt: createdAt,
+      updatedAt: updatedAt,
       confirmedAt: confirmedAt ?? this.confirmedAt,
       estimatedDeliveryTime: estimatedDeliveryTime ?? this.estimatedDeliveryTime,
+      deliveryEstimate: deliveryEstimate,
+      estimatedReadyAt: estimatedReadyAt,
+      estimatedPreparationTime: estimatedPreparationTime,
+      customerEmail: customerEmail,
+      isGuestOrder: isGuestOrder,
+      driverId: driverId,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      vehicleType: vehicleType,
+      vehiclePlate: vehiclePlate,
       actualDeliveryTime: actualDeliveryTime ?? this.actualDeliveryTime,
       cancelReason: cancelReason ?? this.cancelReason,
+      cancellationStatus: cancellationStatus,
+      cancellationCaseId: cancellationCaseId,
       metadata: metadata ?? this.metadata,
     );
   }
 
   /// التحقق من إمكانية إلغاء الطلب
   bool get canBeCancelled {
-    return status == OrderStatus.pending || status == OrderStatus.confirmed;
+    return [OrderStatus.pending,OrderStatus.confirmed,OrderStatus.preparing,OrderStatus.ready,OrderStatus.readyForPickup,OrderStatus.reassigning,OrderStatus.assigned,OrderStatus.accepted,OrderStatus.headingToStore,OrderStatus.arrivedAtStore].contains(status);
   }
 
   /// التحقق من إمكانية تتبع الطلب

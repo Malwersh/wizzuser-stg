@@ -97,13 +97,14 @@ var handler = function (event) { return __awaiter(void 0, void 0, void 0, functi
                             }),
                         }];
                 }
-                businessType = businessResult.Item.business_type || 'restaurant';
+                businessType = businessResult.Item.businessType || businessResult.Item.business_type || 'restaurant';
                 console.log("Business type: ".concat(businessType));
                 categoriesCommand = new lib_dynamodb_1.ScanCommand({
                     TableName: CATEGORIES_TABLE,
-                    FilterExpression: 'businessType = :businessType',
+                    FilterExpression: '(attribute_not_exists(businessType) OR businessType = :businessType) AND (attribute_not_exists(isActive) OR isActive = :active)',
                     ExpressionAttributeValues: {
                         ':businessType': businessType,
+                        ':active': true,
                     },
                 });
                 return [4 /*yield*/, docClient.send(categoriesCommand)];
@@ -125,10 +126,10 @@ var handler = function (event) { return __awaiter(void 0, void 0, void 0, functi
                     category_id: item.categoryId,
                     categoryId: item.categoryId,
                     id: item.categoryId,
-                    name_ar: item.name_ar || item.name,
-                    nameAr: item.name_ar || item.name, // إضافة للتوافق
-                    name_en: item.name || item.name_ar,
-                    nameEn: item.name || item.name_ar, // إضافة للتوافق
+                    name_ar: item.name_ar || item.categoryName || item.name,
+                    nameAr: item.name_ar || item.categoryName || item.name, // إضافة للتوافق
+                    name_en: item.categoryNameEn || item.name || item.name_ar || item.categoryName,
+                    nameEn: item.categoryNameEn || item.name || item.name_ar || item.categoryName, // إضافة للتوافق
                     description: item.description || '',
                     business_type: item.businessType,
                     businessType: item.businessType,

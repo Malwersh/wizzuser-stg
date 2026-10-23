@@ -1,3 +1,4 @@
+import 'storefront_pricing.dart';
 // lib/services/business_service.dart
 
 import 'dart:convert';
@@ -10,6 +11,13 @@ import 'package:foodapp_user/services/session_service.dart';
 import '../config/api_config.dart';
 
 class BusinessService {
+  static BusinessModel parseBusiness(dynamic value) {
+    final data=Map<String,dynamic>.from(value as Map);
+    final business=BusinessModel.fromJson(data);
+    StorefrontPricing.instance.seedBusiness(business.id,business.metadata ?? data);
+    return business;
+  }
+
   static String get _baseUrl {
     final url = ApiConfig.baseUrl;
     if (url.isEmpty) {
@@ -30,7 +38,7 @@ class BusinessService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true && data['business'] != null) {
-          return BusinessModel.fromJson(data['business']);
+          return parseBusiness(data['business']);
         }
       }
       
@@ -213,10 +221,6 @@ class BusinessService {
               // 2) fallback: اسم الفئة الحقيقي عبر categoryId
               categoryName = categoryNameById[rawCategoryId]!;
               productsWithCategory++;
-            } else if (rawCategoryId.isNotEmpty && !_looksLikeOpaqueId(rawCategoryId)) {
-              // 3) fallback أخير للمعرّفات القابلة للقراءة فقط
-              categoryName = _formatCategoryId(rawCategoryId);
-              productsWithCategory++;
             } else {
               // 4) إذا كان المعرّف UUID/opaque أو مفقوداً، نستخدم اسم آمن للعرض.
               categoryName = 'منتجات أخرى';
@@ -290,22 +294,6 @@ class BusinessService {
     };
   }
 
-  /// تنسيق categoryId ليكون أكثر قابلية للقراءة
-  /// مثال: "burgers" -> "Burgers", "main_dishes" -> "Main Dishes"
-  static String _formatCategoryId(String categoryId) {
-    if (categoryId.isEmpty) return 'منتجات أخرى';
-    
-    // استبدال الشرطات السفلية بمسافات
-    String formatted = categoryId.replaceAll('_', ' ').replaceAll('-', ' ');
-    
-    // تحويل أول حرف من كل كلمة إلى حرف كبير
-    formatted = formatted.split(' ')
-        .map((word) => word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1).toLowerCase())
-        .join(' ');
-    
-    return formatted;
-  }
-
   /// التحقق إن كان النص يشبه معرفاً خاماً (UUID أو token طويل) وليس اسماً مناسباً للعرض.
   static bool _looksLikeOpaqueId(String value) {
     final normalized = value.trim();
@@ -372,7 +360,7 @@ class BusinessService {
         
         if (data['success'] == true && data['businesses'] != null) {
           final businesses = (data['businesses'] as List)
-              .map((business) => BusinessModel.fromJson(business))
+              .map((business) => parseBusiness(business))
               .toList();
           
           // فحص أول business
@@ -438,7 +426,7 @@ class BusinessService {
         
         if (data['success'] == true && data['businesses'] != null) {
           final businesses = (data['businesses'] as List)
-              .map((business) => BusinessModel.fromJson(business))
+              .map((business) => parseBusiness(business))
               .toList();
           
           return BusinessListResponse(

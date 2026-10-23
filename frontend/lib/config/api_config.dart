@@ -25,6 +25,12 @@ class ApiConfig {
   static const String cognitoRegion =
     String.fromEnvironment('COGNITO_REGION', defaultValue: 'us-east-1');
   
+  // Standard staging release; server authorization and agreement eligibility still apply.
+  static const bool generalStagingFinance = environment == 'staging' &&
+      bool.fromEnvironment('FINANCE_GENERAL_RELEASE_ENABLED', defaultValue: true);
+  static const bool commercialPricingEnabled = bool.fromEnvironment('COMMERCIAL_PRICING_ENABLED', defaultValue: generalStagingFinance);
+  static const bool deliveryQuotesEnabled = bool.fromEnvironment('DELIVERY_QUOTES_ENABLED', defaultValue: generalStagingFinance);
+
   // 📡 API Endpoints
   static const String healthEndpoint = '/health';
   static const String authEndpoint = '/auth';

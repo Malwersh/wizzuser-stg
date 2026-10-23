@@ -17,6 +17,11 @@ class EnhancedRestaurantCard extends StatefulWidget {
   final bool showFavoriteButton;
   final bool showStatusBadge;
 
+  /// 🔥 وسم Hero لصورة المطعم (للانتقال المتحرك إلى صفحة التفاصيل).
+  /// null/فارغ = بدون Hero. استخدم 'store_image_${store.id}' في القائمة الرئيسية فقط
+  /// لتجنب تكرار الوسم عند ظهور المطعم في أكثر من قسم.
+  final String? heroTag;
+
   const EnhancedRestaurantCard({
     super.key,
     required this.store,
@@ -24,6 +29,7 @@ class EnhancedRestaurantCard extends StatefulWidget {
     this.isCompact = false,
     this.showFavoriteButton = true,
     this.showStatusBadge = true,
+    this.heroTag,
   });
 
   @override
@@ -660,6 +666,45 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     return SizedBox.shrink();
   }
 
+  /// صورة المطعم مع دعم اختياري لـ Hero transition
+  Widget _buildCardImage({
+    required double width,
+    required double height,
+    required BorderRadius borderRadius,
+    double? iconSize,
+  }) {
+    final image = widget.store.image.isNotEmpty && widget.store.image.contains('://')
+        ? Image.network(
+            widget.store.image,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.grey[200],
+                child: Icon(Icons.restaurant, size: iconSize ?? 40, color: Colors.grey),
+              );
+            },
+          )
+        : Container(
+            color: Colors.grey[200],
+            child: Icon(Icons.restaurant, size: iconSize ?? 40, color: Colors.grey),
+          );
+
+    final clipped = ClipRRect(
+      borderRadius: borderRadius,
+      child: image,
+    );
+
+    final heroTag = widget.heroTag;
+    if (heroTag == null || heroTag.isEmpty) return clipped;
+
+    return Hero(
+      tag: heroTag,
+      child: clipped,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.isCompact) {
@@ -699,25 +744,10 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                         color: Colors.grey[200],
                       ),
-                      child: ClipRRect(
+                      child: _buildCardImage(
+                        width: double.infinity,
+                        height: 100,
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                        child: widget.store.image.isNotEmpty && widget.store.image.contains('://')
-                            ? Image.network(
-                                widget.store.image,
-                                width: double.infinity,
-                                height: 100,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    color: Colors.grey[200],
-                                    child: const Icon(Icons.restaurant, size: 40, color: Colors.grey),
-                                  );
-                                },
-                              )
-                            : Container(
-                                color: Colors.grey[200],
-                                child: const Icon(Icons.restaurant, size: 40, color: Colors.grey),
-                              ),
                       ),
                     ),
                     // Favorite button
@@ -904,23 +934,11 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                       borderRadius: BorderRadius.circular(8),
                       color: Colors.grey[200],
                     ),
-                    child: ClipRRect(
+                    child: _buildCardImage(
+                      width: 60,
+                      height: 60,
                       borderRadius: BorderRadius.circular(8),
-                      child: widget.store.image.isNotEmpty && widget.store.image.contains('://')
-                          ? Image.network(
-                              widget.store.image,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey[200],
-                                  child: const Icon(Icons.restaurant, size: 30, color: Colors.grey),
-                                );
-                              },
-                            )
-                          : Container(
-                              color: Colors.grey[200],
-                              child: const Icon(Icons.restaurant, size: 30, color: Colors.grey),
-                            ),
+                      iconSize: 30,
                     ),
                   ),
                   const SizedBox(width: 12),

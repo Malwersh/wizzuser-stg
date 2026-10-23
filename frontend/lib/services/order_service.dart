@@ -1,11 +1,18 @@
 // lib/services/order_service.dart
 
 import 'dart:convert';
+import 'delivery_quote_checkout.dart';
+import 'pending_offer.dart';
+import 'cancellation_messages.dart';
+import 'discount_item_policy.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
 import '../models/address_model.dart';
+import '../models/store_discount.dart';
+import '../models/platform_promo.dart';
 import "session_service.dart";
+import 'live_activity_service.dart';
 import '../config/api_config.dart';
 
 class OrderService extends ChangeNotifier {
@@ -21,7 +28,7 @@ class OrderService extends ChangeNotifier {
     }
     return url;
   }
-  
+
   List<OrderModel> _orders = [];
   OrderModel? _currentOrder;
   bool _isLoading = false;
@@ -43,10 +50,17 @@ class OrderService extends ChangeNotifier {
     required DetailedAddress deliveryAddress,
     required PaymentMethod paymentMethod,
     double deliveryFee = 10.0,
+    int driverTipIqd = 0,
+    DeliveryQuoteCheckout? quoteCheckout,
+    Future<bool> Function(Map<String, dynamic>)? approveCommercial,
+    Map<String, dynamic>? initialCommercialPreview,
     double taxRate = 0.0,
     double discount = 0.0,
     String? deliveryInstructions,
     String? promoCode,
+    String? platformDiscountId,
+    String? deliveryBenefitId,
+    String? discountId,
     // معلومات المستخدم الإضافية
     String? userId, // null للضيوف
     String? customerName,
@@ -54,10 +68,25 @@ class OrderService extends ChangeNotifier {
     String? customerEmail,
   }) async {
     try {
+      if (driverTipIqd < 0 || driverTipIqd > 1000000000) {
+        throw ArgumentError.value(driverTipIqd, 'driverTipIqd');
+      }
       _setLoading(true);
       _clearError();
 
       // التحقق من المعلومات المطلوبة
+      if (quoteCheckout?.pending != true &&
+          (quoteCheckout != null ||
+              discountId?.isNotEmpty == true ||
+              promoCode?.isNotEmpty == true ||
+              platformDiscountId?.isNotEmpty == true) &&
+          hasDiscountCustomizations(cartItems)) {
+        return {
+          'success': false,
+          'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
+          'message': unsupportedDiscountItemsMessage,
+        };
+      }
       if (customerName == null || customerName.isEmpty) {
         throw Exception('اسم العميل مطلوب');
       }
@@ -76,7 +105,12 @@ class OrderService extends ChangeNotifier {
 
       final calculatedSubtotal = calculateSubtotal();
       final calculatedTax = calculatedSubtotal * taxRate;
-      final calculatedTotal = calculatedSubtotal + deliveryFee + calculatedTax - discount;
+      final calculatedTotal =
+          calculatedSubtotal +
+          deliveryFee +
+          calculatedTax +
+          driverTipIqd -
+          discount;
 
       print('OrderService: Local calculations:');
       print('- Subtotal: $calculatedSubtotal');
@@ -87,19 +121,21 @@ class OrderService extends ChangeNotifier {
 
       // التأكد من أن العنوان يحتوي على fullAddress صحيح
       String ensureFullAddress(DetailedAddress address) {
-        if (address.fullAddress.isNotEmpty && 
-            address.fullAddress != 'عنوان غير محدد' && 
+        if (address.fullAddress.isNotEmpty &&
+            address.fullAddress != 'عنوان غير محدد' &&
             address.fullAddress.trim().isNotEmpty) {
           return address.fullAddress;
         }
 
         // إعادة بناء العنوان من المكونات
         List<String> parts = [];
-        
-        if (address.detailedAddress != null && address.detailedAddress!.trim().isNotEmpty) {
+
+        if (address.detailedAddress != null &&
+            address.detailedAddress!.trim().isNotEmpty) {
           parts.add(address.detailedAddress!.trim());
         }
-        if (address.neighborhood.isNotEmpty && address.neighborhood != 'غير محدد') {
+        if (address.neighborhood.isNotEmpty &&
+            address.neighborhood != 'غير محدد') {
           parts.add(address.neighborhood);
         }
         if (address.district.isNotEmpty && address.district != 'غير محدد') {
@@ -112,7 +148,8 @@ class OrderService extends ChangeNotifier {
           parts.add('قرب ${address.landmark}');
         }
 
-        final rebuiltAddress = parts.isNotEmpty ? parts.join('، ') : address.name;
+        final rebuiltAddress =
+            parts.isNotEmpty ? parts.join('، ') : address.name;
         print('OrderService: Rebuilt address: $rebuiltAddress');
         return rebuiltAddress;
       }
@@ -126,17 +163,31 @@ class OrderService extends ChangeNotifier {
       final orderData = {
         'storeId': storeId,
         'storeName': storeName,
-        'storeAddress': storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
+        'storeAddress':
+            storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
         'storeImage': storeImage, // صورة المطعم للسائقين
-        'items': cartItems.map((item) => {
-          'id': item['id'],
-          'name': item['name'],
-          'price': item['price'].toString(),
-          'quantity': item['quantity'],
-          'imageUrl': item['imageUrl'] ?? item['image'] ?? '', // صورة الطبق للسائقين
-          'customizations': item['selectedOptions'] ?? [],
-          'specialInstructions': item['special_instructions'] ?? '',
-        }).toList(),
+        'items':
+            cartItems
+                .map(
+                  (item) => {
+                    'id': item['id'],
+                    'name': item['name'],
+                    'price': item['price'].toString(),
+                    'quantity': item['quantity'],
+                    'imageUrl':
+                        item['imageUrl'] ??
+                        item['image'] ??
+                        '', // صورة الطبق للسائقين
+                    'customizations':
+                        item['selected_options'] ??
+                        item['selectedOptions'] ??
+                        item['customizations'] ??
+                        [],
+                    ...discountSelectionFields(item),
+                    'specialInstructions': item['special_instructions'] ?? '',
+                  },
+                )
+                .toList(),
         'deliveryAddress': {
           'id': deliveryAddress.id,
           'fullAddress': validatedFullAddress,
@@ -155,10 +206,20 @@ class OrderService extends ChangeNotifier {
         },
         'paymentMethod': paymentMethod.value.toLowerCase(),
         'deliveryFee': deliveryFee,
+        'tip': driverTipIqd,
         'taxRate': taxRate,
         'discount': discount,
         'deliveryInstructions': deliveryInstructions,
         'promoCode': promoCode,
+        if (platformDiscountId != null)
+          'platformDiscountId': platformDiscountId,
+        if (deliveryBenefitId != null) 'deliveryBenefitId': deliveryBenefitId,
+        'discountId': discountId,
+        'offerSlideId':
+            PendingOffer.current?.merchantId == storeId &&
+                    PendingOffer.current?.slideId.isNotEmpty == true
+                ? PendingOffer.current?.slideId
+                : null,
         'userId': userId,
         'customerName': customerName,
         'customerPhone': customerPhone,
@@ -178,30 +239,53 @@ class OrderService extends ChangeNotifier {
       print('- Order Data: ${jsonEncode(orderData)}');
 
       // إرسال الطلب للخادم
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(orderData),
-      );
+      final response =
+          quoteCheckout != null
+              ? await quoteCheckout.confirm(
+                orderData,
+                approveCommercial: approveCommercial,
+                initialCommercialPreview: initialCommercialPreview,
+              )
+              : await http.post(
+                Uri.parse(apiUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  if (SessionService().accessToken?.isNotEmpty == true)
+                    'Authorization': 'Bearer ${SessionService().accessToken}',
+                },
+                body: jsonEncode(orderData),
+              );
 
       print('OrderService: Response status: ${response.statusCode}');
       print('OrderService: Response body: ${response.body}');
 
       final responseData = jsonDecode(response.body);
 
-
       if (response.statusCode == 201 || response.statusCode == 200) {
         // نجح إنشاء الطلب
         if (responseData['success'] == true && responseData['order'] != null) {
           // تحويل البيانات المرجعة إلى OrderModel
           final backendOrder = responseData['order'];
-          
+          if (quoteCheckout != null) {
+            // Quoted responses retain minor-unit pricing; never substitute local totals.
+            final createdOrder = OrderModel.fromJson(
+              Map<String, dynamic>.from(backendOrder),
+            );
+            _currentOrder = createdOrder;
+            notifyListeners();
+            return {
+              'success': true,
+              'order': createdOrder,
+              'message': 'تم تأكيد الطلب',
+            };
+          }
+
           // استخدام قيم الخادم أو الحسابات المحلية كنسخة احتياطية
           final backendSubtotal = backendOrder['subtotal']?.toDouble();
-          final backendTotal = backendOrder['totalAmount']?.toDouble() ?? backendOrder['total']?.toDouble();
+          final backendTotal =
+              backendOrder['totalAmount']?.toDouble() ??
+              backendOrder['total']?.toDouble();
           final backendDeliveryFee = backendOrder['deliveryFee']?.toDouble();
           final backendTax = backendOrder['tax']?.toDouble();
           final backendDiscount = backendOrder['discount']?.toDouble();
@@ -225,25 +309,58 @@ class OrderService extends ChangeNotifier {
             userId: userId ?? 'guest',
             storeId: storeId,
             storeName: storeName,
-            items: cartItems.map((item) => OrderItem(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              dishId: item['id'] ?? '',
-              productId: item['id'] ?? '',
-              dishName: item['name'] ?? '',
-              dishDescription: item['description'] ?? '',
-              dishImage: item['image'] ?? '',
-              unitPrice: double.tryParse(item['price'].toString()) ?? 0.0,
-              quantity: item['quantity'] ?? 1,
-              totalPrice: (double.tryParse(item['price'].toString()) ?? 0.0) * (item['quantity'] ?? 1),
-              selectedOptions: item['selectedOptions'] != null 
-                  ? Map<String, List<String>>.from(
-                      (item['selectedOptions'] as Map<String, dynamic>).map(
-                        (k, v) => MapEntry(k, List<String>.from(v is List ? v : [v.toString()])),
-                      ),
-                    )
-                  : null,
-              specialInstructions: item['special_instructions'] ?? '',
-            )).toList(),
+            items:
+                backendOrder['items'] is List &&
+                        (backendOrder['items'] as List).isNotEmpty
+                    ? (backendOrder['items'] as List)
+                        .map(
+                          (item) => OrderItem.fromJson(
+                            Map<String, dynamic>.from(item),
+                          ),
+                        )
+                        .toList()
+                    : cartItems
+                        .map(
+                          (item) => OrderItem(
+                            id:
+                                DateTime.now().millisecondsSinceEpoch
+                                    .toString(),
+                            dishId: item['id'] ?? '',
+                            productId: item['id'] ?? '',
+                            dishName: item['name'] ?? '',
+                            dishDescription: item['description'] ?? '',
+                            dishImage: item['image'] ?? '',
+                            unitPrice:
+                                double.tryParse(item['price'].toString()) ??
+                                0.0,
+                            quantity: item['quantity'] ?? 1,
+                            totalPrice:
+                                (double.tryParse(item['price'].toString()) ??
+                                    0.0) *
+                                (item['quantity'] ?? 1),
+                            selectedOptions:
+                                (item['selected_options'] ??
+                                            item['selectedOptions']) !=
+                                        null
+                                    ? Map<String, List<String>>.from(
+                                      ((item['selected_options'] ??
+                                                  item['selectedOptions'])
+                                              as Map<String, dynamic>)
+                                          .map(
+                                            (k, v) => MapEntry(
+                                              k,
+                                              List<String>.from(
+                                                v is List ? v : [v.toString()],
+                                              ),
+                                            ),
+                                          ),
+                                    )
+                                    : null,
+                            specialInstructions:
+                                item['special_instructions'] ?? '',
+                          ),
+                        )
+                        .toList(),
             subtotal: backendSubtotal ?? calculatedSubtotal,
             deliveryFee: backendDeliveryFee ?? deliveryFee,
             tax: backendTax ?? calculatedTax,
@@ -257,32 +374,61 @@ class OrderService extends ChangeNotifier {
             customerName: customerName,
             customerEmail: customerEmail,
             createdAt: DateTime.now(),
-            estimatedDeliveryTime: backendOrder['estimatedDeliveryTime'] != null 
-                ? DateTime.tryParse(backendOrder['estimatedDeliveryTime'])
-                : DateTime.now().add(const Duration(minutes: 45)),
+            estimatedDeliveryTime:
+                backendOrder['estimatedDeliveryTime'] != null
+                    ? DateTime.tryParse(backendOrder['estimatedDeliveryTime'])
+                    : DateTime.now().add(const Duration(minutes: 45)),
           );
-          
+
           _currentOrder = createdOrder;
           _orders.insert(0, createdOrder);
-          
+
           notifyListeners();
-          
+
+          // Persist guest token for guest orders (used by push registration + Live Activity)
+          final guestToken =
+              responseData['guestToken'] ?? backendOrder['guestToken'];
+          if (guestToken != null && guestToken.toString().isNotEmpty) {
+            LiveActivityService.setGuestToken(guestToken.toString());
+          }
+
+          // Start iOS Live Activity for this order
+          LiveActivityService.startForOrder(createdOrder);
+
           print('OrderService: Order created successfully:');
           print('- Order ID: ${createdOrder.id}');
           print('- Order Total: ${createdOrder.total}');
           print('- Address: ${createdOrder.deliveryAddress.fullAddress}');
-          
+
           return {
             'success': true,
             'order': createdOrder,
-            'message': 'تم إنشاء الطلب بنجاح'
+            'message': 'تم إنشاء الطلب بنجاح',
           };
         } else {
           throw Exception('استجابة غير صالحة من الخادم');
         }
+      } else if (responseData['code'] is String) {
+        return {
+          'success': false,
+          'code': responseData['code'],
+          'statusCode': response.statusCode,
+          'message':
+              quoteCheckout?.pending == true
+                  ? 'لم تتأكد نتيجة الطلب؛ اضغط متابعة التأكيد لاستعادة النتيجة نفسها'
+                  : responseData['code'] ==
+                      'CASH_TOTAL_DENOMINATION_UNSUPPORTED'
+                  ? 'تعذر تأكيد الدفع النقدي لأن الإجمالي ليس من مضاعفات 250 د.ع. يجب تصحيح أسعار المنتجات أو الرسوم ثم مراجعة الإجمالي.'
+                  : responseData['code'] == 'OFFER_NO_SAVINGS'
+                  ? _offerMessage(responseData['code'])
+                  : responseData['code'] == 'UNSUPPORTED_DISCOUNT_ITEMS'
+                  ? unsupportedDiscountItemsMessage
+                  : 'تعذر تأكيد الطلب بهذا العرض؛ حدّث سعر التوصيل ثم أكد مجددًا',
+        };
       } else if (response.statusCode == 409) {
         // لديك طلب نشط بالفعل (Conflict) — سياسة الطلب الواحد النشط
-        final errorMessage = responseData['error'] ??
+        final errorMessage =
+            responseData['error'] ??
             responseData['message'] ??
             'لديك طلب نشط بالفعل. يجب انتظار إتمام الطلب الحالي قبل إنشاء طلب جديد.';
         print('OrderService: Active order conflict (409): $errorMessage');
@@ -296,17 +442,31 @@ class OrderService extends ChangeNotifier {
         };
       } else {
         // فشل في إنشاء الطلب
-        final errorMessage = responseData['error'] ??
+        final errorMessage =
+            responseData['error'] ??
             responseData['message'] ??
             'فشل في إنشاء الطلب';
         throw Exception(errorMessage);
       }
     } catch (e) {
+      if (e is CommercialReviewCancelled)
+        return {'success': false, 'cancelled': true};
+      if (e is ActiveCheckoutOrder) {
+        return {
+          'success': false,
+          'statusCode': 409,
+          'errorType': 'ACTIVE_ORDER_CONFLICT',
+          'message':
+              'لديك طلب جارٍ. أكمله أو ألغِه من صفحة طلباتك قبل إنشاء طلب جديد.',
+          'activeOrderDetails': e.details,
+        };
+      }
       print('OrderService: Error creating order: $e');
       _setError('خطأ في إنشاء الطلب: ${e.toString()}');
       return {
         'success': false,
-        'message': e.toString(),
+        'message':
+            e is StateError ? e.message : 'تعذر إكمال العملية؛ أعد المحاولة',
       };
     } finally {
       _setLoading(false);
@@ -346,8 +506,10 @@ class OrderService extends ChangeNotifier {
         queryParams['status'] = status.value;
       }
 
-      final uri = Uri.parse('$_baseUrl/orders').replace(queryParameters: queryParams);
-      
+      final uri = Uri.parse(
+        '$_baseUrl/orders',
+      ).replace(queryParameters: queryParams);
+
       final response = await http.get(
         uri,
         headers: {
@@ -360,14 +522,17 @@ class OrderService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final ordersData = responseData['data'] as List;
-        final orders = ordersData.map((orderJson) => OrderModel.fromJson(orderJson)).toList();
-        
+        final orders =
+            ordersData
+                .map((orderJson) => OrderModel.fromJson(orderJson))
+                .toList();
+
         if (page == 1) {
           _orders = orders;
         } else {
           _orders.addAll(orders);
         }
-        
+
         notifyListeners();
       } else {
         final errorMessage = responseData['message'] ?? 'فشل في جلب الطلبات';
@@ -409,17 +574,18 @@ class OrderService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final order = OrderModel.fromJson(responseData['data']);
-        
+
         // تحديث الطلب في القائمة إذا كان موجوداً
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
           _orders[index] = order;
           notifyListeners();
         }
-        
+
         return order;
       } else {
-        final errorMessage = responseData['message'] ?? 'فشل في جلب تفاصيل الطلب';
+        final errorMessage =
+            responseData['message'] ?? 'فشل في جلب تفاصيل الطلب';
         throw Exception(errorMessage);
       }
     } catch (e) {
@@ -453,14 +619,12 @@ class OrderService extends ChangeNotifier {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'reason': reason ?? 'Order cancelled by user',
-        }),
+        body: jsonEncode({'reason': reason ?? 'Order cancelled by user'}),
       );
 
       final responseData = jsonDecode(response.body);
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 && responseData['success'] == true) {
         // تحديث الطلب في القائمة
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
@@ -469,11 +633,15 @@ class OrderService extends ChangeNotifier {
             cancelReason: reason ?? 'Order cancelled by user',
           );
           notifyListeners();
+          LiveActivityService.syncOrder(_orders[index]);
         }
-        
+
         return true;
       } else {
-        final errorMessage = responseData['message'] ?? 'فشل في إلغاء الطلب';
+        final errorMessage = cancellationMessage(
+          responseData['code'],
+          fallback: responseData['message'],
+        );
         throw Exception(errorMessage);
       }
     } catch (e) {
@@ -510,85 +678,335 @@ class OrderService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final order = OrderModel.fromJson(responseData['data']);
-        
+
         // تحديث الطلب في القائمة
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
           _orders[index] = order;
           notifyListeners();
+          LiveActivityService.syncOrder(order);
         }
-        
+
         return order;
       }
     } catch (e) {
       debugPrint('خطأ في تتبع الطلب: $e');
     }
-    
+
     return null;
   }
 
   /// الحصول على الطلبات النشطة (غير مكتملة)
   List<OrderModel> get activeOrders {
-    return _orders.where((order) => 
-      order.status != OrderStatus.delivered && 
-      order.status != OrderStatus.cancelled &&
-      order.status != OrderStatus.failed
-    ).toList();
+    return _orders
+        .where(
+          (order) =>
+              order.status != OrderStatus.delivered &&
+              order.status != OrderStatus.cancelled &&
+              order.status != OrderStatus.failed,
+        )
+        .toList();
   }
 
   /// الحصول على الطلبات المكتملة
   List<OrderModel> get completedOrders {
-    return _orders.where((order) => 
-      order.status == OrderStatus.delivered ||
-      order.status == OrderStatus.cancelled ||
-      order.status == OrderStatus.failed
-    ).toList();
+    return _orders
+        .where(
+          (order) =>
+              order.status == OrderStatus.delivered ||
+              order.status == OrderStatus.cancelled ||
+              order.status == OrderStatus.failed,
+        )
+        .toList();
   }
 
-  /// تطبيق كود خصم
-  Future<Map<String, dynamic>> applyPromoCode(String promoCode, double orderTotal) async {
+  /// جلب أكواد الخصم الفعالة من المنصة المركزية
+  Future<List<PlatformPromo>> getActivePromoCodes({
+    bool throwOnError = false,
+  }) async {
     try {
-      final sessionService = SessionService.instance;
-      if (!sessionService.isLoggedIn) {
-        throw Exception('يجب تسجيل الدخول أولاً');
-      }
-
-      final token = sessionService.accessToken;
-
-      if (token == null) {
-        throw Exception('لم يتم العثور على رمز المصادقة');
-      }
-
-      final response = await http.post(
-        Uri.parse('$_baseUrl/promo-codes/validate'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'promo_code': promoCode,
-          'order_total': orderTotal,
-        }),
-      );
-
-      final responseData = jsonDecode(response.body);
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/promo-codes/active').replace(
+              queryParameters: {
+                if (SessionService.instance.isLoggedIn)
+                  'userId': SessionService.instance.currentUserId!,
+              },
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (SessionService.instance.isLoggedIn)
+                'Authorization':
+                    'Bearer ${await SessionService.instance.getToken()}',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] != true ||
+            responseData['promos'] is! List) {
+          throw const FormatException('INVALID_PROMO_LIST');
+        }
+        final list = responseData['promos'] as List;
+        return list
+            .map((p) => PlatformPromo.fromJson(Map<String, dynamic>.from(p)))
+            .toList();
+      }
+      if (throwOnError) throw StateError('PROMO_LIST_UNAVAILABLE');
+      return [];
+    } catch (e) {
+      debugPrint('خطأ في جلب أكواد الخصم: $e');
+      if (throwOnError) rethrow;
+      return [];
+    }
+  }
+
+  /// التحقق من كود خصم منصة وحساب قيمته من الخادم
+  String _offerMessage(dynamic code) =>
+      {
+        'UNSUPPORTED_DISCOUNT_ITEMS': unsupportedDiscountItemsMessage,
+        'GOODS_UNAVAILABLE':
+            'أحد منتجات السلة غير متاح للطلب حالياً. حدّث السلة أو تواصل مع المتجر.',
+        'GOODS_PRICING_UNSUPPORTED':
+            'تعذر التحقق من سعر أحد منتجات السلة. تواصل مع المتجر.',
+        'GOODS_PRICING_UNAVAILABLE':
+            'تعذر التحقق من أسعار السلة حالياً. أعد المحاولة.',
+        'INVALID_GOODS_SELECTION':
+            'حدّث منتجات السلة وكمياتها ثم أعد المحاولة.',
+        'BENEFIT_EXHAUSTED': 'اكتملت استخدامات هذه المنفعة.',
+        'BENEFIT_MINIMUM_ORDER': 'السلة أقل من الحد الأدنى لهذه المنفعة.',
+        'BENEFIT_WRONG_BRANCH': 'هذا المطعم غير مشمول بالمنفعة.',
+        'BENEFIT_WRONG_REGION': 'عنوان التوصيل غير مشمول بالمنفعة.',
+        'BENEFIT_DELIVERY_CAP_EXCEEDED':
+            'أجرة التوصيل أعلى من سقف التوصيل المجاني.',
+        'BENEFIT_DISTANCE_EXCEEDED': 'مسافة التوصيل خارج نطاق المنفعة.',
+        'BENEFIT_EXPIRED': 'المنفعة غير سارية الآن.',
+        'BENEFIT_PAUSED': 'المنفعة متوقفة مؤقتاً.',
+        'BENEFIT_NO_SAVINGS': 'المنفعة لا تحقق توفيراً إضافياً لهذا الطلب.',
+        'BENEFIT_NOT_ELIGIBLE': 'المنفعة غير متاحة لحسابك.',
+        'OFFER_NO_SAVINGS':
+            'هذا العرض لا يحقق توفيراً لهذه السلة بعد التقريب نزولاً إلى مضاعفات 250 د.ع. اختر عرضاً آخر أو أزل العرض للمتابعة.',
+        'OFFER_ALREADY_USED':
+            'لقد استخدمت هذا العرض بالفعل أو وصلت إلى الحد المسموح.',
+        'OFFER_FIRST_ORDER_ONLY': 'هذا العرض مخصص لأول طلب فقط.',
+        'OFFER_LOGIN_REQUIRED': 'سجّل الدخول لاستخدام هذا العرض.',
+        'OFFER_DELIVERY_POLICY_REQUIRED':
+            'هذه القسيمة غير متاحة للتوصيل المجاني. تظهر عروض التوصيل المؤهلة ضمن مراجعة الطلب.',
+        'OFFER_NOT_ELIGIBLE': 'هذا العرض غير متاح لحسابك.',
+        'OFFER_WRONG_MERCHANT': 'هذا العرض لا يشمل المتجر المحدد.',
+        'OFFER_WRONG_REGION': 'هذا العرض لا يشمل عنوان التوصيل المحدد.',
+        'OFFER_ADDRESS_UNAVAILABLE': 'حدّث عنوان التوصيل ثم أعد المحاولة.',
+      }[code] ??
+      'العرض غير متاح لهذه السلة حالياً. تحقق من المنتجات والحد الأدنى وتاريخ انتهاء العرض.';
+  Future<Map<String, dynamic>> validatePromoCode({
+    required String code,
+    String? platformDiscountId,
+    String? deliveryBenefitId,
+    String? existingPlatformDiscountId,
+    String? existingDiscountId,
+    String? existingPromoCode,
+    required double orderTotal,
+    required String storeId,
+    required List<Map<String, dynamic>> items,
+    double deliveryFee = 0,
+    String? addressId,
+  }) async {
+    if (hasDiscountCustomizations(items))
+      return {
+        'success': false,
+        'valid': false,
+        'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
+        'message': unsupportedDiscountItemsMessage,
+      };
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/promo-codes/validate'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (SessionService.instance.isLoggedIn)
+                'Authorization':
+                    'Bearer ${await SessionService.instance.getToken()}',
+            },
+            body: jsonEncode({
+              'code': code,
+              'platformDiscountId': platformDiscountId,
+              'deliveryBenefitId': deliveryBenefitId,
+              'existingPlatformDiscountId': existingPlatformDiscountId,
+              'existingDiscountId': existingDiscountId,
+              'existingPromoCode': existingPromoCode,
+              'storeId': storeId,
+              'items': items,
+              'orderTotal': orderTotal,
+              'deliveryFee': deliveryFee,
+              'userId': SessionService.instance.currentUserId,
+              'addressId': addressId,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final responseData = jsonDecode(response.body);
+      final deliverySaving = responseData['deliveryBenefitSavingAmount'];
+      final deliveryBenefitValid =
+          responseData['deliveryBenefit'] != true ||
+          (deliverySaving is num &&
+              deliverySaving.isFinite &&
+              deliverySaving > 0 &&
+              deliverySaving <= deliveryFee &&
+              deliverySaving % 250 == 0 &&
+              responseData['discountAmount'] == 0);
+
+      if (response.statusCode == 200 &&
+          deliveryBenefitValid &&
+          responseData['valid'] == true &&
+          responseData['discountAmount'] is num &&
+          (responseData['discountAmount'] as num).isFinite &&
+          (responseData['discountAmount'] as num) >= 0) {
         return {
           'success': true,
-          'discount': responseData['data']['discount_amount'],
-          'message': responseData['message'],
-        };
-      } else {
-        return {
-          'success': false,
-          'message': responseData['message'] ?? 'كود الخصم غير صالح',
+          'valid': true,
+          'discount':
+              (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
+          'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
+          'lines': responseData['lines'] ?? [],
+          'deliveryBenefit': responseData['deliveryBenefit'] == true,
+          'deliveryBenefitSavingAmount':
+              responseData['deliveryBenefitSavingAmount'] ?? 0,
         };
       }
+      return {
+        'success': false,
+        'valid': false,
+        'message': _offerMessage(responseData['message']),
+      };
     } catch (e) {
       return {
         'success': false,
+        'valid': false,
         'message': 'خطأ في التحقق من كود الخصم: ${e.toString()}',
+      };
+    }
+  }
+
+  /// جلب العروض/الخصومات الفعالة لمتجر معين
+  Future<List<StoreDiscount>> getStoreDiscounts(
+    String storeId, {
+    String? addressId,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/business/$storeId/discounts').replace(
+          queryParameters: {
+            if (SessionService.instance.isLoggedIn)
+              'userId': SessionService.instance.currentUserId!,
+            if (addressId != null) 'addressId': addressId,
+          },
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (SessionService.instance.isLoggedIn)
+            'Authorization':
+                'Bearer ${await SessionService.instance.getToken()}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final list = (responseData['discounts'] as List?) ?? const [];
+        return list
+            .map((d) => StoreDiscount.fromJson(Map<String, dynamic>.from(d)))
+            .toList();
+      }
+      throw StateError('DISCOUNT_LIST_UNAVAILABLE');
+    } catch (e) {
+      throw StateError('DISCOUNT_LIST_UNAVAILABLE');
+    }
+  }
+
+  /// التحقق من خصم تاجر وحساب قيمته من الخادم
+  Future<Map<String, dynamic>> validateDiscount({
+    required String storeId,
+    required String discountId,
+    required double orderTotal,
+    required List<Map<String, dynamic>> items,
+    double deliveryFee = 0,
+    String? addressId,
+  }) async {
+    if (hasDiscountCustomizations(items))
+      return {
+        'success': false,
+        'valid': false,
+        'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
+        'message': unsupportedDiscountItemsMessage,
+      };
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/promo-codes/apply'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (SessionService.instance.isLoggedIn)
+                'Authorization':
+                    'Bearer ${await SessionService.instance.getToken()}',
+            },
+            body: jsonEncode({
+              'businessId': storeId,
+              'discountId': discountId,
+              'orderTotal': orderTotal,
+              'deliveryFee': deliveryFee,
+              'userId': SessionService.instance.currentUserId,
+              'addressId': addressId,
+              'items':
+                  items
+                      .map(
+                        (item) => {
+                          'id': item['id'],
+                          'categoryId':
+                              item['categoryId'] ?? item['category_id'],
+                          'price': item['price'].toString(),
+                          'quantity': item['quantity'] ?? 1,
+                          ...discountSelectionFields(item),
+                        },
+                      )
+                      .toList(),
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 &&
+          responseData['valid'] == true &&
+          responseData['discountAmount'] is num &&
+          (responseData['discountAmount'] as num).isFinite &&
+          (responseData['discountAmount'] as num) >= 0) {
+        return {
+          'success': true,
+          'valid': true,
+          'discount':
+              (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
+          'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
+          'lines': responseData['lines'] ?? [],
+          'deliveryBenefit': responseData['deliveryBenefit'] == true,
+          'deliveryBenefitSavingAmount':
+              responseData['deliveryBenefitSavingAmount'] ?? 0,
+        };
+      }
+      return {
+        'success': false,
+        'valid': false,
+        'message': _offerMessage(responseData['message']),
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'valid': false,
+        'message': 'خطأ في التحقق من الخصم: ${e.toString()}',
       };
     }
   }
@@ -617,7 +1035,9 @@ class OrderService extends ChangeNotifier {
   }
 
   /// تحديث حالة طلب (للاستخدام الداخلي أو WebSocket)
-  void updateOrderStatus(String orderId, OrderStatus newStatus, {
+  void updateOrderStatus(
+    String orderId,
+    OrderStatus newStatus, {
     DateTime? confirmedAt,
     DateTime? estimatedDeliveryTime,
     DateTime? actualDeliveryTime,
@@ -631,6 +1051,7 @@ class OrderService extends ChangeNotifier {
         actualDeliveryTime: actualDeliveryTime,
       );
       notifyListeners();
+      LiveActivityService.syncOrder(_orders[index]);
     }
   }
 
