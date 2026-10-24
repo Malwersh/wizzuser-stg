@@ -4,7 +4,6 @@ import '../widgets/merchant_offer_picker.dart';
 import '../models/platform_benefit.dart';
 import '../widgets/checkout_benefits_sheet.dart';
 import '../widgets/basket_line_card.dart' show basketMoney;
-import '../widgets/platform_benefits_sheet.dart';
 import '../services/offer_checkout_failures.dart';
 import '../services/storefront_pricing.dart';
 import '../services/delivery_address_manager.dart';
@@ -738,8 +737,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             : 'تم تطبيق كود الخصم بنجاح',
       );
     } else {
-      await showDiscountNoticeSheet(context,
-        message: result['message'] ?? 'كود الخصم غير صالح');
+      await showDiscountNoticeSheet(
+        context,
+        message: result['message'] ?? 'كود الخصم غير صالح',
+      );
     }
   }
 
@@ -785,10 +786,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ? appState.cartItems.first['store_id']
             : null);
     if (storeId == null) return;
-    if (appState.cartTotal.isFinite && appState.cartTotal >= 0 &&
+    if (appState.cartTotal.isFinite &&
+        appState.cartTotal >= 0 &&
         discount.minimumOrderAmount.isFinite &&
         appState.cartTotal < discount.minimumOrderAmount) {
-      await showDiscountNoticeSheet(context,
+      await showDiscountNoticeSheet(
+        context,
         offerTitle: discount.title,
         message: 'السلة أقل من الحد الأدنى لهذا العرض.',
         minimum: discount.minimumOrderAmount,
@@ -866,8 +869,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (result['valid'] == true) {
       _showMessage('تم تطبيق الخصم بنجاح');
     } else {
-      await showDiscountNoticeSheet(context, offerTitle: discount.title,
-        message: result['message'] ?? 'تعذر التحقق من شروط العرض. أعد المحاولة.');
+      await showDiscountNoticeSheet(
+        context,
+        offerTitle: discount.title,
+        message:
+            result['message'] ?? 'تعذر التحقق من شروط العرض. أعد المحاولة.',
+      );
     }
   }
 
@@ -1010,122 +1017,135 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
-      appBar: AppBar(
-        title: const Text(
-          'إتمام الطلب',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: AppColors.secondaryDark),
         ),
-        backgroundColor: Colors.white,
-        centerTitle: true,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: AppColors.secondaryDark,
         ),
       ),
-      body: CheckoutLoadingBody(
-        busy: _isLoading || _preparingReview,
-        progress: _buildLoadingWidget(),
-        child: Consumer<AppStateProvider>(
-          builder: (context, appState, child) {
-            if (appState.cartItems.isEmpty) {
-              return const Center(child: Text('السلة فارغة'));
-            }
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F6FA),
+        appBar: AppBar(
+          title: const Text(
+            'إتمام الطلب',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          backgroundColor: Colors.white,
+          centerTitle: true,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black87),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: CheckoutLoadingBody(
+          busy: _isLoading || _preparingReview,
+          progress: _buildLoadingWidget(),
+          child: Consumer<AppStateProvider>(
+            builder: (context, appState, child) {
+              if (appState.cartItems.isEmpty) {
+                return const Center(child: Text('السلة فارغة'));
+              }
 
-            return Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(), // تحسين الأداء
-                    padding: const EdgeInsets.all(16),
-                    child: Form(
-                      // إضافة Form widget
-                      key: _formKey,
-                      child: RepaintBoundary(
-                        // تجنب إعادة رسم غير ضرورية
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // قسم معلومات الطلب - مع تحسين الأداء
-                            RepaintBoundary(
-                              child: _buildOrderSummary(appState),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // قسم معلومات المستخدم - مع تحسين الأداء
-                            RepaintBoundary(
-                              child:
-                                  _isGuestUser
-                                      ? _buildGuestInfoSection()
-                                      : _buildLoggedInUserInfoSection(),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // قسم العنوان
-                            RepaintBoundary(child: _buildAddressSection()),
-                            const SizedBox(height: 16),
-
-                            // قسم طريقة الدفع
-                            RepaintBoundary(child: _buildPaymentSection()),
-                            const SizedBox(height: 16),
-
-                            if (!_isGuestUser &&
-                                ApiConfig.commercialPricingEnabled &&
-                                _quotesEnabled) ...[
-                              _buildPlatformBenefitSection(),
-                              const SizedBox(height: 16),
-                            ],
-                            // قسم العروض والخصومات
-                            RepaintBoundary(child: _buildDiscountsSection()),
-                            const SizedBox(height: 16),
-
-                            if (ApiConfig.commercialPricingEnabled) ...[
-                              DriverTipSelector(
-                                amountIqd: _driverTipIqd,
-                                enabled:
-                                    !_isLoading &&
-                                    !_preparingReview &&
-                                    !_quotedCheckout.pending,
-                                onChanged:
-                                    (amount) =>
-                                        setState(() => _driverTipIqd = amount),
+              return Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(), // تحسين الأداء
+                      padding: const EdgeInsets.all(16),
+                      child: Form(
+                        // إضافة Form widget
+                        key: _formKey,
+                        child: RepaintBoundary(
+                          // تجنب إعادة رسم غير ضرورية
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // قسم معلومات الطلب - مع تحسين الأداء
+                              RepaintBoundary(
+                                child: _buildOrderSummary(appState),
                               ),
                               const SizedBox(height: 16),
-                            ],
 
-                            // قسم تعليمات التوصيل
-                            RepaintBoundary(child: _buildInstructionsSection()),
-                            const SizedBox(height: 16),
-
-                            // ملخص السعر
-                            RepaintBoundary(
-                              child: Column(
-                                children: [
-                                  if (_quotesEnabled)
-                                    _buildQuoteStatus(appState),
-                                  _buildPriceSummary(appState),
-                                ],
+                              // قسم معلومات المستخدم - مع تحسين الأداء
+                              RepaintBoundary(
+                                child:
+                                    _isGuestUser
+                                        ? _buildGuestInfoSection()
+                                        : _buildLoggedInUserInfoSection(),
                               ),
-                            ),
-                            const SizedBox(height: 100), // مساحة للزر السفلي
-                          ],
+                              const SizedBox(height: 16),
+
+                              // قسم العنوان
+                              RepaintBoundary(child: _buildAddressSection()),
+                              const SizedBox(height: 16),
+
+                              // قسم طريقة الدفع
+                              RepaintBoundary(child: _buildPaymentSection()),
+                              const SizedBox(height: 16),
+
+                              if (!_isGuestUser &&
+                                  ApiConfig.commercialPricingEnabled &&
+                                  _quotesEnabled) ...[
+                                _buildPlatformBenefitSection(),
+                                const SizedBox(height: 16),
+                              ],
+                              // قسم العروض والخصومات
+                              RepaintBoundary(child: _buildDiscountsSection()),
+                              const SizedBox(height: 16),
+
+                              if (ApiConfig.commercialPricingEnabled) ...[
+                                DriverTipSelector(
+                                  amountIqd: _driverTipIqd,
+                                  enabled:
+                                      !_isLoading &&
+                                      !_preparingReview &&
+                                      !_quotedCheckout.pending,
+                                  onChanged:
+                                      (amount) => setState(
+                                        () => _driverTipIqd = amount,
+                                      ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+
+                              // قسم تعليمات التوصيل
+                              RepaintBoundary(
+                                child: _buildInstructionsSection(),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // ملخص السعر
+                              RepaintBoundary(
+                                child: Column(
+                                  children: [
+                                    if (_quotesEnabled)
+                                      _buildQuoteStatus(appState),
+                                    _buildPriceSummary(appState),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                // زر تأكيد الطلب
-                _buildConfirmButton(appState),
-              ],
-            );
-          },
+                  // زر تأكيد الطلب
+                  _buildConfirmButton(appState),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1543,7 +1563,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ],
                       ],
                     ),
-                    activeColor: AppColors.primary,
+                    activeColor: AppColors.secondaryDark,
                     contentPadding: EdgeInsets.zero,
                   );
                 }).toList(),
@@ -1779,20 +1799,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextButton.icon(
-            onPressed: () async {
-              final selected = await showPlatformBenefitsSheet(
-                context,
-                branchId: _branchId(context.read<AppStateProvider>()),
-              );
-              if (selected == true && mounted) {
-                _pendingAttemptContext = null;
-                await _autoApplyOffer();
-              }
-            },
-            icon: const Icon(Icons.card_giftcard),
-            label: const Text('مزايا المنصة'),
-          ),
           Row(
             children: [
               Container(
@@ -1809,7 +1815,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(width: 12),
               const Text(
-                'العروض والخصومات',
+                'عروض المطعم وكود الخصم',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -1827,6 +1833,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          if (_availableDiscounts.isEmpty)
+            const Text(
+              'لا توجد عروض مطعم متاحة حاليًا لهذا الطلب. يمكنك إدخال كود خصم إن توفر.',
+              style: TextStyle(color: AppColors.textSecondary, height: 1.6),
+            ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.secondaryDark,
+              ),
+              onPressed: _isValidatingDiscount ? null : _loadStoreDiscounts,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('تحديث عروض المطعم'),
+            ),
+          ),
           // Promo code entry (platform codes from the central platform)
           Row(
             children: [
