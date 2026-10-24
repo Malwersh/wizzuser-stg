@@ -3261,6 +3261,7 @@ Resources:
           PRODUCTS_TABLE: WhizzMerchants_Products
           GLOBAL_PRODUCTS_TABLE: WhizzMerchants_GlobalProducts
           CATEGORIES_TABLE: WhizzMerchants_Categories
+          MERCHANT_PLATFORM_TABLE: staging-MerchantPlatform
       Policies:
         - Statement:
           - Effect: Allow
@@ -3276,6 +3277,7 @@ Resources:
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_GlobalProducts/index/*
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Categories
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Categories/index/*
+              - arn:aws:dynamodb:*:*:table/staging-MerchantPlatform
 
   WizzUserGetCategoryFunction:
     Type: AWS::Serverless::Function
@@ -3872,6 +3874,7 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
               - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/staging-MerchantPlatform"
         - !If
           - IsQuoteStaging
           - Statement:
@@ -4134,6 +4137,7 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
               - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/staging-MerchantPlatform"
         - Statement:
           - Effect: Allow
             Action:
@@ -4197,6 +4201,7 @@ Resources:
             Resource:
               - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
               - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/staging-MerchantPlatform"
         - Statement:
           - Effect: Allow
             Action:

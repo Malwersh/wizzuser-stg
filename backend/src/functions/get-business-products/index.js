@@ -6,6 +6,7 @@ const lib_dynamodb_1 = require("@aws-sdk/lib-dynamodb");
 const client = new client_dynamodb_1.DynamoDBClient({});
 const docClient = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE || 'WhizzMerchants_Products';
+const PLATFORM_TABLE = process.env.MERCHANT_PLATFORM_TABLE || 'staging-MerchantPlatform';
 const GLOBAL_PRODUCTS_TABLE = 'WhizzMerchants_GlobalProducts';
 const LEGACY_CATEGORY_IDS = Object.freeze({
   'fb-main-courses-002': '4d3e103e-a8e7-4361-88ca-11219ed884b5',
@@ -43,19 +44,27 @@ const handler = async (event) => {
         }
         console.log(`Fetching products for business: ${businessId}`);
         
-        // Step 1: Query Products table by businessId using GSI
-        const queryInput = {
+        // Prefer the immutable published menu. Branches not migrated yet keep the
+        // legacy live-table behavior until their first explicit publish.
+        const activeMenu=(await docClient.send(new lib_dynamodb_1.GetCommand({
+            TableName:PLATFORM_TABLE,Key:{pk:`BRANCH#${businessId}`,sk:'MENU_VERSION#ACTIVE'},ConsistentRead:true
+        }))).Item;
+        const publishedVersion=activeMenu?.publishedVersion;
+        const queryInput = publishedVersion ? {
+            TableName:PLATFORM_TABLE,
+            KeyConditionExpression:'pk = :pk AND begins_with(sk, :prefix)',
+            ExpressionAttributeValues:{':pk':`BRANCH#${businessId}`,':prefix':`MENU_VERSION#${publishedVersion}#PRODUCT#`},
+            ConsistentRead:true,
+        } : {
             TableName: PRODUCTS_TABLE,
             IndexName: 'BusinessIdIndex',
             KeyConditionExpression: 'businessId = :businessId',
-            ExpressionAttributeValues: {
-                ':businessId': businessId,
-            },
+            ExpressionAttributeValues: { ':businessId': businessId },
         };
         const productItems=[];let productCursor;
         do {
             const productsResult=await docClient.send(new lib_dynamodb_1.QueryCommand({...queryInput,ExclusiveStartKey:productCursor}));
-            productItems.push(...(productsResult.Items||[]));productCursor=productsResult.LastEvaluatedKey;
+            productItems.push(...(productsResult.Items||[]).map(row=>publishedVersion?row.product:row));productCursor=productsResult.LastEvaluatedKey;
         } while(productCursor);
         
         if (productItems.length === 0) {
@@ -128,7 +137,9 @@ const handler = async (event) => {
         // Step 5: Batch get Categories (handle up to 100 items)
         let categoriesMap = new Map();
         
-        if (uniqueCategoryIds.length > 0) {
+        if (publishedVersion) {
+            productItems.forEach(product=>{if(product.publishedCategory)categoriesMap.set(product.categoryId,product.publishedCategory);});
+        } else if (uniqueCategoryIds.length > 0) {
             const categoryKeys = [...new Set(uniqueCategoryIds.map(categoryReference))].map(id => ({ categoryId: id }));
             
             // Split into chunks of 100 for BatchGetItem limit
@@ -192,7 +203,9 @@ const handler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 products,
-                count: products.length
+                count: products.length,
+                menuVersion: activeMenu?.menuVersion,
+                publishedVersion
             }),
         };
     }
