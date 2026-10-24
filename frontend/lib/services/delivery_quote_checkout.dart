@@ -12,7 +12,8 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   final funded = agreement || proposal['schemaVersion'] == 2;
   if (agreement) {
     final pin = proposal['deliveryAgreement'];
-    if (pin is! Map || pin.length != 4 ||
+    if (pin is! Map ||
+        pin.length != 4 ||
         pin['policyId'] is! String ||
         !RegExp(r'^[A-Za-z0-9_.:-]{1,150}$').hasMatch(pin['policyId']) ||
         pin['version'] is! int ||
@@ -67,6 +68,15 @@ void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
           amount('customerTotal')) {
     throw const FormatException('INCONSISTENT_COMMERCIAL_PREVIEW');
   }
+}
+
+class InvoicePreviewUnavailable extends StateError {
+  final String? code;
+  InvoicePreviewUnavailable(this.code) : super('تعذر تحديث الفاتورة الآن');
+}
+
+class CommercialReviewCancelled extends StateError {
+  CommercialReviewCancelled() : super('أُلغي تأكيد السعر');
 }
 
 class DeliveryQuote {
@@ -159,6 +169,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     final tip = _pending!['tip'] ?? 0;
     return tip is int && tip >= 0 ? tip : null;
   }
+
   bool get valid =>
       ready &&
       _owner == account() &&
@@ -236,6 +247,28 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     });
   }
 
+  /// Only a matching account-scoped, server-issued quote may be adopted.
+  bool adoptCachedQuote(DeliveryQuote cached, String owner) {
+    if (!ready ||
+        _owner != owner ||
+        account() != owner ||
+        busy ||
+        pending ||
+        !now().isBefore(cached.expiresAt))
+      return false;
+    if (quote != null && quote!.id == cached.id) return true;
+    if (valid &&
+        quote!.branchId == cached.branchId &&
+        quote!.addressId == cached.addressId &&
+        quote!.expiresAt.isAfter(cached.expiresAt))
+      return false;
+    quote = cached;
+    _scope = '${cached.branchId}/${cached.addressId}';
+    _quoteAttempt = null;
+    error = null;
+    return true;
+  }
+
   Future<void> ensureFresh(String branch, String address) async {
     await _loadingQuote;
     if (pending) return;
@@ -301,8 +334,11 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
         error = 'طلبات تسعير كثيرة؛ أعد المحاولة بعد $seconds ثانية';
         return;
       }
-      if (['FINANCE_ROLLOUT_ADMISSION_CLOSED', 'FINANCE_ROLLOUT_OUT_OF_SCOPE',
-           'FINANCE_ROLLOUT_NOT_CONFIGURED'].contains(data['code'])) {
+      if ([
+        'FINANCE_ROLLOUT_ADMISSION_CLOSED',
+        'FINANCE_ROLLOUT_OUT_OF_SCOPE',
+        'FINANCE_ROLLOUT_NOT_CONFIGURED',
+      ].contains(data['code'])) {
         quote = null;
         error = 'إتمام الطلب غير متاح حاليًا؛ يرجى المحاولة لاحقًا';
         return;
@@ -364,9 +400,70 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
     _emit();
   }
 
+  /// Read-only invoice on the existing commercial-preview route. Never saves a
+  /// pending order, reserves a benefit, or accepts a customer's consent.
+  Future<Map<String, dynamic>> previewInvoice(
+    Map<String, dynamic> content,
+  ) async {
+    final owner = _owner;
+    final generation = _generation;
+    final snapshot = quote;
+    if (owner == null ||
+        account() != owner ||
+        busy ||
+        pending ||
+        snapshot == null ||
+        !matches(content['storeId'], content['deliveryAddress']['id'])) {
+      throw StateError('تعذر تحديث الفاتورة الآن');
+    }
+    final requestId = const Uuid().v4();
+    final response = await client
+        .post(
+          Uri.parse(
+            ApiConfig.buildUrl(
+              '${ApiConfig.ordersEndpoint}/commercial-preview',
+            ),
+          ),
+          headers: _headers(owner),
+          body: jsonEncode({
+            ...content,
+            'userId': owner,
+            'quoteId': snapshot.id,
+            'idempotencyKey': requestId,
+            'deliveryFee': snapshot.fee,
+            'action': 'preview_commercial',
+          }),
+        )
+        .timeout(ApiConfig.apiTimeout);
+    _check(owner, generation);
+    final data = jsonDecode(response.body);
+    final proposal = data is Map ? data['commercial'] : null;
+    if (response.statusCode != 200)
+      throw InvoicePreviewUnavailable(
+        data is Map && data['code'] is String ? data['code'] : null,
+      );
+    if (response.statusCode != 200 ||
+        data is! Map ||
+        data['success'] != true ||
+        proposal is! Map ||
+        ![1, 2, 3].contains(proposal['schemaVersion']) ||
+        proposal['quoteId'] != snapshot.id ||
+        proposal['requestId'] != requestId ||
+        proposal['digest'] is! String ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(proposal['digest']) ||
+        DateTime.tryParse(proposal['expiresAt']?.toString() ?? '') == null ||
+        !now().isBefore(DateTime.parse(proposal['expiresAt'])) ||
+        DateTime.parse(proposal['expiresAt']).isAfter(snapshot.expiresAt)) {
+      throw StateError('تعذر تحديث الفاتورة؛ أعد المحاولة قبل تأكيد الطلب');
+    }
+    validateCommercialCheckoutAmounts(proposal, snapshot.feeMinor);
+    return Map<String, dynamic>.from(proposal);
+  }
+
   Future<http.Response> confirm(
     Map<String, dynamic>? content, {
     Future<bool> Function(Map<String, dynamic>)? approveCommercial,
+    Map<String, dynamic>? initialCommercialPreview,
   }) async {
     if (_loadingQuote != null) await _loadingQuote;
     if (content != null && !pending && ready) {
@@ -384,6 +481,27 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
       throw StateError('تعذر تأكيد الطلب الآن');
     }
     final owner = _owner!;
+    Map<String, dynamic>? reusablePreview;
+    if (initialCommercialPreview != null &&
+        scopedAttempt == null &&
+        quote != null &&
+        _pending == null) {
+      try {
+        final p = Map<String, dynamic>.from(initialCommercialPreview);
+        validateCommercialCheckoutAmounts(p, quote!.feeMinor);
+        if ([1, 2, 3].contains(p['schemaVersion']) &&
+            p['quoteId'] == quote!.id &&
+            p['requestId'] is String &&
+            RegExp(r'^[a-fA-F0-9-]{36}$').hasMatch(p['requestId']) &&
+            p['digest'] is String &&
+            RegExp(r'^[a-f0-9]{64}$').hasMatch(p['digest']) &&
+            now().isBefore(DateTime.parse(p['expiresAt'])) &&
+            !DateTime.parse(p['expiresAt']).isAfter(quote!.expiresAt))
+          reusablePreview = p;
+      } catch (_) {
+        /* A stale hint never bypasses a fresh server preview. */
+      }
+    }
     var generation = _generation;
     if (!_confirmingAccounts.add(owner)) {
       throw StateError('توجد محاولة تأكيد قيد التنفيذ');
@@ -412,7 +530,9 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                     ...content,
                     'quoteId': quote!.id,
                     'idempotencyKey':
-                        scopedAttempt?.requestId ?? const Uuid().v4(),
+                        scopedAttempt?.requestId ??
+                        reusablePreview?['requestId'] ??
+                        const Uuid().v4(),
                     'deliveryFee': quote!.fee,
                   }),
                 )
@@ -454,25 +574,45 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 (b[k] as Map?)?['minorAmount'],
           );
           for (var round = 0; round < 3; round++) {
-            final previewResponse = await client
-                .post(
-                  Uri.parse(
-                    ApiConfig.buildUrl(
-                      '${ApiConfig.ordersEndpoint}/commercial-preview',
-                    ),
-                  ),
-                  headers: _headers(owner),
-                  body: jsonEncode({...saved, 'action': 'preview_commercial'}),
-                )
-                .timeout(ApiConfig.apiTimeout);
+            final usePrepared =
+                round == 0 &&
+                reusablePreview != null &&
+                reusablePreview['quoteId'] == saved['quoteId'] &&
+                reusablePreview['requestId'] == saved['idempotencyKey'];
+            final previewResponse =
+                usePrepared
+                    ? http.Response(
+                      jsonEncode({
+                        'success': true,
+                        'commercial': reusablePreview,
+                      }),
+                      200,
+                    )
+                    : await client
+                        .post(
+                          Uri.parse(
+                            ApiConfig.buildUrl(
+                              '${ApiConfig.ordersEndpoint}/commercial-preview',
+                            ),
+                          ),
+                          headers: _headers(owner),
+                          body: jsonEncode({
+                            ...saved,
+                            'action': 'preview_commercial',
+                          }),
+                        )
+                        .timeout(ApiConfig.apiTimeout);
             _check(owner, generation);
             final data = jsonDecode(previewResponse.body);
             if (data is Map && data['code'] == 'MINIMUM_ORDER_NOT_MET')
               throw StateError(
                 'قيمة الأصناف أقل من الحد الأدنى للمطعم. ارجع إلى السلة وأضف أصنافًا.',
               );
-            if (data is Map && data['code'] == 'PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED') {
-              throw StateError('هذا الخصم غير متاح الآن. اختر خصمًا آخر أو تابع دون خصم.');
+            if (data is Map &&
+                data['code'] == 'PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED') {
+              throw StateError(
+                'هذا الخصم غير متاح الآن. اختر خصمًا آخر أو تابع دون خصم.',
+              );
             }
             if (previewResponse.statusCode == 409 &&
                 data is Map &&
@@ -492,13 +632,32 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
             }
             if (data is Map && previewResponse.statusCode != 200) {
               final message = switch (data['code']) {
-                'DELIVERY_POLICY_UNAVAILABLE' || 'DELIVERY_POLICY_AUTHORITY_REVOKED' || 'DELIVERY_POLICY_HISTORY_MISMATCH' => 'تعذر اعتماد سعر التوصيل الآن. لم يُرسل الطلب؛ أعد المحاولة لاحقًا.',
-                'CART_PRICE_CHANGED' => 'تغيّرت أسعار بعض الأصناف. ارجع إلى المطعم وحدّث السلة قبل المتابعة.',
-                'UNSUPPORTED_DISCOUNT_ITEMS' || 'COMMERCIAL_ORDER_UNSUPPORTED' => 'تعذر تسعير أحد الأصناف أو إضافاته. راجع الأصناف المختارة قبل المتابعة.',
-                'CASH_TOTAL_DENOMINATION_UNSUPPORTED' => 'تعذر اعتماد مبلغ الدفع النقدي. راجع الإكرامية والخصم ثم أعد المحاولة.',
-                'BENEFIT_EXHAUSTED' || 'BENEFIT_EXPIRED' || 'BENEFIT_PAUSED' || 'BENEFIT_NOT_ELIGIBLE' => 'الميزة لم تعد متاحة؛ أزلها أو اختر ميزة أخرى ثم راجع الإجمالي.',
-                'BENEFIT_MINIMUM_ORDER' || 'BENEFIT_WRONG_BRANCH' || 'BENEFIT_WRONG_REGION' || 'BENEFIT_DISTANCE_EXCEEDED' || 'BENEFIT_DELIVERY_CAP_EXCEEDED' || 'BENEFIT_NO_SAVINGS' || 'BENEFIT_STACKING_DENIED' => 'شروط الميزة لا تنطبق على هذا الطلب. أزلها أو اختر ميزة أخرى.',
-                'AUTH_REQUIRED' || 'ACCOUNT_UNAVAILABLE' => 'يرجى تسجيل الدخول مجددًا قبل تأكيد الطلب.',
+                'DELIVERY_POLICY_UNAVAILABLE' ||
+                'DELIVERY_POLICY_AUTHORITY_REVOKED' ||
+                'DELIVERY_POLICY_HISTORY_MISMATCH' =>
+                  'تعذر اعتماد سعر التوصيل الآن. لم يُرسل الطلب؛ أعد المحاولة لاحقًا.',
+                'CART_PRICE_CHANGED' =>
+                  'تغيّرت أسعار بعض الأصناف. ارجع إلى المطعم وحدّث السلة قبل المتابعة.',
+                'UNSUPPORTED_DISCOUNT_ITEMS' ||
+                'COMMERCIAL_ORDER_UNSUPPORTED' =>
+                  'تعذر تسعير أحد الأصناف أو إضافاته. راجع الأصناف المختارة قبل المتابعة.',
+                'CASH_TOTAL_DENOMINATION_UNSUPPORTED' =>
+                  'تعذر اعتماد مبلغ الدفع النقدي. راجع الإكرامية والخصم ثم أعد المحاولة.',
+                'BENEFIT_EXHAUSTED' ||
+                'BENEFIT_EXPIRED' ||
+                'BENEFIT_PAUSED' ||
+                'BENEFIT_NOT_ELIGIBLE' =>
+                  'الميزة لم تعد متاحة؛ أزلها أو اختر ميزة أخرى ثم راجع الإجمالي.',
+                'BENEFIT_MINIMUM_ORDER' ||
+                'BENEFIT_WRONG_BRANCH' ||
+                'BENEFIT_WRONG_REGION' ||
+                'BENEFIT_DISTANCE_EXCEEDED' ||
+                'BENEFIT_DELIVERY_CAP_EXCEEDED' ||
+                'BENEFIT_NO_SAVINGS' ||
+                'BENEFIT_STACKING_DENIED' =>
+                  'شروط الميزة لا تنطبق على هذا الطلب. أزلها أو اختر ميزة أخرى.',
+                'AUTH_REQUIRED' || 'ACCOUNT_UNAVAILABLE' =>
+                  'يرجى تسجيل الدخول مجددًا قبل تأكيد الطلب.',
                 _ => null,
               };
               if (message != null) throw StateError(message);
@@ -540,7 +699,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                     ? true
                     : await approveCommercial(currentProposal);
             _check(owner, generation);
-            if (!accepted) throw StateError('أُلغي تأكيد السعر');
+            if (!accepted) throw CommercialReviewCancelled();
             if (!valid ||
                 !now().isBefore(DateTime.parse(proposal['expiresAt']))) {
               approvedProposal = currentProposal;
@@ -624,6 +783,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'COMMERCIAL_ORDER_UNSUPPORTED',
                 'COMMERCIAL_CONSENT_REQUIRED',
                 'COMMERCIAL_QUOTE_EXPIRED',
+                'DISCOUNT_FUNDING_TERMS_CHANGED',
                 'DISCOUNT_FUNDING_UNAVAILABLE',
                 'PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED',
                 'COMMERCIAL_SOURCE_UNAVAILABLE',

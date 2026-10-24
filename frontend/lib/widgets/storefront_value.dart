@@ -140,6 +140,31 @@ class _StorefrontValueState extends State<StorefrontValue> {
             ),
         child: Text('إعادة حساب التوصيل', style: widget.style),
       );
+    if (widget.field == StorefrontField.fee &&
+        key != null && fee == null && error == null) {
+      return Semantics(
+        liveRegion: true,
+        label: 'جارٍ حساب رسوم التوصيل',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text('جارٍ حساب الرسوم…', style: widget.style,
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+      );
+    }
     return Text(
       text,
       style: widget.style,

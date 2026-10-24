@@ -6,42 +6,34 @@ import '../config/api_config.dart';
 import 'delivery_address_manager.dart';
 import 'session_service.dart';
 
-class StorefrontPreview {
+class StorefrontRoute {
   final Map<String, dynamic> data;
-  StorefrontPreview(Map<String, dynamic> value)
-    : data = Map.unmodifiable(value) {
-    final m = data['customerDeliveryFee'];
-    if (data['kind'] != 'STOREFRONT_PREVIEW' ||
+  StorefrontRoute(Map<String, dynamic> value) : data = Map.unmodifiable(value) {
+    if (!['STOREFRONT_ROUTE', 'STOREFRONT_PREVIEW'].contains(data['kind']) ||
         data['schemaVersion'] != 1 ||
-        m is! Map ||
-        m['moneySchemaVersion'] != 1 ||
-        m['currency'] != 'IQD' ||
-        m['scale'] != 1000 ||
-        m['minorAmount'] is! int ||
-        m['minorAmount'] < 0 ||
-        DateTime.tryParse(data['expiresAt'] ?? '') == null)
-      throw const FormatException('Invalid storefront preview');
+        DateTime.tryParse(data['expiresAt'] ?? '') == null) {
+      throw const FormatException('Invalid storefront route');
+    }
     for (final f in ['roadDistanceMeters', 'deliveryDurationSeconds']) {
-      if (data[f] is! num || !data[f].isFinite || data[f] < 0)
+      if (data[f] is! num || !data[f].isFinite || data[f] < 0) {
         throw const FormatException('Invalid route');
+      }
     }
     final p = data['preparationMinutes'];
-    if (p != null && (p is! int || p < 5 || p > 120))
+    if (p != null && (p is! int || p < 5 || p > 120)) {
       throw const FormatException('Invalid preparation time');
+    }
+    final eta = data['arrivalMinutes'];
+    if (eta != null &&
+        (p == null ||
+            eta is! Map ||
+            eta['minimum'] is! int ||
+            eta['maximum'] is! int ||
+            eta['minimum'] < p ||
+            eta['maximum'] < eta['minimum'])) {
+      throw const FormatException('Invalid arrival time');
+    }
   }
-  int? get minimumOrderAmountIqd {
-    final value = data['minimumOrderAmountIqd'];
-    if (value == null || value == 0) return null;
-    if (value is! int || value < 0 || value > 1000000000)
-      throw const FormatException('Invalid minimum order');
-    return value;
-  }
-
-  double get fee => data['customerDeliveryFee']['minorAmount'] / 1000;
-  String get feeText =>
-      fee == 0
-          ? 'توصيل مجاني'
-          : '${fee.toStringAsFixed(fee == fee.roundToDouble() ? 0 : 3)} د.ع';
   String get preparationText =>
       data['preparationMinutes'] == null
           ? 'لم يحدد المطعم المدة'
@@ -58,6 +50,34 @@ class StorefrontPreview {
   DateTime get expiresAt => DateTime.parse(data['expiresAt']);
 }
 
+class StorefrontPreview extends StorefrontRoute {
+  StorefrontPreview(super.value) {
+    final m = data['customerDeliveryFee'];
+    if (data['kind'] != 'STOREFRONT_PREVIEW' ||
+        m is! Map ||
+        m['moneySchemaVersion'] != 1 ||
+        m['currency'] != 'IQD' ||
+        m['scale'] != 1000 ||
+        m['minorAmount'] is! int ||
+        m['minorAmount'] < 0) {
+      throw const FormatException('Invalid storefront preview');
+    }
+  }
+  int? get minimumOrderAmountIqd {
+    final value = data['minimumOrderAmountIqd'];
+    if (value == null || value == 0) return null;
+    if (value is! int || value < 0 || value > 1000000000)
+      throw const FormatException('Invalid minimum order');
+    return value;
+  }
+
+  double get fee => data['customerDeliveryFee']['minorAmount'] / 1000;
+  String get feeText =>
+      fee == 0
+          ? 'توصيل مجاني'
+          : '${fee.toStringAsFixed(fee == fee.roundToDouble() ? 0 : 3)} د.ع';
+}
+
 /// Shared, bounded cache for informational prices. Account/address/coordinates and
 /// basket are part of the key; an old asynchronous result can never replace a new address.
 class StorefrontPricing extends ChangeNotifier {
@@ -70,7 +90,7 @@ class StorefrontPricing extends ChangeNotifier {
   final String? Function() regionId;
   final _cache = <String, StorefrontPreview>{};
   // Route information is independent of basket contents. Never reuse its fee.
-  final _routes = <String, StorefrontPreview>{};
+  final _routes = <String, StorefrontRoute>{};
   final _running = <String, Future<StorefrontPreview?>>{};
   final _errors = <String, String>{};
   final _retryAt = <String, DateTime>{};
@@ -129,7 +149,11 @@ class StorefrontPricing extends ChangeNotifier {
       });
     }
   }
-  void seedBusiness(String branch, Map<String, dynamic> facts, {bool onlyIfAbsent = false}) {
+  void seedBusiness(
+    String branch,
+    Map<String, dynamic> facts, {
+    bool onlyIfAbsent = false,
+  }) {
     if (onlyIfAbsent && _businessFacts.containsKey(branch)) return;
     final selected = <String, dynamic>{
       'minimumOrderAmountIqd': facts['minimumOrderAmountIqd'],
@@ -145,7 +169,9 @@ class StorefrontPricing extends ChangeNotifier {
     if (jsonEncode(previous) != jsonEncode(selected)) {
       _cache.removeWhere((key, _) => (jsonDecode(key) as List)[3] == branch);
       _routes.removeWhere((key, _) => (jsonDecode(key) as List)[3] == branch);
-      scheduleMicrotask(() { if (!_disposed) notifyListeners(); });
+      scheduleMicrotask(() {
+        if (!_disposed) notifyListeners();
+      });
     }
   }
 
@@ -212,6 +238,18 @@ class StorefrontPricing extends ChangeNotifier {
         : (agreement['deliveryFeeIqd'] as int).toDouble();
   }
 
+  /// Informational reuse only; checkout still requires its complete invoice.
+  /// A plain calculated empty-basket tariff can be shown while that invoice
+  /// prepares. Basket-dependent promotions are never borrowed from another basket.
+  double? cachedDisplayFeeIqd(String branch, List<dynamic> items) {
+    final exact = feeIqd(branch, items);
+    if (exact != null) return exact;
+    final restaurant = peek(branch, const []);
+    return restaurant?.data['pricingMode'] == 'CALCULATED'
+        ? restaurant!.fee
+        : null;
+  }
+
   int? minimumIqd(
     String branch,
     List<dynamic> items, {
@@ -266,10 +304,16 @@ class StorefrontPricing extends ChangeNotifier {
 
   String? _routeKey(String branch) {
     if (key(branch, const []) == null) return null;
-    return jsonEncode([account(), addressId(), addressRevision(), branch, regionId()]);
+    return jsonEncode([
+      account(),
+      addressId(),
+      addressRevision(),
+      branch,
+      regionId(),
+    ]);
   }
 
-  StorefrontPreview? peekRoute(String branch) {
+  StorefrontRoute? peekRoute(String branch) {
     final route = _routes[_routeKey(branch)];
     return route != null && now().isBefore(route.expiresAt) ? route : null;
   }
@@ -311,7 +355,8 @@ class StorefrontPricing extends ChangeNotifier {
         if (access == null) throw const FormatException('Session unavailable');
         if (owner != account() ||
             address != addressId() ||
-            revision != addressRevision() || region != regionId())
+            revision != addressRevision() ||
+            region != regionId())
           return null;
         final response = await client
             .post(
@@ -332,7 +377,8 @@ class StorefrontPricing extends ChangeNotifier {
             .timeout(const Duration(seconds: 20));
         if (owner != account() ||
             address != addressId() ||
-            revision != addressRevision() || region != regionId())
+            revision != addressRevision() ||
+            region != regionId())
           return null;
         final body = jsonDecode(response.body);
         if (response.statusCode != 200 || body['success'] != true) {
@@ -343,6 +389,53 @@ class StorefrontPricing extends ChangeNotifier {
                   seconds is int && seconds > 0 && seconds <= 60 ? seconds : 30,
             ),
           );
+          // A route-only response is never placed in the price cache.
+          if (response.statusCode != 401 &&
+              response.statusCode != 403 &&
+              response.statusCode != 429) {
+            try {
+              final routeResponse = await client
+                  .post(
+                    Uri.parse(ApiConfig.buildUrl('/delivery-quotes')),
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': 'Bearer $access',
+                      'X-Customer-Id': owner,
+                    },
+                    body: jsonEncode({
+                      'action': 'storefront_route',
+                      'branchId': branch,
+                      'addressId': address,
+                    }),
+                  )
+                  .timeout(const Duration(seconds: 20));
+              if (owner != account() ||
+                  address != addressId() ||
+                  revision != addressRevision() ||
+                  region != regionId())
+                return null;
+              final routeBody = jsonDecode(routeResponse.body);
+              if (routeResponse.statusCode == 200 &&
+                  routeBody['success'] == true) {
+                final route = StorefrontRoute(
+                  Map<String, dynamic>.from(routeBody['route']),
+                );
+                if (route.data['kind'] != 'STOREFRONT_ROUTE' ||
+                    route.data['branchId'] != branch ||
+                    route.data['addressId'] != address ||
+                    !now().isBefore(route.expiresAt)) {
+                  throw const FormatException('Route scope changed');
+                }
+                final routeKey = _routeKey(branch);
+                if (routeKey != null) {
+                  if (_routes.length >= 80) _routes.remove(_routes.keys.first);
+                  _routes[routeKey] = route;
+                }
+              }
+            } catch (_) {
+              /* Preserve the pricing error; route failures never authorize checkout. */
+            }
+          }
           throw const FormatException('Preview unavailable');
         }
         final result = StorefrontPreview(
@@ -364,7 +457,8 @@ class StorefrontPricing extends ChangeNotifier {
       } catch (_) {
         if (owner == account() &&
             address == addressId() &&
-            revision == addressRevision() && region == regionId()) {
+            revision == addressRevision() &&
+            region == regionId()) {
           _errors[k] = 'تعذر حساب التوصيل. أعد المحاولة';
           _retryAt.putIfAbsent(k, () => now().add(const Duration(seconds: 30)));
         }

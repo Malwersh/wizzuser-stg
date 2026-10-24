@@ -1,0 +1,15 @@
+{
+  "part": 330,
+  "status": "IMPLEMENTED_SIMULATOR240_INSTALLED",
+  "design": "DoorDash reference adapted to Wizz gold/navy",
+  "changes": [
+    "Gold single pill with56 logical px normal minimum height; grows for accessibility text",
+    "Navy cart icon, centered view-cart label and store name",
+    "Small darker gold circular count badge; no white badge and no displayed price",
+    "Keep quiet quantity-add pulse and no success toast; home circular cart remains unchanged"
+  ],
+  "testsPassed": 13,
+  "nativeBuild": 240,
+  "pricingChanged": false,
+  "dataPreserved": true
+}

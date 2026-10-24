@@ -1,0 +1,33 @@
+{
+  "part": 327,
+  "status": "SERVER_PUBLISHED_POLICY_ACTIVE_SIMULATOR237_INSTALLED",
+  "serverPolicy": "General COD UP250 IQD, minimum final service250. Trusted full invoice preview/consent/commit; no client-side assumed service or rounding.",
+  "client": [
+    "Read-only existing commercial-preview endpoint populates effective service, authoritative discounts/delivery and total before final review",
+    "Preview includes required store metadata and exact saved address coordinates",
+    "Invoice invalidates on account, branch, basket, discount, benefit, tip, address/coordinates, quote and expiry",
+    "Preview creates no pending attempt and consumes no benefits; final consent flow remains separately validated",
+    "No customer-visible rounding settlement line"
+  ],
+  "backend": [
+    "Generated commercial source/money/evidence runtime synchronized to central canonical source",
+    "Order persists signed rounding evidence and final allocation",
+    "Published policy bypasses old fixed250 rejection only after trusted calculation; missing required policy blocks pricing",
+    "SAM includes exact-key policy read/fence and required-policy environment setting"
+  ],
+  "native": {
+    "build": 237,
+    "device": "iPhone16Pro iOS26.2 simulator 09DA4C20-FD4B-446E-8C2F-9D04E5CFC206",
+    "installed": true,
+    "dataPreserved": true
+  },
+  "tests": {
+    "commercialFlutter": 26,
+    "legacyFlutter": 29,
+    "analysis": "No errors/warnings; informational style findings remain",
+    "centralFinancialTests": 161,
+    "realOrdersOrFinancialWrites": 0
+  },
+  "centralReference": "whizzCentralPlatform-stg/docs/cash-rounding-327.json",
+  "preservedEarlierPart326": "Cart wording and scoped caching/debouncing changes included; see docs/cart-delivery-clarity-326.json"
+}

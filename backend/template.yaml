@@ -3816,6 +3816,7 @@ Resources:
           # Enable only with Quote API, quoted checkout, customer deletion and scoped IAM.
           DELIVERY_QUOTE_MODE: 'OFF'
           COMMERCIAL_PRICING_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
+          CASH_ROUNDING_POLICY_MODE: !If [IsCommercialStaging, REQUIRED, 'OFF']
           # Use shared WizzUser WebSocket infrastructure for merchant notifications
           WEBSOCKET_CONNECTIONS_TABLE: !Sub "WizzUser_websocket_connections_${Environment}"
           WEBSOCKET_ENDPOINT: !Sub "wss://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
@@ -3895,6 +3896,13 @@ Resources:
                   - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
                   - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions
                   - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging
+              - Sid: CashRoundingPolicyFence
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys: [OPERATIONAL_SETTINGS#CASH_ROUNDING]
               - Sid: DeliveryQuotePolicyFence
                 Effect: Allow
                 Action: [dynamodb:ConditionCheckItem]

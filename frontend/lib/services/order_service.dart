@@ -53,6 +53,7 @@ class OrderService extends ChangeNotifier {
     int driverTipIqd = 0,
     DeliveryQuoteCheckout? quoteCheckout,
     Future<bool> Function(Map<String, dynamic>)? approveCommercial,
+    Map<String, dynamic>? initialCommercialPreview,
     double taxRate = 0.0,
     double discount = 0.0,
     String? deliveryInstructions,
@@ -75,10 +76,16 @@ class OrderService extends ChangeNotifier {
 
       // التحقق من المعلومات المطلوبة
       if (quoteCheckout?.pending != true &&
-          (quoteCheckout != null || discountId?.isNotEmpty == true || promoCode?.isNotEmpty == true || platformDiscountId?.isNotEmpty == true) &&
+          (quoteCheckout != null ||
+              discountId?.isNotEmpty == true ||
+              promoCode?.isNotEmpty == true ||
+              platformDiscountId?.isNotEmpty == true) &&
           hasDiscountCustomizations(cartItems)) {
-        return {'success': false, 'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
-          'message': unsupportedDiscountItemsMessage};
+        return {
+          'success': false,
+          'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
+          'message': unsupportedDiscountItemsMessage,
+        };
       }
       if (customerName == null || customerName.isEmpty) {
         throw Exception('اسم العميل مطلوب');
@@ -171,7 +178,11 @@ class OrderService extends ChangeNotifier {
                         item['imageUrl'] ??
                         item['image'] ??
                         '', // صورة الطبق للسائقين
-                    'customizations': item['selected_options'] ?? item['selectedOptions'] ?? item['customizations'] ?? [],
+                    'customizations':
+                        item['selected_options'] ??
+                        item['selectedOptions'] ??
+                        item['customizations'] ??
+                        [],
                     ...discountSelectionFields(item),
                     'specialInstructions': item['special_instructions'] ?? '',
                   },
@@ -200,7 +211,8 @@ class OrderService extends ChangeNotifier {
         'discount': discount,
         'deliveryInstructions': deliveryInstructions,
         'promoCode': promoCode,
-        if (platformDiscountId != null) 'platformDiscountId': platformDiscountId,
+        if (platformDiscountId != null)
+          'platformDiscountId': platformDiscountId,
         if (deliveryBenefitId != null) 'deliveryBenefitId': deliveryBenefitId,
         'discountId': discountId,
         'offerSlideId':
@@ -232,6 +244,7 @@ class OrderService extends ChangeNotifier {
               ? await quoteCheckout.confirm(
                 orderData,
                 approveCommercial: approveCommercial,
+                initialCommercialPreview: initialCommercialPreview,
               )
               : await http.post(
                 Uri.parse(apiUrl),
@@ -296,42 +309,58 @@ class OrderService extends ChangeNotifier {
             userId: userId ?? 'guest',
             storeId: storeId,
             storeName: storeName,
-            items: backendOrder['items'] is List && (backendOrder['items'] as List).isNotEmpty
-                ? (backendOrder['items'] as List).map((item)=>OrderItem.fromJson(Map<String,dynamic>.from(item))).toList()
-                : cartItems
-                    .map(
-                      (item) => OrderItem(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        dishId: item['id'] ?? '',
-                        productId: item['id'] ?? '',
-                        dishName: item['name'] ?? '',
-                        dishDescription: item['description'] ?? '',
-                        dishImage: item['image'] ?? '',
-                        unitPrice:
-                            double.tryParse(item['price'].toString()) ?? 0.0,
-                        quantity: item['quantity'] ?? 1,
-                        totalPrice:
-                            (double.tryParse(item['price'].toString()) ?? 0.0) *
-                            (item['quantity'] ?? 1),
-                        selectedOptions:
-                            (item['selected_options'] ?? item['selectedOptions']) != null
-                                ? Map<String, List<String>>.from(
-                                  ((item['selected_options'] ?? item['selectedOptions'])
-                                          as Map<String, dynamic>)
-                                      .map(
-                                        (k, v) => MapEntry(
-                                          k,
-                                          List<String>.from(
-                                            v is List ? v : [v.toString()],
+            items:
+                backendOrder['items'] is List &&
+                        (backendOrder['items'] as List).isNotEmpty
+                    ? (backendOrder['items'] as List)
+                        .map(
+                          (item) => OrderItem.fromJson(
+                            Map<String, dynamic>.from(item),
+                          ),
+                        )
+                        .toList()
+                    : cartItems
+                        .map(
+                          (item) => OrderItem(
+                            id:
+                                DateTime.now().millisecondsSinceEpoch
+                                    .toString(),
+                            dishId: item['id'] ?? '',
+                            productId: item['id'] ?? '',
+                            dishName: item['name'] ?? '',
+                            dishDescription: item['description'] ?? '',
+                            dishImage: item['image'] ?? '',
+                            unitPrice:
+                                double.tryParse(item['price'].toString()) ??
+                                0.0,
+                            quantity: item['quantity'] ?? 1,
+                            totalPrice:
+                                (double.tryParse(item['price'].toString()) ??
+                                    0.0) *
+                                (item['quantity'] ?? 1),
+                            selectedOptions:
+                                (item['selected_options'] ??
+                                            item['selectedOptions']) !=
+                                        null
+                                    ? Map<String, List<String>>.from(
+                                      ((item['selected_options'] ??
+                                                  item['selectedOptions'])
+                                              as Map<String, dynamic>)
+                                          .map(
+                                            (k, v) => MapEntry(
+                                              k,
+                                              List<String>.from(
+                                                v is List ? v : [v.toString()],
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                )
-                                : null,
-                        specialInstructions: item['special_instructions'] ?? '',
-                      ),
-                    )
-                    .toList(),
+                                    )
+                                    : null,
+                            specialInstructions:
+                                item['special_instructions'] ?? '',
+                          ),
+                        )
+                        .toList(),
             subtotal: backendSubtotal ?? calculatedSubtotal,
             deliveryFee: backendDeliveryFee ?? deliveryFee,
             tax: backendTax ?? calculatedTax,
@@ -387,13 +416,14 @@ class OrderService extends ChangeNotifier {
           'message':
               quoteCheckout?.pending == true
                   ? 'لم تتأكد نتيجة الطلب؛ اضغط متابعة التأكيد لاستعادة النتيجة نفسها'
-                  : responseData['code'] == 'CASH_TOTAL_DENOMINATION_UNSUPPORTED'
-                    ? 'تعذر تأكيد الدفع النقدي لأن الإجمالي ليس من مضاعفات 250 د.ع. يجب تصحيح أسعار المنتجات أو الرسوم ثم مراجعة الإجمالي.'
-                    : responseData['code'] == 'OFFER_NO_SAVINGS'
-                    ? _offerMessage(responseData['code'])
-                    : responseData['code'] == 'UNSUPPORTED_DISCOUNT_ITEMS'
-                    ? unsupportedDiscountItemsMessage
-                    : 'تعذر تأكيد الطلب بهذا العرض؛ حدّث سعر التوصيل ثم أكد مجددًا',
+                  : responseData['code'] ==
+                      'CASH_TOTAL_DENOMINATION_UNSUPPORTED'
+                  ? 'تعذر تأكيد الدفع النقدي لأن الإجمالي ليس من مضاعفات 250 د.ع. يجب تصحيح أسعار المنتجات أو الرسوم ثم مراجعة الإجمالي.'
+                  : responseData['code'] == 'OFFER_NO_SAVINGS'
+                  ? _offerMessage(responseData['code'])
+                  : responseData['code'] == 'UNSUPPORTED_DISCOUNT_ITEMS'
+                  ? unsupportedDiscountItemsMessage
+                  : 'تعذر تأكيد الطلب بهذا العرض؛ حدّث سعر التوصيل ثم أكد مجددًا',
         };
       } else if (response.statusCode == 409) {
         // لديك طلب نشط بالفعل (Conflict) — سياسة الطلب الواحد النشط
@@ -419,6 +449,8 @@ class OrderService extends ChangeNotifier {
         throw Exception(errorMessage);
       }
     } catch (e) {
+      if (e is CommercialReviewCancelled)
+        return {'success': false, 'cancelled': true};
       if (e is ActiveCheckoutOrder) {
         return {
           'success': false,
@@ -606,7 +638,10 @@ class OrderService extends ChangeNotifier {
 
         return true;
       } else {
-        final errorMessage = cancellationMessage(responseData['code'], fallback: responseData['message']);
+        final errorMessage = cancellationMessage(
+          responseData['code'],
+          fallback: responseData['message'],
+        );
         throw Exception(errorMessage);
       }
     } catch (e) {
@@ -686,7 +721,9 @@ class OrderService extends ChangeNotifier {
   }
 
   /// جلب أكواد الخصم الفعالة من المنصة المركزية
-  Future<List<PlatformPromo>> getActivePromoCodes({bool throwOnError = false}) async {
+  Future<List<PlatformPromo>> getActivePromoCodes({
+    bool throwOnError = false,
+  }) async {
     try {
       final response = await http
           .get(
@@ -708,7 +745,8 @@ class OrderService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        if (responseData['success'] != true || responseData['promos'] is! List) {
+        if (responseData['success'] != true ||
+            responseData['promos'] is! List) {
           throw const FormatException('INVALID_PROMO_LIST');
         }
         final list = responseData['promos'] as List;
@@ -737,16 +775,17 @@ class OrderService extends ChangeNotifier {
             'تعذر التحقق من أسعار السلة حالياً. أعد المحاولة.',
         'INVALID_GOODS_SELECTION':
             'حدّث منتجات السلة وكمياتها ثم أعد المحاولة.',
-        'BENEFIT_EXHAUSTED':'اكتملت استخدامات هذه المنفعة.',
-        'BENEFIT_MINIMUM_ORDER':'السلة أقل من الحد الأدنى لهذه المنفعة.',
-        'BENEFIT_WRONG_BRANCH':'هذا المطعم غير مشمول بالمنفعة.',
-        'BENEFIT_WRONG_REGION':'عنوان التوصيل غير مشمول بالمنفعة.',
-        'BENEFIT_DELIVERY_CAP_EXCEEDED':'أجرة التوصيل أعلى من سقف التوصيل المجاني.',
-        'BENEFIT_DISTANCE_EXCEEDED':'مسافة التوصيل خارج نطاق المنفعة.',
-        'BENEFIT_EXPIRED':'المنفعة غير سارية الآن.',
-        'BENEFIT_PAUSED':'المنفعة متوقفة مؤقتاً.',
-        'BENEFIT_NO_SAVINGS':'المنفعة لا تحقق توفيراً إضافياً لهذا الطلب.',
-        'BENEFIT_NOT_ELIGIBLE':'المنفعة غير متاحة لحسابك.',
+        'BENEFIT_EXHAUSTED': 'اكتملت استخدامات هذه المنفعة.',
+        'BENEFIT_MINIMUM_ORDER': 'السلة أقل من الحد الأدنى لهذه المنفعة.',
+        'BENEFIT_WRONG_BRANCH': 'هذا المطعم غير مشمول بالمنفعة.',
+        'BENEFIT_WRONG_REGION': 'عنوان التوصيل غير مشمول بالمنفعة.',
+        'BENEFIT_DELIVERY_CAP_EXCEEDED':
+            'أجرة التوصيل أعلى من سقف التوصيل المجاني.',
+        'BENEFIT_DISTANCE_EXCEEDED': 'مسافة التوصيل خارج نطاق المنفعة.',
+        'BENEFIT_EXPIRED': 'المنفعة غير سارية الآن.',
+        'BENEFIT_PAUSED': 'المنفعة متوقفة مؤقتاً.',
+        'BENEFIT_NO_SAVINGS': 'المنفعة لا تحقق توفيراً إضافياً لهذا الطلب.',
+        'BENEFIT_NOT_ELIGIBLE': 'المنفعة غير متاحة لحسابك.',
         'OFFER_NO_SAVINGS':
             'هذا العرض لا يحقق توفيراً لهذه السلة بعد التقريب نزولاً إلى مضاعفات 250 د.ع. اختر عرضاً آخر أو أزل العرض للمتابعة.',
         'OFFER_ALREADY_USED':
@@ -774,8 +813,13 @@ class OrderService extends ChangeNotifier {
     double deliveryFee = 0,
     String? addressId,
   }) async {
-    if (hasDiscountCustomizations(items)) return {'success': false, 'valid': false,
-      'code': 'UNSUPPORTED_DISCOUNT_ITEMS', 'message': unsupportedDiscountItemsMessage};
+    if (hasDiscountCustomizations(items))
+      return {
+        'success': false,
+        'valid': false,
+        'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
+        'message': unsupportedDiscountItemsMessage,
+      };
     try {
       final response = await http
           .post(
@@ -790,7 +834,7 @@ class OrderService extends ChangeNotifier {
             body: jsonEncode({
               'code': code,
               'platformDiscountId': platformDiscountId,
-        'deliveryBenefitId': deliveryBenefitId,
+              'deliveryBenefitId': deliveryBenefitId,
               'existingPlatformDiscountId': existingPlatformDiscountId,
               'existingDiscountId': existingDiscountId,
               'existingPromoCode': existingPromoCode,
@@ -806,13 +850,17 @@ class OrderService extends ChangeNotifier {
 
       final responseData = jsonDecode(response.body);
       final deliverySaving = responseData['deliveryBenefitSavingAmount'];
-      final deliveryBenefitValid = responseData['deliveryBenefit'] != true ||
-          (deliverySaving is num && deliverySaving.isFinite && deliverySaving > 0 &&
-           deliverySaving <= deliveryFee && deliverySaving % 250 == 0 &&
-           responseData['discountAmount'] == 0);
+      final deliveryBenefitValid =
+          responseData['deliveryBenefit'] != true ||
+          (deliverySaving is num &&
+              deliverySaving.isFinite &&
+              deliverySaving > 0 &&
+              deliverySaving <= deliveryFee &&
+              deliverySaving % 250 == 0 &&
+              responseData['discountAmount'] == 0);
 
-
-      if (response.statusCode == 200 && deliveryBenefitValid &&
+      if (response.statusCode == 200 &&
+          deliveryBenefitValid &&
           responseData['valid'] == true &&
           responseData['discountAmount'] is num &&
           (responseData['discountAmount'] as num).isFinite &&
@@ -824,8 +872,9 @@ class OrderService extends ChangeNotifier {
               (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
           'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
           'lines': responseData['lines'] ?? [],
-          'deliveryBenefit': responseData['deliveryBenefit']==true,
-          'deliveryBenefitSavingAmount': responseData['deliveryBenefitSavingAmount'] ?? 0,
+          'deliveryBenefit': responseData['deliveryBenefit'] == true,
+          'deliveryBenefitSavingAmount':
+              responseData['deliveryBenefitSavingAmount'] ?? 0,
         };
       }
       return {
@@ -887,8 +936,13 @@ class OrderService extends ChangeNotifier {
     double deliveryFee = 0,
     String? addressId,
   }) async {
-    if (hasDiscountCustomizations(items)) return {'success': false, 'valid': false,
-      'code': 'UNSUPPORTED_DISCOUNT_ITEMS', 'message': unsupportedDiscountItemsMessage};
+    if (hasDiscountCustomizations(items))
+      return {
+        'success': false,
+        'valid': false,
+        'code': 'UNSUPPORTED_DISCOUNT_ITEMS',
+        'message': unsupportedDiscountItemsMessage,
+      };
     try {
       final response = await http
           .post(
@@ -938,8 +992,9 @@ class OrderService extends ChangeNotifier {
               (responseData['discountAmount'] as num?)?.toDouble() ?? 0.0,
           'finalTotal': (responseData['finalTotal'] as num?)?.toDouble(),
           'lines': responseData['lines'] ?? [],
-          'deliveryBenefit': responseData['deliveryBenefit']==true,
-          'deliveryBenefitSavingAmount': responseData['deliveryBenefitSavingAmount'] ?? 0,
+          'deliveryBenefit': responseData['deliveryBenefit'] == true,
+          'deliveryBenefitSavingAmount':
+              responseData['deliveryBenefitSavingAmount'] ?? 0,
         };
       }
       return {

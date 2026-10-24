@@ -1,6 +1,6 @@
 'use strict';
 const { accountGuard } = require('../create-order/account-guard');
-const { createStagingStorefrontPreview, createStagingDeliveryQuoteRateLimiter, createStagingDeliveryQuotes, createStagingSecretDeliveryRouting, DynamoDBClient,
+const { createStagingStorefrontRoute, createStagingStorefrontPreview, createStagingDeliveryQuoteRateLimiter, createStagingDeliveryQuotes, createStagingSecretDeliveryRouting, DynamoDBClient,
   createFinanceRollout, DynamoDBDocumentClient, GetCommand, SecretsManagerClient, CognitoIdentityProviderClient, GetUserCommand, readDeliveryOperations } = require('./runtime');
 const cognito = new CognitoIdentityProviderClient({});
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
@@ -45,6 +45,13 @@ exports.handler = async event => {
       if (event.isBase64Encoded || typeof event.body !== 'string' || Buffer.byteLength(event.body) > 12000 ||
           Object.keys(event.queryStringParameters || {}).length) return reply(400, { success: false, code: 'INVALID_QUOTE_REQUEST' });
       let input; try { input = JSON.parse(event.body); } catch { return reply(400, { success: false, code: 'INVALID_QUOTE_REQUEST' }); }
+      if(input?.action==='storefront_route'){
+        const {action,...selection}=input;
+        const route=await createStagingStorefrontRoute({db,authenticateCustomer,
+          beforeCalculate:async(c)=>{const operating=await readDeliveryOperations(db,env);await createStagingDeliveryQuoteRateLimiter({db,maxPerMinute:Math.min(120,operating.values.quoteMaxPerCustomerPerMinute*4),policyCondition:operating.condition,preview:true}).reserve(c);},
+          createRouter:guardedDb=>createStagingSecretDeliveryRouting({db:guardedDb,secrets,secretArn:env.MAPBOX_SECRET_ARN,profile:'driving',ttlSeconds:120,timeoutMs:8000,credentialTimeoutMs:2000})}).preview(selection);
+        return reply(200,{success:true,route});
+      }
       if(input?.action==='storefront_preview'){
         const {action,...selection}=input;
         const preview=await createStagingStorefrontPreview({db,authenticateCustomer,
@@ -53,6 +60,7 @@ exports.handler = async event => {
         console.info('STOREFRONT_PREVIEW_READY',{branchId:preview.branchId,addressId:preview.addressId,feeMinor:preview.customerDeliveryFee.minorAmount,pricingMode:preview.pricingMode,preparationMinutes:preview.preparationMinutes,roadDistanceMeters:preview.roadDistanceMeters});
         return reply(200,{success:true,preview});
       }
+      if(Buffer.byteLength(event.body)>2048)return reply(400,{success:false,code:'INVALID_QUOTE_REQUEST'});
       quote = await service.create(input);
     } else {
       const query = event.queryStringParameters || {};

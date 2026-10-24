@@ -1,3 +1,4 @@
+import 'package:foodapp_user/widgets/animated_cart_bar.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -43,6 +44,33 @@ void main() {
   test('clearing and immediately adding another basket preserves the new basket in storage', () async {
     final cart=CartModel();cart.addItem(line());cart.clear();cart.addItem(line(note:'طلب جديد'));await cart.saveToStorage();
     final restored=CartModel();await restored.loadFromStorage();expect(restored.items.single.specialInstructions,'طلب جديد');
+  });
+  testWidgets('delivery fee has explicit loading and the same label as the restaurant', (t) async {
+    final pending=Completer<http.Response>();var calls=0;
+    final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,20),client:MockClient((_) {calls++;return pending.future;}));
+    final state=AppStateProvider();state.cart.addItem(line());
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
+    expect(find.text('رسوم التوصيل'),findsOneWidget);
+    expect(find.text('التوصيل التقديري'),findsNothing);
+    expect(find.text('جارٍ حساب الرسوم…'),findsOneWidget);
+    expect(find.byType(CircularProgressIndicator),findsOneWidget);
+    await t.pump(const Duration(milliseconds:300));await t.pump();expect(calls,1);
+    pending.complete(http.Response(jsonEncode({'success':true,'preview':preview()}),200));
+    await t.pumpAndSettle();expect(find.text('1500 د.ع'),findsOneWidget);
+    expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
+  });
+  testWidgets('opening cart with a fresh matching server fee is immediate and sends no new request', (t) async {
+    var calls=0;
+    final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,20),client:MockClient((_)async{calls++;return http.Response(jsonEncode({'success':true,'preview':preview()}),200);}));
+    final state=AppStateProvider();state.cart.addItem(line());
+    await pricing.load('b1',state.cartItems);
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
+    expect(find.text('1500 د.ع'),findsOneWidget);expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    await t.pumpAndSettle();expect(calls,1);
+    await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
   testWidgets('rapid quantity edits debounce informational pricing instead of requesting every intermediate basket', (t) async {
     var calls=0;final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
@@ -112,4 +140,34 @@ void main() {
       item:line(name:'كباب يلعب النفس مع الخبز والسلطة والأطباق الجانبية',note:'بدون ملح وبصل مع تغليف منفصل'),increase:(){},decrease:(){},remove:(){})))))));
     await t.pump();expect(t.takeException(),isNull);expect(find.byTooltip('زيادة كمية كباب يلعب النفس مع الخبز والسلطة والأطباق الجانبية'),findsOneWidget);
   });
+  testWidgets('restaurant cart bar fits a narrow screen with enlarged Arabic text', (t) async {
+    await t.binding.setSurfaceSize(const Size(320,640));
+    addTearDown(()=>t.binding.setSurfaceSize(null));
+    final state=AppStateProvider();state.cart.addItem(line());
+    for(final scale in [1.0,2.0]){
+      await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(
+        builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!),
+        home:const Stack(children:[Scaffold(),AnimatedCartBar(storeName:'فروج المدينة',storeId:'b1',isExpanded:true)]),
+      )));
+      await t.pump();expect(t.takeException(),isNull);
+      expect(find.text('فروج المدينة'),findsOneWidget);
+      final style=DefaultTextStyle.of(t.element(find.text('فروج المدينة'))).style;
+      expect(style.decoration?.contains(TextDecoration.underline)??false,isFalse);
+    }
+    await t.pumpWidget(const SizedBox());state.dispose();
+  });
+
+  testWidgets('adding another unit of the same dish pulses the cart and updates its quantity', (t) async {
+    final state=AppStateProvider();final item=line();state.cart.addItem(item);
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:const MaterialApp(
+      home:Stack(children:[Scaffold(),AnimatedCartBar(storeName:'فروج المدينة',storeId:'b1',isExpanded:true)]))));
+    state.changeCartLineQuantity(item,1);
+    await t.pump();await t.pump(const Duration(milliseconds:150));
+    expect(find.text('2'),findsOneWidget);
+    expect(t.widget<ScaleTransition>(find.descendant(of:find.byType(AnimatedCartBar),matching:find.byType(ScaleTransition))).scale.value,greaterThan(1));
+    expect(find.byType(SnackBar),findsNothing);
+    expect(t.takeException(),isNull);
+    await t.pumpWidget(const SizedBox());state.dispose();
+  });
+
 }

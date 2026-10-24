@@ -1,3 +1,6 @@
+import 'package:foodapp_user/services/order_service.dart';
+import 'package:foodapp_user/models/address_model.dart';
+import 'package:foodapp_user/models/order_model.dart';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -72,7 +75,11 @@ void main() {
         }
         posts.add(body);
         if (body['action'] == 'preview_commercial') {
-          if (previewError != null) return http.Response(jsonEncode({'success':false,'code':previewError}),503);
+          if (previewError != null)
+            return http.Response(
+              jsonEncode({'success': false, 'code': previewError}),
+              503,
+            );
           if (activeConflict)
             return http.Response(
               jsonEncode({
@@ -99,7 +106,9 @@ void main() {
           if ((body['tip'] ?? 0) > 0) {
             proposal['driverTip'] = money((body['tip'] as int) * 1000);
             proposal['discount'] = money(500000);
-            proposal['customerTotal'] = money(3500000 + (body['tip'] as int) * 1000);
+            proposal['customerTotal'] = money(
+              3500000 + (body['tip'] as int) * 1000,
+            );
           }
           mutatePreview(proposal);
           return http.Response(
@@ -130,6 +139,30 @@ void main() {
   });
   tearDown(() => checkout.dispose());
   test(
+    'upfront invoice reads final service without consent, pending storage or order write',
+    () async {
+      final invoice = await checkout.previewInvoice(content());
+      expect(invoice['serviceFee']['minorAmount'], 500000);
+      expect(posts, hasLength(1));
+      expect(posts.single['action'], 'preview_commercial');
+      expect(saved, isEmpty);
+      expect(checkout.pending, false);
+      expect(checkout.busy, false);
+    },
+  );
+  test(
+    'upfront invoice rejects inconsistent server totals without saving an attempt',
+    () async {
+      mutatePreview = (p) => p['customerTotal'] = money(4500000);
+      await expectLater(
+        checkout.previewInvoice(content()),
+        throwsFormatException,
+      );
+      expect(saved, isEmpty);
+      expect(posts, hasLength(1));
+    },
+  );
+  test(
     'scoped build binds the same approved attempt to preview consent and order',
     () async {
       const raw = String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT');
@@ -144,51 +177,130 @@ void main() {
         !enabled ||
         const String.fromEnvironment('FINANCE_TEST_CHECKOUT_ATTEMPT').isEmpty,
   );
-  test('goods benefit preserves fixed agreement 1500 and reviews 8500', () async {
-    quoteFee=2000000;
-    await checkout.load('b1','a1',renew:true);
-    mutatePreview=(p){
-      p['schemaVersion']=3;p['referenceDeliveryFee']=money(2000000);
-      p['deliveryAgreement']={'policyId':'agreement','version':1,'termsHash':'b'*64,'kind':'FIXED_TARIFF'};
-      p['goodsGross']=money(7000000);p['discount']=money(500000);p['serviceFee']=money(500000);p['deliveryFee']=money(1500000);p['customerTotal']=money(8500000);
-    };
-    await checkout.confirm({...content(),'platformDiscountId':'benefit-500','discount':500},approveCommercial:(p)async{
-      expect(p['deliveryFee']['minorAmount'],1500000);expect(p['discount']['minorAmount'],500000);expect(p['customerTotal']['minorAmount'],8500000);return true;
-    });
-    expect(posts.last['platformDiscountId'],'benefit-500');expect(posts.last['commercialConsent']['customerTotalMinor'],8500000);
-  },skip:!enabled);
-  test('selected benefit stays bound to preview, consent and confirmation', () async {
-    mutatePreview=(p){p['discount']=money(500000);p['customerTotal']=money(3500000);};
-    await checkout.confirm({...content(), 'platformDiscountId':'benefit-500', 'discount':500}, approveCommercial: (_) async => true);
-    expect(posts,hasLength(2));
-    for(final request in posts) { expect(request['platformDiscountId'],'benefit-500'); }
-    expect(posts.first['idempotencyKey'],posts.last['idempotencyKey']);
-  },skip:!enabled);
+  test(
+    'goods benefit preserves fixed agreement 1500 and reviews 8500',
+    () async {
+      quoteFee = 2000000;
+      await checkout.load('b1', 'a1', renew: true);
+      mutatePreview = (p) {
+        p['schemaVersion'] = 3;
+        p['referenceDeliveryFee'] = money(2000000);
+        p['deliveryAgreement'] = {
+          'policyId': 'agreement',
+          'version': 1,
+          'termsHash': 'b' * 64,
+          'kind': 'FIXED_TARIFF',
+        };
+        p['goodsGross'] = money(7000000);
+        p['discount'] = money(500000);
+        p['serviceFee'] = money(500000);
+        p['deliveryFee'] = money(1500000);
+        p['customerTotal'] = money(8500000);
+      };
+      await checkout.confirm(
+        {...content(), 'platformDiscountId': 'benefit-500', 'discount': 500},
+        approveCommercial: (p) async {
+          expect(p['deliveryFee']['minorAmount'], 1500000);
+          expect(p['discount']['minorAmount'], 500000);
+          expect(p['customerTotal']['minorAmount'], 8500000);
+          return true;
+        },
+      );
+      expect(posts.last['platformDiscountId'], 'benefit-500');
+      expect(posts.last['commercialConsent']['customerTotalMinor'], 8500000);
+    },
+    skip: !enabled,
+  );
+  test(
+    'selected benefit stays bound to preview, consent and confirmation',
+    () async {
+      mutatePreview = (p) {
+        p['discount'] = money(500000);
+        p['customerTotal'] = money(3500000);
+      };
+      await checkout.confirm({
+        ...content(),
+        'platformDiscountId': 'benefit-500',
+        'discount': 500,
+      }, approveCommercial: (_) async => true);
+      expect(posts, hasLength(2));
+      for (final request in posts) {
+        expect(request['platformDiscountId'], 'benefit-500');
+      }
+      expect(posts.first['idempotencyKey'], posts.last['idempotencyKey']);
+    },
+    skip: !enabled,
+  );
   test('delivery benefit stays separate from a goods discount', () async {
-    await checkout.confirm({...content(), 'deliveryBenefitId':'delivery-benefit'}, approveCommercial: (_) async => true);
-    expect(posts,hasLength(2));
-    for(final request in posts) { expect(request['deliveryBenefitId'],'delivery-benefit');expect(request['platformDiscountId'],isNull); }
-  },skip:!enabled);
+    await checkout.confirm({
+      ...content(),
+      'deliveryBenefitId': 'delivery-benefit',
+    }, approveCommercial: (_) async => true);
+    expect(posts, hasLength(2));
+    for (final request in posts) {
+      expect(request['deliveryBenefitId'], 'delivery-benefit');
+      expect(request['platformDiscountId'], isNull);
+    }
+  }, skip: !enabled);
   test('cancelling review sends no order or reservation request', () async {
-    await expectLater(checkout.confirm({...content(),'platformDiscountId':'benefit-500'},approveCommercial:(_)async=>false),throwsStateError);
-    expect(posts,hasLength(1));expect(posts.single['action'],'preview_commercial');expect(saved,isEmpty);expect(checkout.pending,false);
-  },skip:!enabled);
-  test('a driver tip and goods discount both reach final consent and the persisted order', () async {
-    await checkout.confirm({...content(),'tip':500},approveCommercial:(proposal) async {
-      expect(proposal['discount']['minorAmount'],500000);
-      expect(proposal['driverTip']['minorAmount'],500000);
-      expect(proposal['customerTotal']['minorAmount'],4000000);
-      return true;
-    });
-    expect(posts,hasLength(2));expect(posts.last['tip'],500);
-    expect(posts.last['commercialConsent']['customerTotalMinor'],4000000);
-  },skip:!enabled);
-  test('unavailable delivery policy explains failure before consent and never creates an order', () async {
-    previewError='DELIVERY_POLICY_UNAVAILABLE';var approvals=0;
-    await expectLater(checkout.confirm(content(),approveCommercial:(_) async {approvals++;return true;}),
-      throwsA(isA<StateError>().having((e)=>e.message,'message',contains('لم يُرسل الطلب'))));
-    expect(approvals,0);expect(posts,hasLength(1));expect(saved,isEmpty);expect(checkout.pending,false);
-  },skip:!enabled);
+    await expectLater(
+      checkout.confirm({
+        ...content(),
+        'platformDiscountId': 'benefit-500',
+      }, approveCommercial: (_) async => false),
+      throwsStateError,
+    );
+    expect(posts, hasLength(1));
+    expect(posts.single['action'], 'preview_commercial');
+    expect(saved, isEmpty);
+    expect(checkout.pending, false);
+  }, skip: !enabled);
+  test(
+    'a driver tip and goods discount both reach final consent and the persisted order',
+    () async {
+      await checkout.confirm(
+        {...content(), 'tip': 500},
+        approveCommercial: (proposal) async {
+          expect(proposal['discount']['minorAmount'], 500000);
+          expect(proposal['driverTip']['minorAmount'], 500000);
+          expect(proposal['customerTotal']['minorAmount'], 4000000);
+          return true;
+        },
+      );
+      expect(posts, hasLength(2));
+      expect(posts.last['tip'], 500);
+      expect(posts.last['commercialConsent']['customerTotalMinor'], 4000000);
+    },
+    skip: !enabled,
+  );
+  test(
+    'unavailable delivery policy explains failure before consent and never creates an order',
+    () async {
+      previewError = 'DELIVERY_POLICY_UNAVAILABLE';
+      var approvals = 0;
+      await expectLater(
+        checkout.confirm(
+          content(),
+          approveCommercial: (_) async {
+            approvals++;
+            return true;
+          },
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('لم يُرسل الطلب'),
+          ),
+        ),
+      );
+      expect(approvals, 0);
+      expect(posts, hasLength(1));
+      expect(saved, isEmpty);
+      expect(checkout.pending, false);
+    },
+    skip: !enabled,
+  );
   test(
     'cancel commercial amount sends no order and persists no attempt',
     () async {
@@ -347,5 +459,46 @@ void main() {
       expect(saved, isEmpty);
     },
     skip: !enabled,
+  );
+  test(
+    'OrderService treats review dismissal as normal cancellation without an error',
+    () async {
+      final date = DateTime.utc(2026, 10, 15);
+      final address = DetailedAddress(
+        id: 'a1',
+        userId: 'u1',
+        name: 'Test',
+        province: 'Test',
+        district: 'Test',
+        neighborhood: 'Test',
+        landmark: '',
+        fullAddress: 'Test address',
+        latitude: 31.925,
+        longitude: 44.457,
+        addressType: 'home',
+        createdAt: date,
+        updatedAt: date,
+      );
+      final result = await OrderService().createOrder(
+        storeId: 'b1',
+        storeName: 'Test',
+        cartItems: [
+          {'id': 'p1', 'name': 'Test', 'price': 3500, 'quantity': 1},
+        ],
+        deliveryAddress: address,
+        paymentMethod: PaymentMethod.cash,
+        userId: 'u1',
+        customerName: 'Test',
+        customerPhone: 'synthetic',
+        deliveryFee: 0,
+        quoteCheckout: checkout,
+        approveCommercial: (_) async => false,
+      );
+      expect(result['cancelled'], true);
+      expect(OrderService().error, isNull);
+      expect(checkout.pending, false);
+      expect(saved, isEmpty);
+      expect(posts.every((p) => p['action'] == 'preview_commercial'), true);
+    },
   );
 }
