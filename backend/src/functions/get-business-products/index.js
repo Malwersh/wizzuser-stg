@@ -31,8 +31,6 @@ const handler = async (event) => {
             };
         }
         const businessId = event.pathParameters?.businessId;
-        const page = parseInt(event.queryStringParameters?.page || '1');
-        const limit = parseInt(event.queryStringParameters?.limit || '50');
         if (!businessId) {
             return {
                 statusCode: 400,
@@ -46,17 +44,21 @@ const handler = async (event) => {
         console.log(`Fetching products for business: ${businessId}`);
         
         // Step 1: Query Products table by businessId using GSI
-        const queryCommand = new lib_dynamodb_1.QueryCommand({
+        const queryInput = {
             TableName: PRODUCTS_TABLE,
             IndexName: 'BusinessIdIndex',
             KeyConditionExpression: 'businessId = :businessId',
             ExpressionAttributeValues: {
                 ':businessId': businessId,
             },
-        });
-        const productsResult = await docClient.send(queryCommand);
+        };
+        const productItems=[];let productCursor;
+        do {
+            const productsResult=await docClient.send(new lib_dynamodb_1.QueryCommand({...queryInput,ExclusiveStartKey:productCursor}));
+            productItems.push(...(productsResult.Items||[]));productCursor=productsResult.LastEvaluatedKey;
+        } while(productCursor);
         
-        if (!productsResult.Items || productsResult.Items.length === 0) {
+        if (productItems.length === 0) {
             console.log(`No products found for business: ${businessId}`);
             return {
                 statusCode: 200,
@@ -70,11 +72,11 @@ const handler = async (event) => {
             };
         }
         
-        console.log(`Found ${productsResult.Items.length} products, fetching global product details...`);
+        console.log(`Found ${productItems.length} products, fetching global product details...`);
         
         // Step 2: Extract unique globalProductIds (remove duplicates)
         const uniqueGlobalProductIds = [...new Set(
-            productsResult.Items
+            productItems
                 .filter(p => p.globalProductId)
                 .map(p => p.globalProductId)
         )];
@@ -116,7 +118,7 @@ const handler = async (event) => {
         
         // Step 4: Extract unique categoryIds and fetch category names
         const uniqueCategoryIds = [...new Set(
-            productsResult.Items
+            productItems
                 .filter(p => p.categoryId)
                 .map(p => p.categoryId)
         )];
@@ -158,9 +160,10 @@ const handler = async (event) => {
         
         // Step 6: Merge data from all tables (Products + GlobalProducts + Categories)
         // Priority: Use data from Products table first, fallback to GlobalProducts if null/missing
-        const products = productsResult.Items.map(product => {
+        const products = productItems.map(product => {
             const globalProduct = globalProductsMap.get(product.globalProductId) || {};
             const category = categoriesMap.get(categoryReference(product.categoryId)) || {};
+            const categoryVisible=(!category.businessId||category.businessId===businessId)&&category.isActive!==false&&category.is_active!==false;
             
             return {
                 productId: product.productId,
@@ -172,7 +175,7 @@ const handler = async (event) => {
                 description: product.description || globalProduct.description || '',
                 price: product.price,
                 imageUrl: product.imageUrl || globalProduct.imageUrl || '',
-                is_available: (product.isAvailable !== undefined ? product.isAvailable : true) && !(Array.isArray(product.optionGroups) && product.optionGroups.some(g=>g.required===true && (!Array.isArray(g.options)||!g.options.some(o=>o.isAvailable===true)))),
+                is_available: categoryVisible && (product.isAvailable !== undefined ? product.isAvailable : true) && !(Array.isArray(product.optionGroups) && product.optionGroups.some(g=>g.required===true && (!Array.isArray(g.options)||!g.options.some(o=>o.isAvailable===true)))),
                 is_featured: product.isFeatured !== undefined ? product.isFeatured : (globalProduct.isFeatured === true),
                 addons: product.optionGroups ?? product.addons ?? [],
                 variations: product.variations || [],
