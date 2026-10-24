@@ -1,3 +1,4 @@
+import '../widgets/discount_notice_sheet.dart';
 import '../services/checkout_invoice_store.dart';
 import '../widgets/merchant_offer_picker.dart';
 import '../models/platform_benefit.dart';
@@ -737,7 +738,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             : 'تم تطبيق كود الخصم بنجاح',
       );
     } else {
-      _showMessage(result['message'] ?? 'كود الخصم غير صالح', isError: true);
+      await showDiscountNoticeSheet(context,
+        message: result['message'] ?? 'كود الخصم غير صالح');
     }
   }
 
@@ -783,6 +785,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ? appState.cartItems.first['store_id']
             : null);
     if (storeId == null) return;
+    if (appState.cartTotal.isFinite && appState.cartTotal >= 0 &&
+        discount.minimumOrderAmount.isFinite &&
+        appState.cartTotal < discount.minimumOrderAmount) {
+      await showDiscountNoticeSheet(context,
+        offerTitle: discount.title,
+        message: 'السلة أقل من الحد الأدنى لهذا العرض.',
+        minimum: discount.minimumOrderAmount,
+        subtotal: appState.cartTotal,
+      );
+      return;
+    }
 
     setState(() {
       _isValidatingDiscount = true;
@@ -853,7 +866,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (result['valid'] == true) {
       _showMessage('تم تطبيق الخصم بنجاح');
     } else {
-      _showMessage(result['message'] ?? 'الخصم غير صالح', isError: true);
+      await showDiscountNoticeSheet(context, offerTitle: discount.title,
+        message: result['message'] ?? 'تعذر التحقق من شروط العرض. أعد المحاولة.');
     }
   }
 
