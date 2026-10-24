@@ -783,6 +783,7 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'COMMERCIAL_ORDER_UNSUPPORTED',
                 'COMMERCIAL_CONSENT_REQUIRED',
                 'COMMERCIAL_QUOTE_EXPIRED',
+                'DISCOUNT_FUNDING_TERMS_CHANGED',
                 'DISCOUNT_FUNDING_UNAVAILABLE',
                 'PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED',
                 'COMMERCIAL_SOURCE_UNAVAILABLE',
