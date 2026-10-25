@@ -1208,15 +1208,15 @@ class _MapScreenNewState extends State<MapScreenNew> {
                       Icon(Icons.star, size: 15, color: Colors.orange[700]),
                       const SizedBox(width: 4),
                       Text(
-                        business.rating.toStringAsFixed(1),
+                        business.ratingString,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        '(500+)',
+                      if ((business.reviewCount ?? 0) > 0) Text(
+                        '(${business.reviewCount})',
                         style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                       ),
                       // 🔥 عرض المسافة الحقيقية المحسوبة
@@ -1579,7 +1579,7 @@ class _MapScreenNewState extends State<MapScreenNew> {
       logoUrl: business.businessPhotoUrl,
       rating: business.rating.toStringAsFixed(1),
       fee: business.deliveryFee,
-      reviews: '500+',
+      reviews: business.reviewCount?.toString() ?? '',
       distance: business.distance,
       time: business.deliveryTime,
       averagePreparationMinutes: business.averagePreparationMinutes,

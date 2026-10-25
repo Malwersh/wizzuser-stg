@@ -291,7 +291,7 @@ class _MapScreenState extends State<MapScreen> {
                                 Icon(Icons.star, color: Colors.amber, size: 16),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '${business.rating}',
+                                  business.ratingString,
                                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                                 ),
                                 const SizedBox(width: 12),
@@ -713,7 +713,7 @@ class _MapScreenState extends State<MapScreen> {
                 Icon(Icons.star, color: Colors.amber, size: 16),
                 const SizedBox(width: 4),
                 Text(
-                  '${business.rating}',
+                  business.ratingString,
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(width: 12),

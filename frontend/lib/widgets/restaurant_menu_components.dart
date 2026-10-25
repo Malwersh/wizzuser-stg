@@ -8,14 +8,19 @@ import '../models/store_discount.dart';
 class RestaurantHeroDetails extends StatelessWidget {
   final Store store;
   final VoidCallback onDetails;
+  final String? ratingOverride;
+  final String? reviewsOverride;
   const RestaurantHeroDetails({
     super.key,
     required this.store,
     required this.onDetails,
+    this.ratingOverride,
+    this.reviewsOverride,
   });
   @override
   Widget build(BuildContext context) {
-    final rating = store.ratingValue > 0 ? store.rating : 'لا تقييمات بعد';
+    final rating = ratingOverride ?? store.ratingLabel;
+    final reviews = reviewsOverride ?? store.reviews;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -79,8 +84,8 @@ class RestaurantHeroDetails extends StatelessWidget {
               _badge(
                 Icons.star_rounded,
                 rating,
-                int.tryParse(store.reviews) != null
-                    ? '${store.reviews} تقييم • التفاصيل'
+                int.tryParse(reviews) != null
+                    ? '$reviews تقييم • التفاصيل'
                     : 'معلومات المطعم',
               ),
               const SizedBox(width: 9),
@@ -142,10 +147,14 @@ class RestaurantHeroDetails extends StatelessWidget {
 class RestaurantSummaryCard extends StatelessWidget {
   final Store store;
   final VoidCallback onDetails;
+  final String? ratingOverride;
+  final String? reviewsOverride;
   const RestaurantSummaryCard({
     super.key,
     required this.store,
     required this.onDetails,
+    this.ratingOverride,
+    this.reviewsOverride,
   });
   @override
   Widget build(BuildContext context) => Container(
@@ -232,6 +241,8 @@ class RestaurantMenuTile extends StatelessWidget {
   final bool isBestseller;
   final String? unavailableReason;
   final VoidCallback onDetails;
+  final String? ratingOverride;
+  final String? reviewsOverride;
   final VoidCallback onAdd;
 
   const RestaurantMenuTile({
@@ -239,6 +250,8 @@ class RestaurantMenuTile extends StatelessWidget {
     required this.product,
     required this.available,
     required this.onDetails,
+    this.ratingOverride,
+    this.reviewsOverride,
     required this.onAdd,
     this.unavailableReason,
     this.isBestseller = false,

@@ -18,6 +18,7 @@ class Store {
 
   // خصائص إضافية للتوافق مع الشاشات
   String get imageUrl => image;  // alias للصورة الرئيسية
+  String get ratingLabel => ratingValue.isFinite && ratingValue >= 1 && ratingValue <= 5 ? rating : '—';
   double get ratingValue => double.tryParse(rating) ?? 0.0;  // التقييم كرقم
   String get deliveryTime => time;  // وقت التوصيل
   String get deliveryFee => fee;    // رسوم التوصيل

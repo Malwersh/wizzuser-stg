@@ -7,3 +7,6 @@ test('agreement public projection excludes commission and payer terms',()=>{
  const x=f({minimum_order:4000,storefrontDeliveryAgreements:[{id:'agreement',version:1,effectiveFrom:'2026-10-19T00:00:00.000Z',effectiveTo:'2026-11-19T00:00:00.000Z',regionIds:['zone'],deliveryFeeIqd:1500,minimumOrderAmountIqd:7000,commission:15,funding:{kind:'PLATFORM'}}]});
  assert.equal(x.minimumOrderAmountIqd,4000);assert.equal(x.storefrontDeliveryAgreements.length,1);assert.equal(x.storefrontDeliveryAgreements[0].commission,undefined);assert.equal(x.storefrontDeliveryAgreements[0].funding,undefined);
 });
+
+test('verified customer aggregate overrides stale legacy rating and count',()=>{const x=f({rating:4.9,reviewCount:500,customerRating:4,customerRatingCount:1});assert.equal(x.rating,4);assert.equal(x.reviewCount,1);});
+test('empty or malformed customer aggregate never falls back to legacy stars',()=>{for(const value of [{customerRating:null,customerRatingCount:0},{customerRating:9,customerRatingCount:1},{customerRating:4,customerRatingCount:0}]){const x=f({...value,rating:4.9,reviewCount:500});assert.equal(x.rating,null);assert.equal(x.reviewCount,0);}});

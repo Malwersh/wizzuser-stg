@@ -37,7 +37,7 @@ class EnhancedRestaurantCard extends StatefulWidget {
 }
 
 class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
-  final RestaurantAvailabilityService _availabilityService = 
+  final RestaurantAvailabilityService _availabilityService =
       RestaurantAvailabilityService.instance;
   late final SubscriptionManager _subscriptionManager;
   String _subscriberId = '';
@@ -82,14 +82,14 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
   /// تحديث الحالة من الكاش بصمت بدون طلبات شبكة أو مؤشرات تحميل
   Future<void> _refreshFromCacheSilently({bool force = false}) async {
     if (!mounted) return;
-    
+
     // Debouncing: منع التحديث إذا تم التحديث خلال آخر ثانية
     final now = DateTime.now();
-    if (!force && _lastUpdateTime != null && 
+    if (!force && _lastUpdateTime != null &&
         now.difference(_lastUpdateTime!).inMilliseconds < 1000) {
       return;
     }
-    
+
     try {
       final cached = await BusinessStatusCache.getCachedBusinessStatus(widget.store.id);
       if (cached == null) return;
@@ -115,9 +115,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     try {
       // إلغاء الاشتراك السابق إذا وُجد
       _businessStatusSubscription?.cancel();
-      
+
       debugPrint('🚀 إعداد اشتراك جديد للمطعم ${widget.store.id}');
-      
+
       // الاشتراك في تحديثات حالة هذا المطعم باستخدام SubscriptionManager
       _businessStatusSubscription = _subscriptionManager
           .subscribeToRestaurantStatus(widget.store.id)
@@ -152,7 +152,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
           });
         },
       );
-      
+
       debugPrint('✅ تم إعداد الاستماع لتحديثات المطعم عبر SubscriptionManager: ${widget.store.id}');
     } catch (e) {
       debugPrint('❌ خطأ في إعداد الاستماع لتحديثات المطعم: $e');
@@ -177,7 +177,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       final statusMessage = updateData['statusMessage'] as String?;
       final isAvailableDirect = updateData['isAvailable'] as bool?; // من polling
       final source = updateData['source'] as String?; // 'polling' أو 'websocket'
-      
+
       // معالجة تحديثات ساعات العمل الجديدة
       final workingHours = updateData['workingHours'] as Map<String, dynamic>?;
       final workingHoursUpdated = updateData['workingHoursUpdated'] as bool?;
@@ -207,7 +207,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
         // تحديد ساعات العمل الجديدة أو الحالية
         Map<String, dynamic> newWorkingHours = {};
-        
+
         // 🔥 أولوية للساعات القادمة من التحديث
         if (workingHours != null && workingHours.isNotEmpty) {
           newWorkingHours = Map<String, dynamic>.from(workingHours);
@@ -221,10 +221,10 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
         // 🔥 فحص خاص للحالة عند تحديث ساعات العمل
         bool newIsWithinWorkingHours = true;
-        
+
         // 🔥 استخدام القيمة من API كأولوية (محسوبة بـ timezone المطعم)
         final isWithinWorkingHoursFromAPI = updateData['isWithinWorkingHours'] as bool?;
-        
+
         if (isWithinWorkingHoursFromAPI != null) {
           // استخدام القيمة من Backend (أدق لأنها تستخدم timezone المطعم)
           newIsWithinWorkingHours = isWithinWorkingHoursFromAPI;
@@ -232,7 +232,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         } else if (forceStatusRecheck == true || workingHoursUpdated == true) {
           // إعادة فحص شاملة لساعات العمل (fallback فقط)
           newIsWithinWorkingHours = _checkIsWithinWorkingHours(newWorkingHours);
-          
+
           // 🚨 إذا كان اليوم المحدث هو اليوم الحالي وتم إغلاقه، فالمطعم مغلق فوراً
           if (dayUpdated != null && (isClosedToday == true || isDayClosed == true)) {
             final now = DateTime.now();
@@ -242,26 +242,26 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
               debugPrint('🚫 تم إغلاق المطعم فوراً لليوم الحالي: $dayUpdated');
             }
           }
-          
+
           debugPrint('⚡ إعادة فحص ساعات العمل (local): $newIsWithinWorkingHours');
         } else {
           // fallback: حساب محلي فقط إذا لم تتوفر قيمة من API
           newIsWithinWorkingHours = _checkIsWithinWorkingHours(newWorkingHours);
           debugPrint('⚠️ حساب محلي (قد يكون غير دقيق بسبب timezone): $newIsWithinWorkingHours');
         }
-        
+
         // إنشاء حالة جديدة مع ضمان التغيير
         final previousAvailable = _availabilityStatus?.isAvailable ?? true;
         final previousWorkingHours = _availabilityStatus?.isWithinWorkingHours ?? true;
         final newAvailable = (canAcceptOrders ?? (_availabilityStatus?.acceptingOrders ?? true));
-        
+
         // تحويل Map<String, dynamic> إلى Map<String, WorkingHours?>
         final Map<String, WorkingHours?> convertedWorkingHours = {};
-        
+
         if (newWorkingHours.isNotEmpty) {
           newWorkingHours.forEach((day, hoursData) {
-            if (hoursData is Map<String, dynamic> && 
-                hoursData.containsKey('open') && 
+            if (hoursData is Map<String, dynamic> &&
+                hoursData.containsKey('open') &&
                 hoursData.containsKey('close')) {
               convertedWorkingHours[day] = WorkingHours(
                 opening: hoursData['open']?.toString() ?? '',
@@ -273,7 +273,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
             }
           });
         }
-        
+
         // 🔥 FIX: استخدام isAvailableDirect من Backend مباشرة
         // isAvailableDirect يتضمن بالفعل فحص working hours بـ timezone صحيح
         // لا نحتاج لإعادة فحص working hours محلياً
@@ -295,26 +295,26 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
           checkedAt: DateTime.now(),
           reasonUnavailable: _getReasonFromStatus(isBusy, canAcceptOrders, statusMessage),
         );
-        
+
         // التحديث الفوري مع إجبار rebuild
         if (mounted) {
           setState(() {
             _availabilityStatus = updatedStatus;
             _isLoadingStatus = false; // التأكد من عدم وجود حالة تحميل
           });
-          
+
           debugPrint('⚡ تم تحديث فوري للحالة:');
           debugPrint('   - من: $previousAvailable إلى: $newAvailable');
           debugPrint('   - ساعات العمل من: $previousWorkingHours إلى: $newIsWithinWorkingHours');
           debugPrint('   - السبب: ${updatedStatus.reasonUnavailable}');
           debugPrint('   - Widget mounted: $mounted');
-          
+
           // 🔥 قراءة فورية من Cache بعد التحديث لضمان الدقة
           debugPrint('✅ CARD: تم تحديث الحالة setState - isAvailable: ${updatedStatus.isAvailable}, mounted: $mounted');
           // قراءة فورية من الكاش بعد التحديث لضمان مزامنة أي تغييرات خارجية (force لتجاوز الـ debounce)
           debugPrint('🔄 CARD: استدعاء _refreshFromCacheSilently مع force=true');
           _refreshFromCacheSilently(force: true);
-          
+
           // إجبار rebuild إضافي بعد فترة قصيرة للتأكد
           Future.delayed(const Duration(milliseconds: 100), () {
             if (mounted) {
@@ -349,16 +349,16 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     debugPrint('🔍 _checkIsWithinWorkingHours called with: $workingHours');
     debugPrint('🔍 workingHours.keys: ${workingHours.keys.toList()}');
     debugPrint('🔍 workingHours.isEmpty: ${workingHours.isEmpty}');
-    
+
     if (workingHours.isEmpty) {
       debugPrint('⚠️ workingHours فارغ - افتراض مفتوح');
       return true; // إذا لم توجد ساعات عمل، افتراضياً مفتوح
     }
-    
+
     try {
       final now = DateTime.now();
       final weekday = now.weekday; // 1 = Monday, 7 = Sunday
-      
+
       // 🔥 FIX: Get day name using simple switch statement (capitalized to match API)
       String getDayName(int weekday) {
         switch (weekday) {
@@ -372,17 +372,17 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
           default: return 'Monday';
         }
       }
-      
+
       final dayName = getDayName(weekday);
-      
+
       // 🔍 البحث بأسماء الأيام المختلفة: بالأحرف الصغيرة والكبيرة والإنجليزية
       Map<String, dynamic>? todayHours;
-      
+
       // 🔥 FIX: Normalize working hours keys to lowercase for case-insensitive search
       final normalizedWorkingHours = <String, dynamic>{};
       workingHours.forEach((key, value) {
         final normalizedKey = key.toLowerCase();
-        
+
         // 🔥 تحويل WorkingHours object إلى Map قبل التخزين
         if (value is Map) {
           normalizedWorkingHours[normalizedKey] = value;
@@ -393,7 +393,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
             final openingMatch = RegExp(r'opening:\s*([^,\)]+)').firstMatch(valueString);
             final closingMatch = RegExp(r'closing:\s*([^,\)]+)').firstMatch(valueString);
             final isClosedMatch = RegExp(r'isClosed:\s*(true|false)').firstMatch(valueString);
-            
+
             normalizedWorkingHours[normalizedKey] = {
               'opening': openingMatch?.group(1)?.trim() ?? '09:00',
               'closing': closingMatch?.group(1)?.trim() ?? '23:58',
@@ -404,12 +404,12 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
           }
         }
       });
-      
+
       // قائمة بجميع الاحتمالات لاسم اليوم (كلها lowercase بعد التطبيع)
       final possibleDayNames = [
         dayName.toLowerCase(),  // Convert to lowercase for normalized search
       ];
-      
+
       // البحث بجميع الاحتمالات (case-insensitive)
       for (final possibleName in possibleDayNames) {
         if (normalizedWorkingHours.containsKey(possibleName)) {
@@ -421,46 +421,46 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
           }
         }
       }
-      
+
       // إذا لم توجد ساعات عمل لهذا اليوم، افتراضياً مغلق
       if (todayHours == null) {
         debugPrint('⚠️ لا توجد ساعات عمل لليوم $dayName - افتراض مغلق');
         return false;
       }
-      
+
       // 🔥 أولوية عالية: فحص إذا كان المطعم مغلق اليوم (isClosed=true)
       final isClosed = todayHours['isClosed'] as bool?;
       if (isClosed == true) {
         debugPrint('🚫 المطعم مغلق بالكامل اليوم: $dayName (isClosed=true)');
         return false;
       }
-      
+
       // فحص ساعات الفتح والإغلاق فقط إذا كان المطعم غير مغلق
       final openTime = todayHours['open'] as String? ?? todayHours['opening'] as String?;
       final closeTime = todayHours['close'] as String? ?? todayHours['closing'] as String?;
-      
+
       // إذا كان isClosed=false ولكن لا توجد ساعات محددة، افتراضياً مفتوح
-      if (openTime == null || closeTime == null || 
+      if (openTime == null || closeTime == null ||
           openTime.isEmpty || closeTime.isEmpty ||
           openTime == 'none' || closeTime == 'none') {
         debugPrint('⚠️ ساعات العمل غير محددة لليوم $dayName ولكن المطعم غير مغلق - افتراض مفتوح');
         return true;
       }
-      
+
       final currentTime = TimeOfDay.fromDateTime(now);
       final parsedOpenTime = _parseTimeString(openTime);
       final parsedCloseTime = _parseTimeString(closeTime);
-      
+
       if (parsedOpenTime == null || parsedCloseTime == null) {
         debugPrint('⚠️ خطأ في تحليل ساعات العمل - افتراض مفتوح');
         return true;
       }
-      
+
       // تحويل الأوقات إلى دقائق للمقارنة
       final currentMinutes = currentTime.hour * 60 + currentTime.minute;
       final openMinutes = parsedOpenTime.hour * 60 + parsedOpenTime.minute;
       final closeMinutes = parsedCloseTime.hour * 60 + parsedCloseTime.minute;
-      
+
       bool isOpen;
       if (closeMinutes < openMinutes) {
         // المطعم مفتوح خلال منتصف الليل (مثل: 22:00 - 02:00)
@@ -469,13 +469,13 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         // ساعات عمل عادية (مثل: 09:00 - 22:00)
         isOpen = currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
       }
-      
+
       debugPrint('⏰ فحص ساعات العمل للمطعم:');
       debugPrint('   - اليوم: $dayName');
       debugPrint('   - الوقت الحالي: ${currentTime.format(context)}');
       debugPrint('   - ساعات العمل: $openTime - $closeTime');
       debugPrint('   - مفتوح: $isOpen');
-      
+
       return isOpen;
     } catch (e) {
       debugPrint('❌ خطأ في فحص ساعات العمل: $e');
@@ -551,7 +551,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
   Widget _buildStatusBadge() {
     if (!widget.showStatusBadge) return SizedBox.shrink();
-    
+
     if (_isLoadingStatus) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -588,9 +588,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     final isWithinWorkingHours = _availabilityStatus?.isWithinWorkingHours ?? false;
     final isAvailable = _availabilityStatus?.isAvailable ?? false;
     final reasonUnavailable = _availabilityStatus?.reasonUnavailable;
-    
+
     debugPrint('🔍 BADGE: isAvailable=$isAvailable, isWithinWorkingHours=$isWithinWorkingHours');
-    
+
     // تطبيق منطق الأولويات:
     // 1. أولوية عالية: مغلق بسبب ساعات العمل
     if (!isWithinWorkingHours) {
@@ -625,9 +625,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         ),
       );
     }
-    
+
     // 2. أولوية متوسطة: مفتوح + متاح → لا يظهر شيء
-    
+
     // 3. أولوية منخفضة: مفتوح + مشغول
     if (reasonUnavailable == 'مشغول') {
       return Container(
@@ -661,7 +661,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         ),
       );
     }
-    
+
     // Don't show any status badge for other states to avoid redundancy
     return SizedBox.shrink();
   }
@@ -846,7 +846,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                             Icon(Icons.star, color: Colors.amber, size: 13),
                             const SizedBox(width: 2),
                             Text(
-                              widget.store.rating, 
+                              widget.store.ratingLabel,
                               style: const TextStyle(
                                 fontSize: 10,
                                 color: Colors.black,
@@ -976,7 +976,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                             Icon(Icons.star, color: Colors.amber, size: 16),
                             const SizedBox(width: 4),
                             Text(
-                              widget.store.rating,
+                              widget.store.ratingLabel,
                               style: const TextStyle(
                                 color: Colors.black, // نص أسود واضح للتقييم
                               ),

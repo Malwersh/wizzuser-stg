@@ -90,6 +90,17 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
 
   // ساعات العمل
   BusinessWorkingHours? _workingHours;
+  String? _freshRating;
+  String? _freshReviewCount;
+  Future<void> _refreshRating() async {
+    final business = await BusinessService.getBusinessDetails(widget.store.id);
+    if (!mounted || business == null) return;
+    setState(() {
+      _freshRating = business.ratingString;
+      _freshReviewCount = business.reviewCount?.toString() ?? '';
+    });
+  }
+
 
   // دالة مساعدة للتحقق من وجود منتجات في الفئات
   bool _hasNoProducts() {
@@ -160,6 +171,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
 
     // جلب البيانات من الباك إند
     _loadBusinessData();
+    _refreshRating();
     _loadWorkingHours();
     _loadBusinessStatus();
     _startBusinessStatusUpdates();
@@ -195,6 +207,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     if (state == AppLifecycleState.resumed && mounted) {
       // عند العودة للتطبيق - تحديث الحالة من الكاش
       _loadBusinessStatus();
+      _refreshRating();
     }
   }
 
@@ -1099,6 +1112,8 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
               bottom: 22,
               child: RestaurantHeroDetails(
                 store: widget.store,
+                ratingOverride: _freshRating,
+                reviewsOverride: _freshReviewCount,
                 onDetails: _showStoreInfoBottomSheet,
               ),
             ),
@@ -1519,7 +1534,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                               const SizedBox(height: 20),
 
                               // معلومات تفصيلية
-                              _buildInfoRow(Icons.star, 'التقييم', widget.store.ratingValue > 0 ? widget.store.rating : 'جديد'),
+                              _buildInfoRow(Icons.star, 'التقييم', _freshRating ?? widget.store.ratingLabel),
                               _buildInfoRow(Icons.timer_outlined, 'وقت التحضير', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.preparation,initialPreparationMinutes:widget.store.averagePreparationMinutes)),
                               _buildInfoRow(Icons.access_time, 'الوصول المتوقع', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.arrival)),
                               _buildInfoRow(Icons.delivery_dining, 'رسوم التوصيل', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.fee)),
