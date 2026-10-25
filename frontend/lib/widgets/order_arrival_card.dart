@@ -82,7 +82,11 @@ class _OrderArrivalCardState extends State<OrderArrivalCard>
       time = 'بانتظار القبول';
       title = 'أرسلنا طلبك إلى المطعم';
     } else if (o.driverSearchUnavailable) {
-      time = 'بانتظار سائق';
+      title = 'متابعة الطلب مع المنصة';
+      time = 'تعذر العثور على سائق';
+    } else if (o.driverReplacementSearch) {
+      title = 'الطلب جاهز لدى المطعم';
+      time = 'نبحث عن سائق بديل';
     } else if (late != null && late.isAfter(now)) {
       final min = early!.difference(now).inSeconds;
       final from = (min / 60).ceil().clamp(1, 1440),

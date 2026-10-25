@@ -1,3 +1,5 @@
+import '../widgets/wallet_transfer_gate.dart';
+import '../services/wallet_transfer_service.dart';
 import 'wallet_transfer_screen.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -181,7 +183,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WalletTransferGate(check:()async=>(await WalletTransferService().call('context'))['canTransfer']==true,builder:(transfersEnabled)=>Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
@@ -191,7 +193,7 @@ class _WalletScreenState extends State<WalletScreen> {
         backgroundColor: AppColors.primary,
         elevation: 0,
         actions: [
-          IconButton(
+          if(transfersEnabled) IconButton(
             tooltip: 'التحويل بين المحافظ',
             icon: const Icon(Icons.swap_horiz, color: AppColors.secondary),
             onPressed:
@@ -223,7 +225,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       _buildWalletCard(),
                       const SizedBox(height: 24),
                       _buildActionButtons(),
-                      Padding(
+                      if(transfersEnabled) Padding(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: OutlinedButton.icon(
                           onPressed: () async {
@@ -243,7 +245,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 ),
               ),
-    );
+    ));
   }
 
   Widget _buildErrorWidget() {

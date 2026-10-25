@@ -61,7 +61,7 @@ class BusinessModel {
       return 0.0;
     }
 
-    final rating = parseRating(json['rating']);
+    final rating = parseRating(json['customerRating'] ?? json['rating']);
     
     // تحليل العنوان المحسن
     String addressString = 'العنوان غير متوفر';
@@ -146,7 +146,7 @@ class BusinessModel {
         'storefrontDeliveryAgreements': json['storefrontDeliveryAgreements'] ?? json['metadata']?['storefrontDeliveryAgreements'] ?? [],
         'averagePreparationMinutes':json['averagePreparationMinutes'] ?? json['orderReceptionSettings']?['defaultPreparationMinutes'] ?? json['metadata']?['averagePreparationMinutes'],
         'orderReceptionSettings':json['orderReceptionSettings'],
-        'reviewCount': json['reviewCount'] ?? json['reviewsCount'] ?? json['ratingCount'],
+        'reviewCount': json['customerRatingCount'] ?? json['reviewCount'] ?? json['reviewsCount'] ?? json['ratingCount'] ?? json['metadata']?['reviewCount'],
         'sponsored': parseBool(json['sponsored'], defaultValue: false),
         'popular': rating >= 4.0,
         'owner_name': json['ownerName']?.toString() ?? json['owner_name']?.toString() ?? '',
@@ -180,6 +180,7 @@ class BusinessModel {
       'business_type': businessType,
       'is_active': isActive,
       'rating': rating,
+      'reviewCount': reviewCount,
       'distance': distance,
       'delivery_fee': deliveryFee,
       'delivery_time': deliveryTime,
@@ -197,8 +198,8 @@ class BusinessModel {
   String get logoUrl => businessPhotoUrl;
   bool get isOpen => isActive;
   String get fee => deliveryFee;
-  String get ratingString => rating.toStringAsFixed(1);
-  String get reviews => '0'; // يمكن إضافة هذا الحقل لاحقاً
+  String get ratingString => rating.isFinite && rating >= 1 && rating <= 5 ? rating.toStringAsFixed(1) : '—';
+  String get reviews => reviewCount?.toString() ?? '';
   String get time => deliveryTime;
   String get category => businessType;
 

@@ -40,3 +40,44 @@ Client now warms invoice from existing home/restaurant/cart basket with saved de
 ## GitHub handoff and product/import delegation — 2026-10-24
 
 User requested all four staging repos on feature/malwersh/bootstrap ready for colleague pull, with detailed commit messages and GitHub commit comments. docs/github-handoff-2026-10-24.json records repository changes, validation, pull instructions and scope. Full manual products/CSV/Excel/menu/options/images/catalog/stock/branch/versioned publish work delegated to colleague; canonical handoff docs/merchant-products-import-colleague-handoff-2026-10-24.txt in Central and Merchants. Main plan and transition/product plans mark DELEGATED_TO_COLLEAGUE, not complete. Agent must not implement a parallel importer; coordinate order/pricing/stock/COD contracts. No new AWS deployment/business action as part of upload. Next ongoing COD work remains pickup issue resolution, respecting delegated menu/item-change ownership.
+
+
+### تصحيح254 — وضوح مصير الطلب بعد فك إسناد السائق
+أضيف عرض البحث عن سائق بديل اعتمادًا على financialRelease وحالة الطلب وعدم وجود سائق، مع إعطاء أولوية لحالة تعذر العثور على سائق. تحفظ الإشارة في الذاكرة وتزال عند إسناد بديل. أصل الخادم أُصلح في Central عبر المضيف والمنسق الموحدين؛ الطلب ORD1792870714924 وصل تلقائيًا إلى مراجعة تعذر العثور بعد انتهاء مهلة البحث دون إلغاء. التغيير ليس إكمالًا لفحوص جاهزية الإطلاق على النظامين المؤجلة؛ إعادة الإسناد البشرية لطلب جديد بعد الإصلاح ما زالت تحتاج تجربة.
+
+
+## تصحيح مرجع الأولويات — الخطة كاملة، 2026-10-24
+طلب المستخدم مراجعة جميع بنود الخطة الأساسية عبر التطبيقات الأربعة، وليس استثناءاتCODأوتطبيقًامنفردًا. المرجع الموحد ../whizzCentralPlatform-stg/docs/main-plan-all-apps-priority-review-2026-10-24.json وCSVالمرافق، معالقسمالشاملبختامfinance-pricing-settlements-returns-unified-plan.md. يشمل61بندًاو127قسممواصفةوالحزم14معحالةودليلومتبقٍوأولوية؛ الموجودلايعادبناؤهوغيرالمثبتلايسمىمكتملًا. المنتجاتوالقوائموكلنطاقالاستيرادوالمخزونالمحالللزميلمستثنىمنتنفيذنا،وليسباقيتطبيقالمطعم. يبدأالعملمنسدالضرورياتالتشغيليةحسبالتبعياتعبرالجميع،ثمفحوصالإطلاقAndroid+iPhoneبعدإكمالالتشغيلواختباره.
+
+
+## شحن محفظة السائق وزين كاش — 260
+
+مرجع الدليل الكامل في Central-stg: `docs/zaincash-readiness-260.json`. جُهّز الوصل والدفع المباشر وإعدادات الأسرار والتجربة المحددة والتفعيل العام والمطابقة والاستعادة. LIVE وUAT الجديدان معطلان؛ بيانات UAT مهيأة ومصادقة OAuth ناجحة دون دفع. القبول البشري وبيانات الشركة والإشعار الفعلي باقية، فلا إعلان اكتمال F02 أو خطة التطبيقات كلها. الطلبات للزبون نقدية، وصرف المطعم الحالي و6000 المعلق لا يتغيران. المنتجات/import للزميل، وبقية أولويات الدفعة محفوظة.
+
+Transfer visibility batch270: Release248 installed on real iMohammed. Existing CONFIG#TRANSFERS.enabled gates transfer entry/actions with fail-closed refresh on resume and30s polling. Balance/history and uncertain-attempt recovery remain available; no commission and no actual transfer created. DRIVER additionally reads posted cancellation entitlement+matching case operation from Holds; ORD1792849495126 has500IQD already credited, now shown as compensation, not unknown delivery earnings. Missing proof differs from known pending review. Central evidence docs/trip-transfer-controls-270.json. User confirms no payment license or partner transfer contract: public money-transfer classification and commission need Iraqi legal/provider review before launch.
+
+
+### تقييم الزبون283
+بموافقة المستخدم دُمجت شاشة وخدمة واختبارات تقييم زميله من الفرع 30dc40f1df8f89a952ff6803a458f5ffc1b367f8 دمجًا انتقائيًا مع تعديل زر الطلب المسلّم وحقول متوسط المطعم وعدد التقييمات في النموذج والتخزين. 14اختبارًا ناجحًا وفحص الملفات دون مشاكل. لم يُنشأ أي تقييم أو طلب. بناء Release283 جارٍ؛ اختبار المستخدم بتقييم حقيقي بعد التسليم ما زال غير منفذ. دليل `docs/customer-rating-integration-283.json`.
+
+تحديث283: اكتمل بناء وتثبيت وتشغيل تطبيق الزبون Release283 على iMohammed دون حذف التطبيق. اختبارات14 ناجحة. انتظار تجربة تقييم حقيقية بعد التسليم؛ لم يُنشأ طلب أو تقييم آلي.
+
+
+### 284 — الحد الأدنى للسلة
+تعطيل زر متابعة الطلب عندما يكون مجموع الأصناف أقل من الحد الأدنى المعروف، بلون رمادي واضح مع بقاء المبلغ المتبقي. نجح اختبار بلوغ الحد وتقليل الكمية بعده. مجموعة السلة11 ناجحة و3 فحوص رسوم توصيل فاشلة ثبتت أيضًا دون تغيير الزر؛ ليست حالة مرور كامل. تحديث المحاكي قيد البناء. دليل `docs/cart-minimum-button-284.json`.
+
+
+### تحقق تقييم حقيقي بعد دمج283
+أرسل المستخدم تقييمًا حقيقيًا: المطعم4 والسائق5 للطلب96cd4249-41af-5ebb-885a-d7dae2c321d0. القراءة القوية أكدت السجل الأصلي ومتوسط السائق5/5 وعدد1 ومجموع5 وملفه المطابق، ووجود السجل في فهرس281. لا كتابة من الوكيل. هذا يثبت تقديم التقييم وتجميع السائق فقط؛ عرض الزبون/المطعم وواجهة السائق بعد تحديثها وسيناريوهات المراجعة لا تزال منفصلة. دليل `docs/customer-real-rating-verification-284.json`.
+
+
+### 285 — قائمة الحذف وربط تقييم المطعم
+أعيد تنسيق تأكيد حذف الطبق RTL بأيقونة48 وأزرار أصغر وألوان الأصفر والكحلي. تحديث285 مثبت ومشغّل على محاكي الزبون. تدقيق حي: قائمة المطاعم كانت محدثة، لكن دالة التفاصيل مساعدها قديم وتُرجعnull للتقييم وعدده رغم متوسط4 وعدد1 في السجل. تجهيز إصلاح مساعد واحد فقط داخل الحزمتين دون تغيير IAM أوإعدادات أو بيانات؛ النشر جارٍ. نموذجreviews والخريطة500+ صُححا، وتفاصيل المطعم تجلب تقييمًا حديثًا عند الفتح/العودة. اختبارات6 خادم و14 تطبيق ناجحة. دليل `docs/restaurant-rating-and-cart-sheet-285.json`.
+
+إغلاق285: نُشر المساعد فقط في GetBusinesses/GetBusiness مع CodeSHA موثق وإعدادات محفوظة. طلباHTTPعامان بعد النشر أكدا للمطعم الحقيقي rating4 وreviewCount1 في القائمة والتفاصيل. لم تتغير أي بيانات تقييم أوصلاحيات أوإعدادات مالية. تحديث285 مشغّل على المحاكي. القبول البصري اليدوي لم يُسجّل كناجح.
+
+
+### 287 — عرض التقييم غير المتوفر
+طلب المستخدم شرطة بدل0.0 للمطعم والسائق. توحيد تسميات العرض إلى— مع إبقاء القيم الرقمية الداخلية للفرز دون تعديل التقييمات. صُحح نص500+ ثابت آخر في بطاقة الخريطة إلى العدد الفعلي إن كان موجبًا. اختبارات16زبون و9سائق ناجحة. بناء محاكي الزبون وRelease287للسائق جارٍ. دليل `docs/unrated-display-287.json`.
+
+إغلاق287: نجح بناء وتثبيت وتشغيل الزبون287على المحاكي والسائقRelease287علىiMohammed. اختبارات25ناجحة،لا تعديل بيانات تقييم.

@@ -1,3 +1,4 @@
+import '../widgets/wallet_transfer_gate.dart';
 import '../widgets/transfer_verification_sheet.dart';
 import 'verified_phone_screen.dart';
 import 'dart:convert';
@@ -344,7 +345,7 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
     ),
   );
   @override
-  Widget build(BuildContext context) => Directionality(
+  Widget build(BuildContext context) => WalletTransferGate(check:()async{final current=await api.call('context');if(mounted)setState(()=>account=current);return current['canTransfer']==true;},builder:(transfersEnabled)=>Directionality(
     textDirection: TextDirection.rtl,
     child: PopScope(
       canPop: !sending,
@@ -466,7 +467,7 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
                             'هذا رصيد التحويلات بين المحافظ، وهو منفصل حاليًا عن رصيد دفع الطلبات. لا تُنقل الأرصدة بينهما تلقائيًا.',
                           ),
                         ),
-                        if (account!['canTransfer'] == true || uncertain) ...[
+                        if (transfersEnabled && account!['canTransfer'] == true || uncertain) ...[
                           Text(
                             'المستلم',
                             style: Theme.of(context).textTheme.titleMedium,
@@ -539,7 +540,7 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
                                 'يوجد تحويل قيد التحقق. لن تُنشأ عملية جديدة عند إعادة المحاولة.',
                               ),
                             ),
-                          FilledButton.icon(
+                          if(transfersEnabled) FilledButton.icon(
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               foregroundColor: AppColors.secondary,
@@ -636,5 +637,5 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
                 ),
       ),
     ),
-  );
+  ));
 }

@@ -984,10 +984,12 @@ class _CartScreenState extends State<CartScreen> {
               height: 56,
               child: FilledButton(
                 onPressed:
-                    _continuing ? null : () => _continueCheckout(appState),
+                    _continuing || below ? null : () => _continueCheckout(appState),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.secondaryDark,
+                  disabledBackgroundColor: const Color(0xFFE4E7EC),
+                  disabledForegroundColor: const Color(0xFF667085),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -1063,7 +1065,9 @@ class _CartScreenState extends State<CartScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext context) {
-        return Container(
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.only(
@@ -1072,7 +1076,7 @@ class _CartScreenState extends State<CartScreen> {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1085,27 +1089,27 @@ class _CartScreenState extends State<CartScreen> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 // أيقونة التحذير
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(40),
+                    color: const Color(0xFFFFF6DA),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
                     Icons.delete_outline,
-                    size: 40,
-                    color: Colors.red,
+                    size: 24,
+                    color: AppColors.secondaryDark,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 // عنوان التأكيد
                 const Text(
                   'حذف الطبق',
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
@@ -1116,12 +1120,12 @@ class _CartScreenState extends State<CartScreen> {
                   'هل أنت متأكد من حذف "${item['name'] ?? 'هذا الطبق'}" من السلة؟',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 14,
                     color: Colors.grey[600],
                     height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
                 // أزرار التأكيد والإلغاء
                 Row(
                   children: [
@@ -1131,7 +1135,7 @@ class _CartScreenState extends State<CartScreen> {
                         style: TextButton.styleFrom(
                           backgroundColor: Colors.grey[100],
                           foregroundColor: Colors.grey[700],
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1140,7 +1144,7 @@ class _CartScreenState extends State<CartScreen> {
                         child: const Text(
                           'إلغاء',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1151,9 +1155,9 @@ class _CartScreenState extends State<CartScreen> {
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: AppColors.secondary,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.secondaryDark,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1164,14 +1168,14 @@ class _CartScreenState extends State<CartScreen> {
                           Navigator.pop(context);
                           _showSnackBar(
                             context,
-                            'تم حذف 	${item['name'] ?? 'الطبق'} من السلة',
-                            Colors.red,
+                            'تم حذف ${item['name'] ?? 'الطبق'} من السلة',
+                            AppColors.secondaryDark,
                           );
                         },
                         child: const Text(
-                          'حذف',
+                          'حذف الطبق',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1179,11 +1183,11 @@ class _CartScreenState extends State<CartScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+                SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
               ],
             ),
           ),
-        );
+        ));
       },
     );
   }

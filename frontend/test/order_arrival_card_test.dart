@@ -31,4 +31,14 @@ test('stale search exhaustion cannot override an assigned driver', () {
   }
 });
 
+testWidgets('replacement search hides previous driver arrival estimate and exhaustion takes precedence',(tester)async{
+ final json={'orderId':'o','status':'ready_for_pickup','financialRelease':{'attempt':1},'deliveryEstimate':{'earliestAt':'2026-10-17T12:20:00Z','latestAt':'2026-10-17T12:25:00Z'}};
+ final o=OrderModel.fromJson(json);expect(o.driverReplacementSearch,isTrue);expect(OrderModel.fromJson(o.toJson()).driverReplacementSearch,isTrue);
+ await tester.pumpWidget(MaterialApp(home:OrderArrivalCard(order:o,now:()=>now)));
+ expect(find.text('نبحث عن سائق بديل'),findsOneWidget);expect(find.text('20–25 دقيقة'),findsNothing);
+ await tester.pumpWidget(MaterialApp(home:OrderArrivalCard(order:OrderModel.fromJson({...json,'driverSearchUnavailable':true}),now:()=>now)));
+ expect(find.text('تعذر العثور على سائق'),findsOneWidget);
+ expect(OrderModel.fromJson({...json,'driverId':'replacement','status':'assigned'}).driverReplacementSearch,isFalse);
+ await tester.pumpWidget(const SizedBox.shrink());
+});
 }

@@ -221,6 +221,7 @@ class OrderModel {
   final Map<String, dynamic>? metadata;
   
   // معلومات السائق
+  final bool driverReplacementSearch;
   final String? driverId;
   final String? driverName;
   final String? driverPhone;
@@ -264,6 +265,7 @@ class OrderModel {
     this.cancellationStatus,
     this.cancellationCaseId,
     this.metadata,
+    this.driverReplacementSearch = false,
     this.driverId,
     this.driverName,
     this.driverPhone,
@@ -340,6 +342,9 @@ class OrderModel {
       cancellationStatus: json['exceptionCancellation'] is Map ? json['exceptionCancellation']['state'] as String? : null,
       cancellationCaseId: json['exceptionCancellation'] is Map ? json['exceptionCancellation']['caseId'] as String? : null,
       metadata: json['metadata'] as Map<String, dynamic>?,
+      driverReplacementSearch: (json['driverReplacementSearch'] == true || json['financialRelease'] is Map) &&
+          (json['driver_id'] ?? json['driverId'] ?? json['assignedDriverId']) == null &&
+          ['ready_for_pickup', 'ready', 'reassigning'].contains(json['status']),
       driverId: json['driver_id'] ?? json['driverId'],
       driverName: json['driver_name'] ?? json['driverName'] ?? json['name'],
       driverPhone: json['driver_phone'] ?? json['driverPhone'],
@@ -385,6 +390,7 @@ class OrderModel {
       'created_at': createdAt.toIso8601String(),
       'confirmed_at': confirmedAt?.toIso8601String(),
       'estimated_delivery_time': estimatedDeliveryTime?.toIso8601String(),
+      'driverReplacementSearch': driverReplacementSearch,
       'deliveryEstimate': deliveryEstimate,
       'estimatedReadyAt': estimatedReadyAt?.toIso8601String(),
       'estimatedPreparationTime': estimatedPreparationTime,
@@ -491,6 +497,7 @@ class OrderModel {
       estimatedPreparationTime: estimatedPreparationTime,
       customerEmail: customerEmail,
       isGuestOrder: isGuestOrder,
+      driverReplacementSearch: driverReplacementSearch && driverId == null && [OrderStatus.ready,OrderStatus.readyForPickup,OrderStatus.reassigning].contains(status ?? this.status),
       driverId: driverId,
       driverName: driverName,
       driverPhone: driverPhone,

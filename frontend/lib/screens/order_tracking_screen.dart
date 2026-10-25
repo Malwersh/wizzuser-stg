@@ -1,3 +1,4 @@
+import 'order_rating_screen.dart';
 import 'customer_cash_review_screen.dart';
 import '../services/customer_cash_review_service.dart';
 import 'package:intl/intl.dart' show NumberFormat;
@@ -2168,12 +2169,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    // TODO: Implement rating functionality
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('ميزة التقييم ستكون متاحة قريباً'),
-                      ),
-                    );
+                    Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => OrderRatingScreen(orderId: widget.orderId),
+                    ));
                   },
                   icon: const Icon(Icons.star),
                   label: const Text('تقييم الطلب'),
@@ -2287,6 +2285,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   }
 
   String _getStatusText() {
+    if (_order!.driverSearchUnavailable) return 'تعذر العثور على سائق؛ الطلب بانتظار متابعة المنصة';
+    if (_order!.driverReplacementSearch) return 'الطلب جاهز؛ نبحث عن سائق بديل';
     switch (_order!.status) {
       case OrderStatus.returning:
         return _order?.returnStatus=='REQUESTED'?'تعذر التسليم؛ نراجع معالجة طلبك':'السائق يعيد الطلب للمطعم';

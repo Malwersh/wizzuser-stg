@@ -45,40 +45,37 @@ void main() {
     final cart=CartModel();cart.addItem(line());cart.clear();cart.addItem(line(note:'طلب جديد'));await cart.saveToStorage();
     final restored=CartModel();await restored.loadFromStorage();expect(restored.items.single.specialInstructions,'طلب جديد');
   });
-  testWidgets('delivery fee has explicit loading and the same label as the restaurant', (t) async {
-    final pending=Completer<http.Response>();var calls=0;
+  testWidgets('cart requires an address before preparing the shared invoice without a parallel fee request', (t) async {
+    var calls=0;
     final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
-      now:()=>DateTime.utc(2026,10,20),client:MockClient((_) {calls++;return pending.future;}));
+      now:()=>DateTime.utc(2026,10,20),client:MockClient((_) async {calls++;return http.Response('{}',500);}));
     final state=AppStateProvider();state.cart.addItem(line());
     await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
     expect(find.text('رسوم التوصيل'),findsOneWidget);
-    expect(find.text('التوصيل التقديري'),findsNothing);
-    expect(find.text('جارٍ حساب الرسوم…'),findsOneWidget);
-    expect(find.byType(CircularProgressIndicator),findsOneWidget);
-    await t.pump(const Duration(milliseconds:300));await t.pump();expect(calls,1);
-    pending.complete(http.Response(jsonEncode({'success':true,'preview':preview()}),200));
-    await t.pumpAndSettle();expect(find.text('1500 د.ع'),findsOneWidget);
+    expect(find.text('اختر عنوان التوصيل'),findsOneWidget);
     expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    await t.pump(const Duration(milliseconds:300));await t.pump();expect(calls,0);
+    expect(find.text('1500 د.ع'),findsNothing);
     await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
-  testWidgets('opening cart with a fresh matching server fee is immediate and sends no new request', (t) async {
+  testWidgets('cached preview cannot expose a fee in cart before its invoice address is selected', (t) async {
     var calls=0;
     final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
       now:()=>DateTime.utc(2026,10,20),client:MockClient((_)async{calls++;return http.Response(jsonEncode({'success':true,'preview':preview()}),200);}));
     final state=AppStateProvider();state.cart.addItem(line());
     await pricing.load('b1',state.cartItems);
     await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
-    expect(find.text('1500 د.ع'),findsOneWidget);expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    expect(find.text('اختر عنوان التوصيل'),findsOneWidget);expect(find.textContaining('1,500'),findsNothing);expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
     await t.pumpAndSettle();expect(calls,1);
     await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
-  testWidgets('rapid quantity edits debounce informational pricing instead of requesting every intermediate basket', (t) async {
+  testWidgets('rapid quantity edits do not start a parallel fee request while awaiting the shared invoice', (t) async {
     var calls=0;final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
       now:()=>DateTime.utc(2026,10,20),client:MockClient((_) async {calls++;return http.Response(jsonEncode({'success':true,'preview':preview()}),200);}));
     final state=AppStateProvider();state.cart.addItem(line());
     await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
     final add=find.byTooltip('زيادة كمية كباب يلعب النفس');for(var i=0;i<6;i++){await t.tap(add);await t.pump(const Duration(milliseconds:20));}
-    expect(calls,0);await t.pump(const Duration(milliseconds:300));await t.pumpAndSettle();expect(calls,1);expect(state.cart.itemCount,7);
+    expect(calls,0);await t.pump(const Duration(milliseconds:300));await t.pumpAndSettle();expect(calls,0);expect(state.cart.itemCount,7);expect(find.text('اختر عنوان التوصيل'),findsOneWidget);
     await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
   test('equivalent option sets share identity regardless of insertion order; notes remain distinct', () {
@@ -122,6 +119,22 @@ void main() {
     for(var i=0;i<5;i++){await t.tap(add);}
     await t.pump();expect(state.cart.items[0].quantity,6);expect(state.cart.items[1].quantity,1);
     expect(find.text('21,000 د.ع'),findsOneWidget);expect(t.takeException(),isNull);
+    await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
+  });
+  testWidgets('continue disables below goods minimum and enables at the boundary', (t) async {
+    final pricing=StorefrontPricing(account:()=> 'u1',token:()=> 'token',addressId:()=> 'a1',addressRevision:()=> 'v1',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,20),client:MockClient((_) async => http.Response(jsonEncode({'success':true,'preview':preview(minimum:7000)}),200)));
+    final state=AppStateProvider();state.cart.addItem(line());
+    await pricing.load('b1',state.cartItems);
+    await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
+    await t.pumpAndSettle();
+    final button=find.ancestor(of:find.text('متابعة الطلب'),matching:find.byType(FilledButton));
+    expect(t.widget<FilledButton>(button).onPressed,isNull);
+    await t.tap(find.byTooltip('زيادة كمية كباب يلعب النفس'));await t.pumpAndSettle();
+    expect(state.cartTotal,7000);
+    expect(t.widget<FilledButton>(button).onPressed,isNotNull);
+    await t.tap(find.byTooltip('تقليل كمية كباب يلعب النفس'));await t.pumpAndSettle();
+    expect(t.widget<FilledButton>(button).onPressed,isNull);
     await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
   testWidgets('failed preview retains basket and shows inline retry; a zero minimum is not invented', (t) async {
