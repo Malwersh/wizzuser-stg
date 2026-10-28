@@ -1,3 +1,4 @@
+import 'customer_order_complaint_screen.dart';
 import '../utils/readable_colors.dart';
 import 'order_rating_screen.dart';
 import 'customer_cash_review_screen.dart';
@@ -2230,6 +2231,22 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       ),
       child: Column(
         children: [
+          OutlinedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CustomerOrderComplaintScreen(
+                  orderId: widget.orderId,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.support_agent, color: Color(0xFF00296B)),
+            label: const Text(
+              'مساعدة أو شكوى بخصوص الطلب',
+              style: TextStyle(color: Color(0xFF00296B)),
+            ),
+          ),
+          const SizedBox(height:16),
           const Icon(Icons.check_circle, color: Colors.green, size: 60),
           const SizedBox(height: 16),
           const Text(
