@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart' as provider;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -333,7 +334,7 @@ class EnhancedStoreDetailWrapper extends ConsumerWidget {
                             ),
                           ),
                           Text(
-                            '${storeTotal.toStringAsFixed(2)} ر.س',
+                            '${formatIqd(storeTotal)}',
                             style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 12,

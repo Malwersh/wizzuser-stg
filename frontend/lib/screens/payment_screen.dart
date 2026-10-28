@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'package:flutter/services.dart';
@@ -187,7 +188,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${widget.totalAmount.toStringAsFixed(2)} ر.س',
+                    '${formatIqd(widget.totalAmount)}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -708,7 +709,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                       ),
                     ),
                     Text(
-                      '${widget.totalAmount.toStringAsFixed(2)} ر.س',
+                      '${formatIqd(widget.totalAmount)}',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -968,7 +969,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                       ),
                     ),
                     Text(
-                      '${widget.totalAmount.toStringAsFixed(2)} ر.س',
+                      '${formatIqd(widget.totalAmount)}',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -1032,7 +1033,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                           Text(
                             _selectedPaymentMethod == 2
                                 ? 'تأكيد الطلب'
-                                : 'ادفع الآن ${widget.totalAmount.toStringAsFixed(2)} ر.س',
+                                : 'ادفع الآن ${formatIqd(widget.totalAmount)}',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -1242,7 +1243,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text('المبلغ: ${widget.totalAmount.toStringAsFixed(2)} ر.س'),
+                  Text('المبلغ: ${formatIqd(widget.totalAmount)}'),
                   Text('الطريقة: ${_getPaymentMethodName()}'),
                   Text('التاريخ: ${DateTime.now().toString().substring(0, 16)}'),
                 ],

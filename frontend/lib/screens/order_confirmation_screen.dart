@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -749,7 +750,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                           ),
                           Text(
-                            'خصم: ${_couponDiscount.toStringAsFixed(2)} ر.س',
+                            'خصم: ${formatIqd(_couponDiscount)}',
                             style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                           ),
                         ],
@@ -898,7 +899,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                               ),
                             ),
                             Text(
-                              'الخصم: ${_pointsDiscount.toStringAsFixed(2)} ر.س',
+                              'الخصم: ${formatIqd(_pointsDiscount)}',
                               style: const TextStyle(
                                 color: Colors.green,
                                 fontWeight: FontWeight.bold,
@@ -936,11 +937,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'تم استخدام ${_getUsedPoints()} نقطة',
+                                'تم استخدام ${_getUsedPoints()} نقطة',
                                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                               ),
                               Text(
-                                'خصم: ${_pointsDiscount.toStringAsFixed(2)} ر.س',
+                                'خصم: ${formatIqd(_pointsDiscount)}',
                                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                               ),
                             ],
@@ -1011,11 +1012,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             children: [
               _buildTipOption(0, 'بدون'),
               const SizedBox(width: 8),
-              _buildTipOption(2, '2 ر.س'),
+              _buildTipOption(2, '2 د.ع'),
               const SizedBox(width: 8),
-              _buildTipOption(5, '5 ر.س'),
+              _buildTipOption(5, '5 د.ع'),
               const SizedBox(width: 8),
-              _buildTipOption(10, '10 ر.س'),
+              _buildTipOption(10, '10 د.ع'),
             ],
           ),
         ],
@@ -1103,17 +1104,17 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildSummaryRow('عدد الأطباق (${widget.totalDishes})', '${widget.subtotal.toStringAsFixed(2)} ر.س'),
-          _buildSummaryRow('رسوم التوصيل', '${widget.delivery.toStringAsFixed(2)} ر.س'),
+          _buildSummaryRow('عدد الأطباق (${widget.totalDishes})', '${formatIqd(widget.subtotal)}'),
+          _buildSummaryRow('رسوم التوصيل', '${formatIqd(widget.delivery)}'),
           
           // عرض الخصومات منفصلة
           if (_pointsDiscount > 0)
-            _buildSummaryRow('خصم النقاط (${_getUsedPoints()} نقطة)', '-${_pointsDiscount.toStringAsFixed(2)} ر.س', color: Colors.green),
+            _buildSummaryRow('خصم النقاط (${_getUsedPoints()} نقطة)', '-${formatIqd(_pointsDiscount)}', color: Colors.green),
           if (_couponDiscount > 0)
-            _buildSummaryRow('خصم القسيمة (${_appliedCoupon?['code']})', '-${_couponDiscount.toStringAsFixed(2)} ر.س', color: Colors.green),
+            _buildSummaryRow('خصم القسيمة (${_appliedCoupon?['code']})', '-${formatIqd(_couponDiscount)}', color: Colors.green),
           
           if (_tip > 0)
-            _buildSummaryRow('إكرامية السائق', '+${_tip.toStringAsFixed(2)} ر.س', color: AppColors.primary),
+            _buildSummaryRow('إكرامية السائق', '+${formatIqd(_tip)}', color: AppColors.primary),
             
           // إظهار إجمالي التوفير إذا كان هناك خصومات
           if (totalDiscount > 0) ...[
@@ -1130,7 +1131,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                   const Icon(Icons.savings, color: Colors.green, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'إجمالي التوفير: ${totalDiscount.toStringAsFixed(2)} ر.س',
+                    'إجمالي التوفير: ${formatIqd(totalDiscount)}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.green,
@@ -1144,7 +1145,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           const Divider(height: 24),
           _buildSummaryRow(
             'المجموع النهائي', 
-            '${finalTotal.toStringAsFixed(2)} ر.س',
+            '${formatIqd(finalTotal)}',
             isTotal: true,
           ),
         ],
@@ -1227,7 +1228,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               );
             },
             child: Text(
-              'تأكيد الطلب • ${finalTotal.toStringAsFixed(2)} ر.س',
+              'تأكيد الطلب • ${formatIqd(finalTotal)}',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -1383,26 +1384,26 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     
     String summary = 'ملخص الطلب:\n'
         'عدد الأطباق: ${widget.totalDishes}\n'
-        'السعر الأساسي: ${widget.subtotal.toStringAsFixed(2)} ر.س\n'
-        'رسوم التوصيل: ${widget.delivery.toStringAsFixed(2)} ر.س\n';
+        'السعر الأساسي: ${formatIqd(widget.subtotal)}\n'
+        'رسوم التوصيل: ${formatIqd(widget.delivery)}\n';
     
     if (_pointsDiscount > 0) {
-      summary += 'خصم النقاط (${_getUsedPoints()} نقطة): -${_pointsDiscount.toStringAsFixed(2)} ر.س\n';
+      summary += 'خصم النقاط (${_getUsedPoints()} نقطة): -${formatIqd(_pointsDiscount)}\n';
     }
     
     if (_couponDiscount > 0) {
-      summary += 'خصم القسيمة (${_appliedCoupon?['code']}): -${_couponDiscount.toStringAsFixed(2)} ر.س\n';
+      summary += 'خصم القسيمة (${_appliedCoupon?['code']}): -${formatIqd(_couponDiscount)}\n';
     }
     
     if (_tip > 0) {
-      summary += 'الإكرامية: +${_tip.toStringAsFixed(2)} ر.س\n';
+      summary += 'الإكرامية: +${formatIqd(_tip)}\n';
     }
     
     if (totalDiscount > 0) {
-      summary += 'إجمالي التوفير: ${totalDiscount.toStringAsFixed(2)} ر.س\n';
+      summary += 'إجمالي التوفير: ${formatIqd(totalDiscount)}\n';
     }
     
-    summary += 'المجموع النهائي: ${finalTotal.toStringAsFixed(2)} ر.س\n'
+    summary += 'المجموع النهائي: ${formatIqd(finalTotal)}\n'
         'طريقة الدفع: ${_getPaymentMethodName()}\n'
         'العنوان: ${widget.mapAddress}\n'
         'الهاتف: ${_phoneController.text}\n'
@@ -1647,7 +1648,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   double _calculateCouponDiscount(Map<String, dynamic> coupon) {
     final minOrder = coupon['minOrder']?.toDouble() ?? 0.0;
     if (widget.subtotal < minOrder) {
-      _showSnackBar('الحد الأدنى للطلب ${minOrder.toStringAsFixed(2)} ر.س', AppColors.primary);
+      _showSnackBar('الحد الأدنى للطلب ${formatIqd(minOrder)}', AppColors.primary);
       return 0.0;
     }
 

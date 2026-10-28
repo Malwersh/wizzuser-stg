@@ -1,0 +1,13 @@
+{
+  "part": 334,
+  "currency": "IQD",
+  "scope": "Display formatting only",
+  "displayExample": "3,000 د.ع",
+  "oldSymbolRemovedFromLib": true,
+  "priceArithmeticOrFinancialChanges": false,
+  "dishQuantityInteractionTestPassed": true,
+  "analyzerErrors": 0,
+  "customerSimulatorBuild": 334,
+  "sharedFormatter": "frontend/lib/utils/currency_format.dart",
+  "installedAndLaunched": "iPhone 16 Pro simulator"
+}

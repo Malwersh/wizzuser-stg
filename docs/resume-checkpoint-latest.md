@@ -198,3 +198,6 @@ Published only preview adapter/bundle; no env/IAM change. Customer simulator323 
 - User accepted section order but requested a modern visual design and prohibited yellow/gold text. Checkout theme now uses navy action/text colors, light navy icon tiles, restrained card borders, consistent 44px secondary controls and 12–16px corners. Primary review action retains gold background/navy text.
 - Address confirmation and promo buttons now have light navy backgrounds/navy text; refresh is a header icon; nested benefit/tip headings removed; selected chips use light navy. Long offer heading can wrap on narrow screens.
 - Pricing, address validation and order submission unchanged. 24 targeted tests passed; one pre-existing skip. Final simulator build 326 installed and launched successfully; visual acceptance pending user review.
+
+## 334 — عرض الدينار العراقي بدل الريال السعودي
+حُذفت رموز ر.س الثابتة من عرض تفاصيل الطبق، نتائج البحث، قوائم الأطباق، شاشة الدفع، شاشة التأكيد القديمة، وتكامل السلة والعروض. تنسيق مشترك يعرض3,000 د.ع دون تحويل قيمة السعر أو تغيير الحسابات. نجح اختبار نافذة الطبق وتغير الكمية، ولا أخطاء تحليل في الملفات المعدلة. بُني تحديث محاكي334 لتطبيق الزبون؛ يرفق التصحيح بطلب دمج الزبون3 نفسه.

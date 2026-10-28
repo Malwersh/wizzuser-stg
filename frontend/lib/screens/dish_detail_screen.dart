@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 import 'dart:developer' as developer;
 // lib/screens/dish_detail_screen.dart
 
@@ -789,7 +790,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
                 }
               },
               child: Text(
-                'إضافة إلى الطلب • ${_calculateTotal().toStringAsFixed(2)} ر.س',
+                'إضافة إلى الطلب • ${formatIqd(_calculateTotal())}',
                 style: const TextStyle(fontSize: 18, color: AppColors.secondary),
               ),
             ),

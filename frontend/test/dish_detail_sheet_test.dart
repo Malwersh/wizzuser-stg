@@ -92,7 +92,7 @@ void main() {
     // شكل الأرقام العربية يعتمد على إصدار حزمة intl (قد تظهر ٢ أو 2)
     final arabicTwo = NumberFormat.decimalPattern('ar').format(2);
     expect(find.text(arabicTwo), findsOneWidget);
-    expect(find.text('إضافة إلى الطلب • 24.00 ر.س'), findsOneWidget);
+    expect(find.text('إضافة إلى الطلب • 24 د.ع'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();

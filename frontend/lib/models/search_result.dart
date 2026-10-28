@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 // lib/models/search_result.dart
 
 import 'store.dart';
@@ -62,7 +63,7 @@ class SearchResult {
       type: SearchResultType.dish,
       id: dish.id,
       title: dish.name,
-      subtitle: 'في $storeName • ${dish.basePrice.toStringAsFixed(2)} ر.س',
+      subtitle: 'في $storeName • ${formatIqd(dish.basePrice)}',
       imageUrl: dish.imageUrls.isNotEmpty ? dish.imageUrls.first : '',
       dish: dish,
       storeId: storeId,
@@ -76,7 +77,7 @@ class SearchResult {
       type: SearchResultType.product,
       id: product.id,
       title: product.name,
-      subtitle: 'في $storeName • ${product.finalPrice.toStringAsFixed(2)} ر.س/${product.unit}',
+      subtitle: 'في $storeName • ${formatIqd(product.finalPrice)}/${product.unit}',
       imageUrl: product.imageUrl,
       product: product,
       storeId: product.storeId,
