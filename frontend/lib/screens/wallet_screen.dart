@@ -183,69 +183,90 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WalletTransferGate(check:()async=>(await WalletTransferService().call('context'))['canTransfer']==true,builder:(transfersEnabled)=>Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          'محفظتي',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        backgroundColor: AppColors.primary,
-        elevation: 0,
-        actions: [
-          if(transfersEnabled) IconButton(
-            tooltip: 'التحويل بين المحافظ',
-            icon: const Icon(Icons.swap_horiz, color: AppColors.secondary),
-            onPressed:
-                () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const WalletTransferScreen(),
-                  ),
-                ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _refreshWallet,
-          ),
-        ],
-      ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _errorMessage.isNotEmpty
-              ? _buildErrorWidget()
-              : RefreshIndicator(
-                onRefresh: _refreshWallet,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildWalletCard(),
-                      const SizedBox(height: 24),
-                      _buildActionButtons(),
-                      if(transfersEnabled) Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const WalletTransferScreen(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.swap_horiz),
-                          label: const Text('التحويل بين المحافظ'),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      _buildTransactionsSection(),
-                    ],
-                  ),
+    return WalletTransferGate(
+      check:
+          () async =>
+              (await WalletTransferService().call('context'))['canTransfer'] ==
+              true,
+      builder:
+          (transfersEnabled) => Scaffold(
+            backgroundColor: Colors.grey[50],
+            appBar: AppBar(
+              title: const Text(
+                'محفظتي',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF00296B),
                 ),
               ),
-    ));
+              backgroundColor: AppColors.primary,
+              elevation: 0,
+              actions: [
+                if (transfersEnabled)
+                  IconButton(
+                    tooltip: 'التحويل بين المحافظ',
+                    icon: const Icon(
+                      Icons.swap_horiz,
+                      color: AppColors.secondary,
+                    ),
+                    onPressed:
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const WalletTransferScreen(),
+                          ),
+                        ),
+                  ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.refresh,
+                    color: const Color(0xFF00296B),
+                  ),
+                  onPressed: _refreshWallet,
+                ),
+              ],
+            ),
+            body:
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage.isNotEmpty
+                    ? _buildErrorWidget()
+                    : RefreshIndicator(
+                      onRefresh: _refreshWallet,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildWalletCard(),
+                            const SizedBox(height: 24),
+                            _buildActionButtons(),
+                            if (transfersEnabled)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => const WalletTransferScreen(),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.swap_horiz),
+                                  label: const Text('التحويل بين المحافظ'),
+                                ),
+                              ),
+                            const SizedBox(height: 24),
+                            _buildTransactionsSection(),
+                          ],
+                        ),
+                      ),
+                    ),
+          ),
+    );
   }
 
   Widget _buildErrorWidget() {
@@ -406,7 +427,7 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               const Icon(
                 Icons.account_balance_wallet,
-                color: Colors.white,
+                color: const Color(0xFF00296B),
                 size: 28,
               ),
               const SizedBox(width: 12),

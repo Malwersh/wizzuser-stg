@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -51,7 +52,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           // ✅ التحديث: التحقق من وجود عنوان
           final addressManager = DeliveryAddressManager.instance;
           final hasAddress = await addressManager.hasActiveAddress();
-          
+
           if (hasAddress) {
             // لديه عنوان → اذهب لـ HomeScreen مباشرة
             Navigator.pushReplacement(
@@ -70,7 +71,9 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         }
       } else {
         setState(() {
-          _errorMessage = result['message'] ?? 'فشل في تسجيل الدخول. يرجى التحقق من بياناتك.';
+          _errorMessage =
+              result['message'] ??
+              'فشل في تسجيل الدخول. يرجى التحقق من بياناتك.';
         });
       }
     } catch (e) {
@@ -101,7 +104,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           // ✅ التحديث: الضيف يجب اختيار عنوان دائماً
           // فحص إذا كان لديه عنوان محفوظ في Cache
           final hasGuestAddress = await GuestCacheService.hasGuestAddress();
-          
+
           if (hasGuestAddress) {
             // لديه عنوان محفوظ → اذهب لـ HomeScreen
             final address = await GuestCacheService.getGuestAddress();
@@ -153,47 +156,47 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 40),
-                
+
                 // شعار التطبيق
                 _buildAppLogo(),
-                
+
                 const SizedBox(height: 40),
-                
+
                 // عنوان تسجيل الدخول
                 _buildTitle(),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // حقل البريد الإلكتروني
                 _buildEmailField(),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // حقل كلمة المرور
                 _buildPasswordField(),
-                
+
                 const SizedBox(height: 12),
-                
+
                 // زر نسيت كلمة المرور
                 _buildForgotPasswordButton(),
-                
+
                 const SizedBox(height: 24),
-                
+
                 // رسالة الخطأ
                 if (_errorMessage != null) _buildErrorMessage(),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // زر تسجيل الدخول
                 _buildLoginButton(),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // فاصل
                 _buildDivider(),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // زر الدخول كضيف
                 _buildGuestButton(),
               ],
@@ -223,7 +226,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         child: const Icon(
           Icons.restaurant_menu,
           size: 50,
-          color: Colors.white,
+          color: const Color(0xFF00296B),
         ),
       ),
     );
@@ -244,10 +247,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         const SizedBox(height: 8),
         Text(
           'سجل دخولك للاستمتاع بأفضل الوجبات',
-          style: TextStyle(
-            fontSize: 16,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: 16, color: Colors.grey[600]),
           textAlign: TextAlign.center,
         ),
       ],
@@ -275,7 +275,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           labelStyle: TextStyle(color: Colors.grey[600]),
           prefixIcon: const Icon(
             Icons.email_outlined,
-            color: AppColors.primary,
+            color: const Color(0xFF00296B),
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
@@ -283,10 +283,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(
-              color: AppColors.primary,
-              width: 2,
-            ),
+            borderSide: const BorderSide(color: AppColors.primary, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -326,7 +323,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           labelStyle: TextStyle(color: Colors.grey[600]),
           prefixIcon: const Icon(
             Icons.lock_outline,
-            color: AppColors.primary,
+            color: const Color(0xFF00296B),
           ),
           suffixIcon: IconButton(
             icon: Icon(
@@ -345,10 +342,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(
-              color: AppColors.primary,
-              width: 2,
-            ),
+            borderSide: const BorderSide(color: AppColors.primary, width: 2),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -389,10 +383,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         ),
         child: const Text(
           'نسيت كلمة المرور؟',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -409,19 +400,12 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.error_outline,
-            color: Colors.red.shade700,
-            size: 20,
-          ),
+          Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               _errorMessage!,
-              style: TextStyle(
-                color: Colors.red.shade700,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.red.shade700, fontSize: 14),
             ),
           ),
         ],
@@ -452,23 +436,24 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
         ),
-        child: _isLoading
-            ? const SizedBox(
-                height: 24,
-                width: 24,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
+        child:
+            _isLoading
+                ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+                : const Text(
+                  'تسجيل الدخول',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              )
-            : const Text(
-                'تسجيل الدخول',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
       ),
     );
   }
@@ -481,10 +466,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'أو',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.grey[600], fontSize: 14),
           ),
         ),
         Expanded(child: Divider(color: Colors.grey[300])),
@@ -514,7 +496,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         onPressed: _isLoading ? null : _loginAsGuest,
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
-          foregroundColor: AppColors.primary,
+          foregroundColor: readableForeground(Colors.white),
           side: BorderSide.none,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -523,17 +505,11 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.person_outline,
-              color: AppColors.primary,
-            ),
+            Icon(Icons.person_outline, color: const Color(0xFF00296B)),
             const SizedBox(width: 8),
             const Text(
               'الدخول كضيف',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ],
         ),

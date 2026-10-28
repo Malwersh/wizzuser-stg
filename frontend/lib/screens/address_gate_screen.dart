@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import '../services/device_location_hint.dart';
 import '../widgets/location_picker_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -483,6 +484,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
+                  foregroundColor: readableForeground(AppColors.primary),
                   backgroundColor: AppColors.primary,
                   padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                 ),

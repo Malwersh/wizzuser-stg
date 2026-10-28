@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import '../services/iraqi_delivery_details.dart';
 // lib/screens/edit_address_screen.dart
 
@@ -13,10 +14,7 @@ import '../widgets/location_picker_screen.dart';
 class EditAddressScreen extends StatefulWidget {
   final DetailedAddress address;
 
-  const EditAddressScreen({
-    super.key,
-    required this.address,
-  });
+  const EditAddressScreen({super.key, required this.address});
 
   @override
   State<EditAddressScreen> createState() => _EditAddressScreenState();
@@ -25,16 +23,18 @@ class EditAddressScreen extends StatefulWidget {
 class _EditAddressScreenState extends State<EditAddressScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  
+
   // 🔥 النظام الجديد: حقلان فقط
-  final _detailedAddressController = TextEditingController(); // العنوان الكامل من Google (للقراءة فقط)
+  final _detailedAddressController =
+      TextEditingController(); // العنوان الكامل من Google (للقراءة فقط)
   final _neighborhoodController = TextEditingController();
-  final _landmarkController = TextEditingController(); // الوصف الإجباري (قابل للتعديل)
+  final _landmarkController =
+      TextEditingController(); // الوصف الإجباري (قابل للتعديل)
 
   String _selectedType = AddressType.home;
   bool _isDefault = false;
   bool _isLoading = false;
-  
+
   // متغيرات لحفظ البيانات الجديدة من الخريطة
   double? _newLatitude;
   double? _newLongitude;
@@ -47,9 +47,14 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
 
   void _initializeFields() {
     _nameController.text = widget.address.name;
-    _detailedAddressController.text = widget.address.detailedAddress ?? widget.address.fullAddress;
-    _neighborhoodController.text = widget.address.neighborhood=='-'?'':widget.address.neighborhood;
-    _landmarkController.text = IraqiDeliveryDetails.meaningful(widget.address.landmark)?widget.address.landmark:'';
+    _detailedAddressController.text =
+        widget.address.detailedAddress ?? widget.address.fullAddress;
+    _neighborhoodController.text =
+        widget.address.neighborhood == '-' ? '' : widget.address.neighborhood;
+    _landmarkController.text =
+        IraqiDeliveryDetails.meaningful(widget.address.landmark)
+            ? widget.address.landmark
+            : '';
     _selectedType = widget.address.addressType;
     _isDefault = widget.address.isDefault;
   }
@@ -57,9 +62,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
   Future<void> _openMapToSelectLocation() async {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
-      MaterialPageRoute(
-        builder: (context) => const LocationPickerScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const LocationPickerScreen()),
     );
 
     if (result != null && mounted) {
@@ -96,7 +99,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
           'تعديل العنوان',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: const Color(0xFF00296B),
           ),
         ),
         backgroundColor: AppColors.primary,
@@ -138,17 +141,24 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
                     children: [
                       Checkbox(
                         value: _isDefault,
-                        onChanged: widget.address.isDefault ? null : (value) {
-                          setState(() {
-                            _isDefault = value ?? false;
-                          });
-                        },
+                        onChanged:
+                            widget.address.isDefault
+                                ? null
+                                : (value) {
+                                  setState(() {
+                                    _isDefault = value ?? false;
+                                  });
+                                },
                         activeColor: AppColors.primary,
                       ),
-                      Expanded(child: Text(
-                        widget.address.isDefault ? 'عنوانك الافتراضي — يمكنك تعيين عنوان آخر من عناوينك' : 'جعل هذا العنوان افتراضي',
-                        style: const TextStyle(fontSize: 14),
-                      )),
+                      Expanded(
+                        child: Text(
+                          widget.address.isDefault
+                              ? 'عنوانك الافتراضي — يمكنك تعيين عنوان آخر من عناوينك'
+                              : 'جعل هذا العنوان افتراضي',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -171,7 +181,9 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
                   _buildTextField(
                     controller: _neighborhoodController,
                     label: 'اسم الحي أو المحلة *',
-                    hint: 'اكتب اسم الحي',icon: Icons.location_city,isRequired: true,
+                    hint: 'اكتب اسم الحي',
+                    icon: Icons.location_city,
+                    isRequired: true,
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
@@ -189,11 +201,17 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
                     icon: const Icon(Icons.map),
                     label: const Text(
                       'تغيير الموقع من الخريطة',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
-                      side: const BorderSide(color: AppColors.primary, width: 2),
+                      side: const BorderSide(
+                        color: AppColors.primary,
+                        width: 2,
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -241,11 +259,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
                     color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    icon,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
+                  child: Icon(icon, color: AppColors.primary, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -285,9 +299,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
         labelText: label + (isRequired ? ' *' : ''),
         hintText: hint,
         prefixIcon: icon != null ? Icon(icon) : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: AppColors.primary, width: 2),
@@ -299,22 +311,38 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
         filled: true,
         fillColor: readOnly ? Colors.grey[100] : Colors.white,
       ),
-      validator: isRequired
-          ? (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'هذا الحقل مطلوب';
+      validator:
+          isRequired
+              ? (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'هذا الحقل مطلوب';
+                }
+                return null;
               }
-              return null;
-            }
-          : null,
+              : null,
     );
   }
 
   Widget _buildAddressTypeSelector() {
     final types = [
-      {'type': AddressType.home, 'name': 'المنزل', 'icon': Icons.home, 'color': Colors.green},
-      {'type': AddressType.work, 'name': 'العمل', 'icon': Icons.work, 'color': Colors.blue},
-      {'type': AddressType.other, 'name': 'أخرى', 'icon': Icons.location_on, 'color': AppColors.primary},
+      {
+        'type': AddressType.home,
+        'name': 'المنزل',
+        'icon': Icons.home,
+        'color': Colors.green,
+      },
+      {
+        'type': AddressType.work,
+        'name': 'العمل',
+        'icon': Icons.work,
+        'color': Colors.blue,
+      },
+      {
+        'type': AddressType.other,
+        'name': 'أخرى',
+        'icon': Icons.location_on,
+        'color': AppColors.primary,
+      },
     ];
 
     return Column(
@@ -322,69 +350,72 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
       children: [
         const Text(
           'نوع العنوان',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Row(
-          children: types.map((type) {
-            final isSelected = _selectedType == type['type'];
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedType = type['type'] as String;
-                  });
-                },
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.primary.withValues(alpha: 0.1)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.primary
-                          : Colors.grey[300]!,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        type['icon'] as IconData,
-                        color: isSelected
-                            ? AppColors.primary
-                            : Colors.grey[600],
-                        size: 24,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        type['name'] as String,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected
-                              ? AppColors.primary
-                              : Colors.grey[600],
+          children:
+              types.map((type) {
+                final isSelected = _selectedType == type['type'];
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedType = type['type'] as String;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? AppColors.primary.withValues(alpha: 0.1)
+                                : Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color:
+                              isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey[300]!,
+                          width: isSelected ? 2 : 1,
                         ),
                       ),
-                    ],
+                      child: Column(
+                        children: [
+                          Icon(
+                            type['icon'] as IconData,
+                            color:
+                                isSelected
+                                    ? AppColors.primary
+                                    : Colors.grey[600],
+                            size: 24,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            type['name'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight:
+                                  isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                              color:
+                                  isSelected
+                                      ? AppColors.primary
+                                      : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
         ),
       ],
     );
   }
-
-
 
   Widget _buildActionButtons() {
     return Column(
@@ -402,15 +433,16 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
               ),
               elevation: 2,
             ),
-            child: _isLoading
-                ? const SmallLoadingWidget(color: Colors.white)
-                : const Text(
-                    'حفظ التعديلات',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+            child:
+                _isLoading
+                    ? const SmallLoadingWidget(color: Colors.white)
+                    : const Text(
+                      'حفظ التعديلات',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
           ),
         ),
         const SizedBox(height: 12),
@@ -440,13 +472,13 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
     );
   }
 
-
-
-
-
   Future<void> _saveChanges() async {
-    if(!IraqiDeliveryDetails.meaningful(_neighborhoodController.text)||!IraqiDeliveryDetails.meaningful(_landmarkController.text)){
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('أكمل اسم الحي وأقرب نقطة دالة.')));return;
+    if (!IraqiDeliveryDetails.meaningful(_neighborhoodController.text) ||
+        !IraqiDeliveryDetails.meaningful(_landmarkController.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أكمل اسم الحي وأقرب نقطة دالة.')),
+      );
+      return;
     }
     if (!_formKey.currentState!.validate()) return;
 
@@ -480,8 +512,11 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
         apartmentNumber: null,
       );
 
-      final updatedAddress = await addressService.updateAddress(widget.address.id, request);
-      
+      final updatedAddress = await addressService.updateAddress(
+        widget.address.id,
+        request,
+      );
+
       if (updatedAddress != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -521,130 +556,131 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       backgroundColor: Colors.white,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle indicator
-            Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            
-            // Icon and title
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.delete_outline,
-                color: Colors.red,
-                size: 48,
-              ),
-            ),
-            
-            const SizedBox(height: 20),
-            
-            const Text(
-              'تأكيد الحذف',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            
-            const SizedBox(height: 12),
-            
-            Text(
-              'هل أنت متأكد من حذف عنوان "${widget.address.name}"؟',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[700],
-                height: 1.4,
-              ),
-            ),
-            
-            const SizedBox(height: 8),
-            
-            Text(
-              'لا يمكن التراجع عن هذا الإجراء.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-            
-            const SizedBox(height: 32),
-            
-            // Buttons
-            Row(
+      builder:
+          (context) => Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey[600],
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                    child: const Text(
-                      'إلغاء',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                // Handle indicator
+                Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                
-                const SizedBox(width: 12),
-                
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _deleteAddress();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: AppColors.secondary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'حذف',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+
+                // Icon and title
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 48,
                   ),
                 ),
+
+                const SizedBox(height: 20),
+
+                const Text(
+                  'تأكيد الحذف',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Text(
+                  'هل أنت متأكد من حذف عنوان "${widget.address.name}"؟',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[700],
+                    height: 1.4,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'لا يمكن التراجع عن هذا الإجراء.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[500],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.grey[600],
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                        ),
+                        child: const Text(
+                          'إلغاء',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _deleteAddress();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: readableForeground(Colors.red),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'حذف',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
               ],
             ),
-            
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
@@ -654,7 +690,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
     try {
       final addressService = context.read<EnhancedAddressService>();
       final success = await addressService.deleteAddress(widget.address.id);
-      
+
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

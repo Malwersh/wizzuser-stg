@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import '../services/storefront_pricing.dart';
 import '../widgets/storefront_value.dart';
 import 'dart:developer' as developer;
@@ -100,7 +101,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       _freshReviewCount = business.reviewCount?.toString() ?? '';
     });
   }
-
 
   // دالة مساعدة للتحقق من وجود منتجات في الفئات
   bool _hasNoProducts() {
@@ -873,6 +873,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                 ),
               ),
               style: ElevatedButton.styleFrom(
+                foregroundColor: readableForeground(_primaryPink),
                 backgroundColor: _primaryPink,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -942,6 +943,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
+                    foregroundColor: readableForeground(_primaryPink),
                     backgroundColor: _primaryPink,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -1534,20 +1536,87 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                               const SizedBox(height: 20),
 
                               // معلومات تفصيلية
-                              _buildInfoRow(Icons.star, 'التقييم', _freshRating ?? widget.store.ratingLabel),
-                              _buildInfoRow(Icons.timer_outlined, 'وقت التحضير', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.preparation,initialPreparationMinutes:widget.store.averagePreparationMinutes)),
-                              _buildInfoRow(Icons.access_time, 'الوصول المتوقع', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.arrival)),
-                              _buildInfoRow(Icons.delivery_dining, 'رسوم التوصيل', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.fee)),
-                              _buildInfoRow(Icons.route_outlined, 'المسافة', '', content: StorefrontValue(branchId:widget.store.id,field:StorefrontField.distance)),
-                              ListenableBuilder(listenable:StorefrontPricing.instance,builder:(context,_){
-                                final items=context.watch<AppStateProvider>().cartItems.where((item)=>item['store_id']==widget.store.id).toList();
-                                final minimum=StorefrontPricing.instance.minimumIqd(widget.store.id,items);
-                                return _buildInfoRow(Icons.shopping_basket_outlined,'الحد الأدنى للأصناف',minimum==null?'غير محدد':'$minimum د.ع');
-                              }),
+                              _buildInfoRow(
+                                Icons.star,
+                                'التقييم',
+                                _freshRating ?? widget.store.ratingLabel,
+                              ),
+                              _buildInfoRow(
+                                Icons.timer_outlined,
+                                'وقت التحضير',
+                                '',
+                                content: StorefrontValue(
+                                  branchId: widget.store.id,
+                                  field: StorefrontField.preparation,
+                                  initialPreparationMinutes:
+                                      widget.store.averagePreparationMinutes,
+                                ),
+                              ),
+                              _buildInfoRow(
+                                Icons.access_time,
+                                'الوصول المتوقع',
+                                '',
+                                content: StorefrontValue(
+                                  branchId: widget.store.id,
+                                  field: StorefrontField.arrival,
+                                ),
+                              ),
+                              _buildInfoRow(
+                                Icons.delivery_dining,
+                                'رسوم التوصيل',
+                                '',
+                                content: StorefrontValue(
+                                  branchId: widget.store.id,
+                                  field: StorefrontField.fee,
+                                ),
+                              ),
+                              _buildInfoRow(
+                                Icons.route_outlined,
+                                'المسافة',
+                                '',
+                                content: StorefrontValue(
+                                  branchId: widget.store.id,
+                                  field: StorefrontField.distance,
+                                ),
+                              ),
+                              ListenableBuilder(
+                                listenable: StorefrontPricing.instance,
+                                builder: (context, _) {
+                                  final items =
+                                      context
+                                          .watch<AppStateProvider>()
+                                          .cartItems
+                                          .where(
+                                            (item) =>
+                                                item['store_id'] ==
+                                                widget.store.id,
+                                          )
+                                          .toList();
+                                  final minimum = StorefrontPricing.instance
+                                      .minimumIqd(widget.store.id, items);
+                                  return _buildInfoRow(
+                                    Icons.shopping_basket_outlined,
+                                    'الحد الأدنى للأصناف',
+                                    minimum == null
+                                        ? 'غير محدد'
+                                        : '$minimum د.ع',
+                                  );
+                                },
+                              ),
                               if (widget.store.address.isNotEmpty)
-                                _buildInfoRow(Icons.location_on, 'العنوان', widget.store.address),
+                                _buildInfoRow(
+                                  Icons.location_on,
+                                  'العنوان',
+                                  widget.store.address,
+                                ),
                               if (widget.store.category != null)
-                                _buildInfoRow(Icons.restaurant_menu, 'الفئة', widget.store.category=='restaurant'?'مطعم':widget.store.category!),
+                                _buildInfoRow(
+                                  Icons.restaurant_menu,
+                                  'الفئة',
+                                  widget.store.category == 'restaurant'
+                                      ? 'مطعم'
+                                      : widget.store.category!,
+                                ),
 
                               const SizedBox(height: 24),
 
@@ -1559,7 +1628,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                           ),
                         ),
                       ),
-
                     ],
                   ),
                 ),
@@ -2026,7 +2094,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                offer.termsSummary.isNotEmpty ? offer.termsSummary : offer.displayValue,
+                offer.termsSummary.isNotEmpty
+                    ? offer.termsSummary
+                    : offer.displayValue,
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey.shade800,
@@ -3342,6 +3412,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                               },
                               icon: const Icon(Icons.close, color: Colors.grey),
                               style: IconButton.styleFrom(
+                                foregroundColor: readableForeground(
+                                  Colors.grey[100],
+                                ),
                                 backgroundColor: Colors.grey[100],
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),

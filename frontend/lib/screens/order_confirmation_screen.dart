@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -42,34 +43,35 @@ class OrderConfirmationScreen extends StatefulWidget {
   });
 
   @override
-  State<OrderConfirmationScreen> createState() => _OrderConfirmationScreenState();
+  State<OrderConfirmationScreen> createState() =>
+      _OrderConfirmationScreenState();
 }
 
 class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   late TextEditingController _phoneController;
   late TextEditingController _couponController;
-  
+
   // متغيرات العنوان الجديدة
   late TextEditingController _governorateController;
   late TextEditingController _districtController;
   late TextEditingController _neighborhoodController;
   late TextEditingController _landmarkController;
-  
+
   // متغيرات أخرى
   String _selectedPayment = 'cash';
-  
+
   // خدمة المستخدم للحصول على النقاط الفعلية
   final UserService _userService = UserService();
-  
+
   // خدمة الطلبات لإنشاء طلب جديد
   final OrderServiceV2 _orderService = OrderServiceV2();
-  
+
   double _tip = 0.0;
-  
+
   // متغيرات البطاقة المصرفية والتحقق
   bool _isCardVerified = false;
   Map<String, String>? _verifiedCardData;
-  
+
   // نظام الخصومات المتقدم
   bool _isUsingPoints = false;
   bool _isUsingCoupon = false;
@@ -78,14 +80,14 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   Map<String, dynamic>? _appliedCoupon;
   double _selectedPointsValue = 0.0; // متغير الشريط للنقاط
   late TextEditingController _customTipController;
-  
+
   @override
   void initState() {
     super.initState();
     _phoneController = TextEditingController(text: '+964 770 123 4567');
     _couponController = TextEditingController();
     _customTipController = TextEditingController();
-    
+
     // تهيئة متحكمات العنوان
     _governorateController = TextEditingController(text: widget.city);
     _districtController = TextEditingController(text: widget.area);
@@ -165,7 +167,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               Marker(
                 markerId: const MarkerId('user_location'),
                 position: widget.userLocation,
-                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueBlue,
+                ),
                 infoWindow: const InfoWindow(title: 'موقع التسليم'),
               ),
             },
@@ -225,10 +229,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                 const SizedBox(height: 4),
                 Text(
                   '25-35 دقيقة',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -290,12 +291,12 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                 icon: const Icon(
                   Icons.edit,
                   size: 16,
-                  color: AppColors.primary,
+                  color: const Color(0xFF00296B),
                 ),
                 label: const Text(
                   'تعديل',
                   style: TextStyle(
-                    color: AppColors.primary,
+                    color: const Color(0xFF00296B),
                     fontSize: 14,
                   ),
                 ),
@@ -334,10 +335,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                     const SizedBox(height: 4),
                     Text(
                       '${_governorateController.text}، ${_districtController.text}، ${_neighborhoodController.text}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                     if (_landmarkController.text.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -387,11 +385,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                   color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.phone,
-                  color: Colors.green,
-                  size: 20,
-                ),
+                child: const Icon(Icons.phone, color: Colors.green, size: 20),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -412,7 +406,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               hintText: '+964 770 123 4567',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                borderSide: BorderSide(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -499,7 +495,12 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     );
   }
 
-  Widget _buildPaymentOption(String value, String title, IconData icon, Color color) {
+  Widget _buildPaymentOption(
+    String value,
+    String title,
+    IconData icon,
+    Color color,
+  ) {
     return GestureDetector(
       onTap: () async {
         if (value == 'card') {
@@ -507,17 +508,23 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => CardDetailsScreen(
-                onCardVerified: (cardData) {
-                  setState(() {
-                    _verifiedCardData = cardData;
-                    _isCardVerified = true;
-                    _selectedPayment = 'card';
-                  });
-                  Navigator.of(context).pop(); // Return to confirmation screen
-                  _showSnackBar('تم تأكيد البطاقة - يمكنك الآن متابعة الطلب', Colors.green);
-                },
-              ),
+              builder:
+                  (_) => CardDetailsScreen(
+                    onCardVerified: (cardData) {
+                      setState(() {
+                        _verifiedCardData = cardData;
+                        _isCardVerified = true;
+                        _selectedPayment = 'card';
+                      });
+                      Navigator.of(
+                        context,
+                      ).pop(); // Return to confirmation screen
+                      _showSnackBar(
+                        'تم تأكيد البطاقة - يمكنك الآن متابعة الطلب',
+                        Colors.green,
+                      );
+                    },
+                  ),
             ),
           );
           return;
@@ -528,15 +535,17 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: _selectedPayment == value 
-                ? AppColors.primary 
-                : Colors.grey.withValues(alpha: 0.3),
+            color:
+                _selectedPayment == value
+                    ? AppColors.primary
+                    : Colors.grey.withValues(alpha: 0.3),
             width: 2,
           ),
           borderRadius: BorderRadius.circular(8),
-          color: _selectedPayment == value 
-              ? AppColors.primary.withValues(alpha: 0.05) 
-              : Colors.transparent,
+          color:
+              _selectedPayment == value
+                  ? AppColors.primary.withValues(alpha: 0.05)
+                  : Colors.transparent,
         ),
         child: Row(
           children: [
@@ -551,19 +560,17 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
-                      color: _selectedPayment == value 
-                          ? AppColors.primary 
-                          : Colors.black87,
+                      color:
+                          _selectedPayment == value
+                              ? AppColors.primary
+                              : Colors.black87,
                     ),
                   ),
                   if (value == 'cash') ...[
                     const SizedBox(height: 2),
                     Text(
                       'الدفع عند الاستلام',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
                   if (value == 'card' && _isCardVerified) ...[
@@ -591,10 +598,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                     const SizedBox(height: 2),
                     Text(
                       'انقر للتحقق من بيانات البطاقة',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
                 ],
@@ -603,12 +607,13 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             // أيقونة الحالة
             if (_selectedPayment == value)
               Icon(
-                value == 'card' && _isCardVerified 
+                value == 'card' && _isCardVerified
                     ? Icons.check_circle
                     : Icons.check_circle,
-                color: value == 'card' && _isCardVerified 
-                    ? Colors.green 
-                    : AppColors.primary,
+                color:
+                    value == 'card' && _isCardVerified
+                        ? Colors.green
+                        : AppColors.primary,
                 size: 20,
               ),
           ],
@@ -663,7 +668,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // القسائم المتاحة - عرض أفقي
           if (validCoupons.isNotEmpty) ...[
             const Text(
@@ -688,7 +693,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ),
             const SizedBox(height: 16),
           ],
-          
+
           // حقل إدخال كود القسيمة
           Row(
             children: [
@@ -697,10 +702,15 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                   controller: _couponController,
                   enabled: !_isUsingPoints,
                   decoration: InputDecoration(
-                    hintText: _isUsingPoints ? 'يجب إلغاء النقاط أولاً' : 'أدخل رمز القسيمة',
+                    hintText:
+                        _isUsingPoints
+                            ? 'يجب إلغاء النقاط أولاً'
+                            : 'أدخل رمز القسيمة',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                      borderSide: BorderSide(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -716,7 +726,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -725,7 +738,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               ),
             ],
           ),
-          
+
           // عرض القسيمة المطبقة
           if (_isUsingCoupon && _appliedCoupon != null)
             Padding(
@@ -735,11 +748,17 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                 decoration: BoxDecoration(
                   color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: Colors.green.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.local_offer, color: Colors.green, size: 18),
+                    const Icon(
+                      Icons.local_offer,
+                      color: Colors.green,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -747,34 +766,50 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                         children: [
                           Text(
                             _appliedCoupon!['code'],
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
                           ),
                           Text(
                             'خصم: ${formatIqd(_couponDiscount)}',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.red,
+                        size: 20,
+                      ),
                       onPressed: _cancelCoupon,
                     ),
                   ],
                 ),
               ),
             ),
-          
+
           const SizedBox(height: 16),
-          
+
           // استخدام النقاط
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _isUsingPoints ? AppColors.primary.withValues(alpha: 0.1) : Colors.grey[50],
+              color:
+                  _isUsingPoints
+                      ? AppColors.primary.withValues(alpha: 0.1)
+                      : Colors.grey[50],
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: _isUsingPoints ? AppColors.primary : Colors.grey.withValues(alpha: 0.3),
+                color:
+                    _isUsingPoints
+                        ? AppColors.primary
+                        : Colors.grey.withValues(alpha: 0.3),
                 width: _isUsingPoints ? 2 : 1,
               ),
             ),
@@ -801,24 +836,26 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                     ),
                     Switch(
                       value: _isUsingPoints,
-                      onChanged: _userService.currentPoints >= 100 
-                          ? (value) {
-                              if (value) {
-                                setState(() {
-                                  _isUsingPoints = true;
-                                  _selectedPointsValue = 100.0; // بدء بأقل قيمة
-                                  _updatePointsDiscount();
-                                });
-                              } else {
-                                _cancelPointsDiscount();
+                      onChanged:
+                          _userService.currentPoints >= 100
+                              ? (value) {
+                                if (value) {
+                                  setState(() {
+                                    _isUsingPoints = true;
+                                    _selectedPointsValue =
+                                        100.0; // بدء بأقل قيمة
+                                    _updatePointsDiscount();
+                                  });
+                                } else {
+                                  _cancelPointsDiscount();
+                                }
                               }
-                            }
-                          : null,
+                              : null,
                       activeColor: AppColors.primary,
                     ),
                   ],
                 ),
-                
+
                 // الشريط المنزلق للنقاط
                 if (_isUsingPoints) ...[
                   const SizedBox(height: 16),
@@ -827,7 +864,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -843,7 +882,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.primary,
                                 borderRadius: BorderRadius.circular(20),
@@ -851,7 +893,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                               child: Text(
                                 '${_selectedPointsValue.toInt()} نقطة',
                                 style: const TextStyle(
-                                  color: Colors.white,
+                                  color: const Color(0xFF00296B),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
                                 ),
@@ -860,15 +902,21 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        
+
                         // الشريط المنزلق
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             activeTrackColor: AppColors.primary,
-                            inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
+                            inactiveTrackColor: AppColors.primary.withValues(
+                              alpha: 0.3,
+                            ),
                             thumbColor: AppColors.primary,
-                            overlayColor: AppColors.primary.withValues(alpha: 0.2),
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                            overlayColor: AppColors.primary.withValues(
+                              alpha: 0.2,
+                            ),
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 10,
+                            ),
                             trackHeight: 6,
                           ),
                           child: Slider(
@@ -884,9 +932,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                             },
                           ),
                         ),
-                        
+
                         const SizedBox(height: 8),
-                        
+
                         // معلومات إضافية
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -918,9 +966,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // معلومات الحالة
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -930,7 +978,11 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                        const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
@@ -938,18 +990,27 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                             children: [
                               Text(
                                 'تم استخدام ${_getUsedPoints()} نقطة',
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
                               ),
                               Text(
                                 'خصم: ${formatIqd(_pointsDiscount)}',
-                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
                         ),
                         TextButton(
                           onPressed: _cancelPointsDiscount,
-                          child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
+                          child: const Text(
+                            'إلغاء',
+                            style: TextStyle(color: Colors.red),
+                          ),
                         ),
                       ],
                     ),
@@ -1032,15 +1093,17 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             border: Border.all(
-              color: _tip == amount 
-                  ? Colors.green 
-                  : Colors.grey.withValues(alpha: 0.3),
+              color:
+                  _tip == amount
+                      ? Colors.green
+                      : Colors.grey.withValues(alpha: 0.3),
               width: 2,
             ),
             borderRadius: BorderRadius.circular(8),
-            color: _tip == amount 
-                ? Colors.green.withValues(alpha: 0.1) 
-                : Colors.transparent,
+            color:
+                _tip == amount
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : Colors.transparent,
           ),
           child: Text(
             label,
@@ -1060,7 +1123,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   Widget _buildOrderSummary() {
     final double totalDiscount = _pointsDiscount + _couponDiscount;
     final double finalTotal = widget.total - totalDiscount + _tip;
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(20),
@@ -1104,18 +1167,33 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildSummaryRow('عدد الأطباق (${widget.totalDishes})', '${formatIqd(widget.subtotal)}'),
+          _buildSummaryRow(
+            'عدد الأطباق (${widget.totalDishes})',
+            '${formatIqd(widget.subtotal)}',
+          ),
           _buildSummaryRow('رسوم التوصيل', '${formatIqd(widget.delivery)}'),
-          
+
           // عرض الخصومات منفصلة
           if (_pointsDiscount > 0)
-            _buildSummaryRow('خصم النقاط (${_getUsedPoints()} نقطة)', '-${formatIqd(_pointsDiscount)}', color: Colors.green),
+            _buildSummaryRow(
+              'خصم النقاط (${_getUsedPoints()} نقطة)',
+              '-${formatIqd(_pointsDiscount)}',
+              color: Colors.green,
+            ),
           if (_couponDiscount > 0)
-            _buildSummaryRow('خصم القسيمة (${_appliedCoupon?['code']})', '-${formatIqd(_couponDiscount)}', color: Colors.green),
-          
+            _buildSummaryRow(
+              'خصم القسيمة (${_appliedCoupon?['code']})',
+              '-${formatIqd(_couponDiscount)}',
+              color: Colors.green,
+            ),
+
           if (_tip > 0)
-            _buildSummaryRow('إكرامية السائق', '+${formatIqd(_tip)}', color: AppColors.primary),
-            
+            _buildSummaryRow(
+              'إكرامية السائق',
+              '+${formatIqd(_tip)}',
+              color: AppColors.primary,
+            ),
+
           // إظهار إجمالي التوفير إذا كان هناك خصومات
           if (totalDiscount > 0) ...[
             const SizedBox(height: 8),
@@ -1141,10 +1219,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
               ),
             ),
           ],
-          
+
           const Divider(height: 24),
           _buildSummaryRow(
-            'المجموع النهائي', 
+            'المجموع النهائي',
             '${formatIqd(finalTotal)}',
             isTotal: true,
           ),
@@ -1153,7 +1231,12 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value, {Color? color, bool isTotal = false}) {
+  Widget _buildSummaryRow(
+    String label,
+    String value, {
+    Color? color,
+    bool isTotal = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1184,7 +1267,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   Widget _buildCheckoutButton() {
     final double totalDiscount = _pointsDiscount + _couponDiscount;
     final double finalTotal = widget.total - totalDiscount + _tip;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1215,24 +1298,22 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
                 _showSnackBar('يرجى إدخال رقم الهاتف', AppColors.primary);
                 return;
               }
-              
+
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => PaymentScreen(
-                    totalAmount: finalTotal,
-                    orderSummary: _buildOrderSummaryText(),
-                    onPaymentSuccess: () => _showOrderSuccessDialog(),
-                  ),
+                  builder:
+                      (_) => PaymentScreen(
+                        totalAmount: finalTotal,
+                        orderSummary: _buildOrderSummaryText(),
+                        onPaymentSuccess: () => _showOrderSuccessDialog(),
+                      ),
                 ),
               );
             },
             child: Text(
               'تأكيد الطلب • ${formatIqd(finalTotal)}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -1246,54 +1327,53 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Handle indicator
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder:
+          (context) => Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const Text(
-                    'تعديل عنوان التسليم',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+            child: Column(
+              children: [
+                // Handle indicator
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Colors.grey),
+                ),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'تعديل عنوان التسليم',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const Divider(height: 1),
+                // Content
+                const Expanded(
+                  child: Center(child: Text('تعديل العنوان - قيد التطوير')),
+                ),
+              ],
             ),
-            const Divider(height: 1),
-            // Content
-            const Expanded(
-              child: Center(
-                child: Text('تعديل العنوان - قيد التطوير'),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
@@ -1304,9 +1384,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         content: Text(message),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -1321,7 +1399,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     }
 
     if (_isUsingPoints) {
-      _showSnackBar('يجب إلغاء النقاط أولاً لاستخدام القسيمة', AppColors.primary);
+      _showSnackBar(
+        'يجب إلغاء النقاط أولاً لاستخدام القسيمة',
+        AppColors.primary,
+      );
       return;
     }
 
@@ -1338,7 +1419,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
           _isUsingCoupon = true;
           _appliedCoupon = coupon;
           _couponDiscount = calculatedDiscount;
-          
+
           // إلغاء النقاط إذا كانت مفعلة
           _isUsingPoints = false;
           _pointsDiscount = 0.0;
@@ -1348,23 +1429,38 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     } else {
       // التحقق من قسائم الاختبار
       final testCoupons = {
-        'SAVE10': {'discountType': 'fixed', 'discountValue': 10, 'minOrder': 25, 'title': 'خصم 10 ريال'},
-        'SAVE20': {'discountType': 'fixed', 'discountValue': 20, 'minOrder': 50, 'title': 'خصم 20 ريال'},
-        'PERCENT15': {'discountType': 'percentage', 'discountValue': 15, 'minOrder': 30, 'title': 'خصم 15%'},
+        'SAVE10': {
+          'discountType': 'fixed',
+          'discountValue': 10,
+          'minOrder': 25,
+          'title': 'خصم 10 ريال',
+        },
+        'SAVE20': {
+          'discountType': 'fixed',
+          'discountValue': 20,
+          'minOrder': 50,
+          'title': 'خصم 20 ريال',
+        },
+        'PERCENT15': {
+          'discountType': 'percentage',
+          'discountValue': 15,
+          'minOrder': 30,
+          'title': 'خصم 15%',
+        },
       };
-      
+
       if (testCoupons.containsKey(couponCode.toUpperCase())) {
         final testCoupon = testCoupons[couponCode.toUpperCase()]!;
         testCoupon['code'] = couponCode.toUpperCase();
         testCoupon['id'] = 'test_${couponCode.toLowerCase()}';
-        
+
         final calculatedDiscount = _calculateCouponDiscount(testCoupon);
         if (calculatedDiscount > 0) {
           setState(() {
             _isUsingCoupon = true;
             _appliedCoupon = testCoupon;
             _couponDiscount = calculatedDiscount;
-            
+
             // إلغاء النقاط إذا كانت مفعلة
             _isUsingPoints = false;
             _pointsDiscount = 0.0;
@@ -1381,34 +1477,38 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   String _buildOrderSummaryText() {
     final double totalDiscount = _pointsDiscount + _couponDiscount;
     final double finalTotal = widget.total - totalDiscount + _tip;
-    
-    String summary = 'ملخص الطلب:\n'
+
+    String summary =
+        'ملخص الطلب:\n'
         'عدد الأطباق: ${widget.totalDishes}\n'
         'السعر الأساسي: ${formatIqd(widget.subtotal)}\n'
         'رسوم التوصيل: ${formatIqd(widget.delivery)}\n';
-    
+
     if (_pointsDiscount > 0) {
-      summary += 'خصم النقاط (${_getUsedPoints()} نقطة): -${formatIqd(_pointsDiscount)}\n';
+      summary +=
+          'خصم النقاط (${_getUsedPoints()} نقطة): -${formatIqd(_pointsDiscount)}\n';
     }
-    
+
     if (_couponDiscount > 0) {
-      summary += 'خصم القسيمة (${_appliedCoupon?['code']}): -${formatIqd(_couponDiscount)}\n';
+      summary +=
+          'خصم القسيمة (${_appliedCoupon?['code']}): -${formatIqd(_couponDiscount)}\n';
     }
-    
+
     if (_tip > 0) {
       summary += 'الإكرامية: +${formatIqd(_tip)}\n';
     }
-    
+
     if (totalDiscount > 0) {
       summary += 'إجمالي التوفير: ${formatIqd(totalDiscount)}\n';
     }
-    
-    summary += 'المجموع النهائي: ${formatIqd(finalTotal)}\n'
+
+    summary +=
+        'المجموع النهائي: ${formatIqd(finalTotal)}\n'
         'طريقة الدفع: ${_getPaymentMethodName()}\n'
         'العنوان: ${widget.mapAddress}\n'
         'الهاتف: ${_phoneController.text}\n'
         'ملاحظات: لا توجد';
-        
+
     return summary;
   }
 
@@ -1430,75 +1530,78 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   void _showOrderSuccessDialog() async {
     // إنشاء الطلب الجديد أولاً
     await _createNewOrder();
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 28),
-            SizedBox(width: 12),
-            Text(
-              'تم تأكيد الطلب!',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 28),
+                SizedBox(width: 12),
+                Text(
+                  'تم تأكيد الطلب!',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'شكراً لك! تم استلام طلبك بنجاح.',
+                  style: TextStyle(fontSize: 16),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '• سيتم التواصل معك قريباً لتأكيد التفاصيل',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                Text(
+                  '• يمكنك متابعة حالة الطلب من قسم "طلباتي"',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // إغلاق النافذة
+                  Navigator.of(context).pop(); // العودة للشاشة السابقة
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: readableForeground(Colors.green),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text(
+                  'حسناً',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
-            ),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'شكراً لك! تم استلام طلبك بنجاح.',
-              style: TextStyle(fontSize: 16),
-            ),
-            SizedBox(height: 12),
-            Text(
-              '• سيتم التواصل معك قريباً لتأكيد التفاصيل',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            Text(
-              '• يمكنك متابعة حالة الطلب من قسم "طلباتي"',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // إغلاق النافذة
-              Navigator.of(context).pop(); // العودة للشاشة السابقة
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: AppColors.secondary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-            child: const Text(
-              'حسناً',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
+            ],
           ),
-        ],
-      ),
     );
   }
-  
+
   // دالة إنشاء طلب جديد في النظام
   Future<void> _createNewOrder() async {
     try {
-      
       // إنشاء عنوان للطلب باستخدام DetailedAddress
       final deliveryAddress = DetailedAddress(
         id: 'temp_address_${DateTime.now().millisecondsSinceEpoch}',
@@ -1507,7 +1610,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         province: _governorateController.text,
         district: _districtController.text,
         neighborhood: _neighborhoodController.text,
-        landmark: _landmarkController.text.isNotEmpty ? _landmarkController.text : 'بدون معلم',
+        landmark:
+            _landmarkController.text.isNotEmpty
+                ? _landmarkController.text
+                : 'بدون معلم',
         fullAddress: widget.mapAddress,
         latitude: widget.userLocation.latitude,
         longitude: widget.userLocation.longitude,
@@ -1519,14 +1625,19 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
 
       // إنشاء عناصر السلة بالتنسيق المطلوب
       final cartItems = _createMockCartItems();
-      
+
       // إنشاء الطلب الجديد
       final result = await _orderService.createOrder(
-        storeId: widget.storeId ?? 'store_001', // استخدام معرف المطعم الممرر أو القيمة الافتراضية
+        storeId:
+            widget.storeId ??
+            'store_001', // استخدام معرف المطعم الممرر أو القيمة الافتراضية
         storeName: widget.storeName,
         cartItems: cartItems,
         deliveryAddress: deliveryAddress,
-        paymentMethod: _selectedPayment == 'cash' ? PaymentMethod.cash : PaymentMethod.card,
+        paymentMethod:
+            _selectedPayment == 'cash'
+                ? PaymentMethod.cash
+                : PaymentMethod.card,
         deliveryFee: widget.delivery,
         taxRate: 0.05, // ضريبة 5%
         discount: _pointsDiscount + _couponDiscount,
@@ -1537,7 +1648,6 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       );
 
       if (result['success'] == true) {
-        
         // يمكن إضافة منطق إضافي هنا مثل إرسال إشعار أو تحديث واجهة المستخدم
       } else {
         print('❌ فشل في إنشاء الطلب: ${result['message']}');
@@ -1555,11 +1665,12 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
         'name': 'طبق مختار من ${widget.storeName}',
         'price': widget.subtotal / widget.totalDishes,
         'quantity': widget.totalDishes,
-        'store_id': widget.storeId ?? 'store_001', // استخدام معرف المطعم الحقيقي
+        'store_id':
+            widget.storeId ?? 'store_001', // استخدام معرف المطعم الحقيقي
         'store_name': widget.storeName,
         'description': 'طبق لذيذ من المطعم',
         'image': '',
-      }
+      },
     ];
   }
 
@@ -1585,10 +1696,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            coupon['title'] ?? '',
-            style: const TextStyle(fontSize: 12),
-          ),
+          Text(coupon['title'] ?? '', style: const TextStyle(fontSize: 12)),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
@@ -1618,7 +1726,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
 
   void _updatePointsDiscount() {
     setState(() {
-      _pointsDiscount = (_selectedPointsValue / 100) * 5; // كل 100 نقطة = 5 ريال
+      _pointsDiscount =
+          (_selectedPointsValue / 100) * 5; // كل 100 نقطة = 5 ريال
     });
   }
 
@@ -1632,8 +1741,13 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
 
   int _getMaxUsablePoints() {
     // الحد الأقصى للنقاط التي يمكن استخدامها (لا يتجاوز المبلغ الإجمالي)
-    final maxPointsForTotal = (widget.total * 100 / 5).floor(); // حساب النقاط المطلوبة للمبلغ كاملاً
-    return [_userService.currentPoints, maxPointsForTotal, 1000].reduce((a, b) => a < b ? a : b);
+    final maxPointsForTotal =
+        (widget.total * 100 / 5).floor(); // حساب النقاط المطلوبة للمبلغ كاملاً
+    return [
+      _userService.currentPoints,
+      maxPointsForTotal,
+      1000,
+    ].reduce((a, b) => a < b ? a : b);
   }
 
   int _getSliderDivisions() {
@@ -1648,7 +1762,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   double _calculateCouponDiscount(Map<String, dynamic> coupon) {
     final minOrder = coupon['minOrder']?.toDouble() ?? 0.0;
     if (widget.subtotal < minOrder) {
-      _showSnackBar('الحد الأدنى للطلب ${formatIqd(minOrder)}', AppColors.primary);
+      _showSnackBar(
+        'الحد الأدنى للطلب ${formatIqd(minOrder)}',
+        AppColors.primary,
+      );
       return 0.0;
     }
 
@@ -1658,7 +1775,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
       final percentage = coupon['discountValue']?.toDouble() ?? 0.0;
       return (widget.subtotal * percentage / 100).roundToDouble();
     }
-    
+
     return 0.0;
   }
 }

@@ -8,70 +8,68 @@ class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
-      
+
       // ========================================
       // الألوان الأساسية
       // ========================================
       primarySwatch: _createMaterialColor(AppColors.primary),
       primaryColor: AppColors.primary,
-      
+
       // مخطط الألوان البسيط - النصوص دائماً سوداء
       colorScheme: const ColorScheme.light(
         // الألوان الأساسية
         primary: AppColors.primary,
-        onPrimary: AppColors.textOnPrimary,
-        primaryContainer: AppColors.white,
+        onPrimary: AppColors.secondaryDark,
+        primaryContainer: Color(0xFFFFF8E6),
         onPrimaryContainer: AppColors.textPrimary,
-        
+
         // الألوان الثانوية
         secondary: AppColors.secondary,
         onSecondary: AppColors.textOnSecondary,
-        secondaryContainer: AppColors.white,
-        onSecondaryContainer: AppColors.textPrimary,
-        
+        secondaryContainer: Color(0xFFEDF2FA),
+        onSecondaryContainer: AppColors.secondaryDark,
+
         // الألوان الثالثية
         tertiary: AppColors.primary,
         onTertiary: AppColors.textOnPrimary,
         tertiaryContainer: AppColors.white,
         onTertiaryContainer: AppColors.textPrimary,
-        
+
         // ألوان الخلفية والأسطح
         surface: AppColors.surface,
         onSurface: AppColors.textPrimary, // أسود نقي
         surfaceVariant: AppColors.lightGrey,
         onSurfaceVariant: AppColors.textSecondary, // رمادي
-        
         // الخلفية الرئيسية
         background: AppColors.background, // خلفية بيضاء
         onBackground: AppColors.textPrimary, // نص أسود
-        
         // ألوان الحالة
         error: AppColors.error,
         onError: AppColors.textOnError,
         errorContainer: AppColors.lightGrey,
         onErrorContainer: AppColors.error,
-        
+
         // حدود وخطوط
         outline: AppColors.border,
         outlineVariant: AppColors.divider,
-        
+
         // إزالة أي تأثيرات لونية
         surfaceTint: Colors.transparent,
         shadow: Colors.black26,
         scrim: Colors.black54,
-        
+
         // ألوان الانعكاس
         inverseSurface: AppColors.textPrimary,
         onInverseSurface: AppColors.white,
         inversePrimary: AppColors.white,
       ),
-      
+
       // ========================================
       // خلفيات التطبيق - دائماً بيضاء
       // ========================================
       scaffoldBackgroundColor: AppColors.background,
       canvasColor: AppColors.background,
-      
+
       // ========================================
       // شريط التطبيق العلوي
       // ========================================
@@ -81,9 +79,7 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 1,
         centerTitle: true,
-        iconTheme: IconThemeData(
-          color: AppColors.textPrimary,
-        ),
+        iconTheme: IconThemeData(color: AppColors.textPrimary),
         titleTextStyle: TextStyle(
           color: AppColors.textPrimary,
           fontSize: 18,
@@ -91,7 +87,7 @@ class AppTheme {
           fontFamily: GoogleFonts.notoSansArabic().fontFamily,
         ),
       ),
-      
+
       // ========================================
       // شريط التنقل السفلي
       // ========================================
@@ -112,19 +108,26 @@ class AppTheme {
           fontFamily: GoogleFonts.notoSansArabic().fontFamily,
         ),
       ),
-      
+
       // ========================================
       // الأزرار
       // ========================================
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.secondaryDark,
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.secondaryDark,
+      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.textOnPrimary,
+          foregroundColor: AppColors.secondaryDark,
           elevation: 2,
           shadowColor: Colors.black.withOpacity(0.1),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           textStyle: TextStyle(
             fontSize: 16,
@@ -133,14 +136,12 @@ class AppTheme {
           ),
         ),
       ),
-      
+
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          side: BorderSide(color: AppColors.primary, width: 1),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          foregroundColor: AppColors.secondaryDark,
+          side: BorderSide(color: AppColors.secondaryDark, width: 1),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           textStyle: TextStyle(
             fontSize: 16,
@@ -149,13 +150,11 @@ class AppTheme {
           ),
         ),
       ),
-      
+
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          foregroundColor: AppColors.secondaryDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           textStyle: TextStyle(
             fontSize: 16,
@@ -164,7 +163,7 @@ class AppTheme {
           ),
         ),
       ),
-      
+
       // ========================================
       // البطاقات
       // ========================================
@@ -172,19 +171,20 @@ class AppTheme {
         color: AppColors.white,
         elevation: 2,
         shadowColor: Colors.black.withOpacity(0.1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       ),
-      
+
       // ========================================
       // حقول الإدخال
       // ========================================
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: AppColors.border),
@@ -210,7 +210,7 @@ class AppTheme {
           fontFamily: GoogleFonts.notoSansArabic().fontFamily,
         ),
       ),
-      
+
       // ========================================
       // النصوص
       // ========================================
@@ -232,7 +232,7 @@ class AppTheme {
             fontWeight: FontWeight.w600,
             color: AppColors.textPrimary, // أسود
           ),
-          
+
           // عناوين عادية - أسود
           titleLarge: TextStyle(
             fontSize: 22,
@@ -249,7 +249,7 @@ class AppTheme {
             fontWeight: FontWeight.w500,
             color: AppColors.textPrimary, // أسود
           ),
-          
+
           // نصوص عادية - أسود
           bodyLarge: TextStyle(
             fontSize: 16,
@@ -266,7 +266,7 @@ class AppTheme {
             fontWeight: FontWeight.normal,
             color: AppColors.textSecondary, // رمادي
           ),
-          
+
           // تسميات - أسود/رمادي
           labelLarge: TextStyle(
             fontSize: 14,
@@ -285,7 +285,7 @@ class AppTheme {
           ),
         ),
       ),
-      
+
       // ========================================
       // أيقونات وعناصر أخرى
       // ========================================
@@ -293,36 +293,34 @@ class AppTheme {
         color: AppColors.textPrimary, // أيقونات سوداء
         size: 24,
       ),
-      
+
       primaryIconTheme: IconThemeData(
         color: AppColors.textOnPrimary, // أيقونات سوداء على الأصفر
         size: 24,
       ),
-      
+
       // تأكد من النصوص السوداء في كل مكان
       brightness: Brightness.light,
-      
+
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textOnPrimary,
+        foregroundColor: AppColors.secondaryDark,
         elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
-      
+
       dividerTheme: DividerThemeData(
         color: AppColors.divider,
         thickness: 1,
         space: 1,
       ),
-      
+
       // ========================================
       // الخط والكثافة البصرية
       // ========================================
       fontFamily: GoogleFonts.notoSansArabic().fontFamily,
       visualDensity: VisualDensity.adaptivePlatformDensity,
-      
+
       // ========================================
       // إعدادات إضافية لفرض النصوص السوداء
       // ========================================
@@ -331,26 +329,28 @@ class AppTheme {
         textColor: AppColors.textPrimary,
         iconColor: AppColors.textPrimary,
       ),
-      
+
       // إعدادات الـ tabs
       tabBarTheme: TabBarThemeData(
         labelColor: AppColors.textPrimary,
         unselectedLabelColor: AppColors.textSecondary,
       ),
-      
+
       // إعدادات الـ Switch و Checkbox
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.all(AppColors.primary),
-        trackColor: WidgetStateProperty.all(AppColors.primary.withValues(alpha: 0.3)),
+        trackColor: WidgetStateProperty.all(
+          AppColors.primary.withValues(alpha: 0.3),
+        ),
       ),
-      
+
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.all(AppColors.primary),
         checkColor: WidgetStateProperty.all(AppColors.textOnPrimary),
       ),
     );
   }
-  
+
   // إنشاء MaterialColor من لون واحد
   static MaterialColor _createMaterialColor(Color color) {
     List strengths = <double>[.05];
@@ -360,7 +360,7 @@ class AppTheme {
     for (int i = 1; i < 10; i++) {
       strengths.add(0.1 * i);
     }
-    
+
     for (double strength in strengths) {
       final double ds = 0.5 - strength;
       swatch[(strength * 1000).round()] = Color.fromRGBO(

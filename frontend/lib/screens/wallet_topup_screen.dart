@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
@@ -27,7 +28,8 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
   bool _isLoading = false;
   String _errorMessage = '';
 
-  List<double> get _quickAmounts => WalletService.getTopUpAmounts(widget.currency);
+  List<double> get _quickAmounts =>
+      WalletService.getTopUpAmounts(widget.currency);
 
   @override
   void dispose() {
@@ -38,7 +40,9 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
   void _selectQuickAmount(double amount) {
     setState(() {
       _selectedAmount = amount;
-      _amountController.text = amount.toStringAsFixed(widget.currency == 'IQD' ? 0 : 2);
+      _amountController.text = amount.toStringAsFixed(
+        widget.currency == 'IQD' ? 0 : 2,
+      );
     });
   }
 
@@ -99,12 +103,13 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
           final paymentResult = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
-              builder: (context) => PaymentWebViewScreen(
-                paymentUrl: paymentUrl,
-                transactionId: result['transactionId'],
-                amount: result['amount']?.toDouble() ?? _selectedAmount,
-                currency: result['currency'] ?? widget.currency,
-              ),
+              builder:
+                  (context) => PaymentWebViewScreen(
+                    paymentUrl: paymentUrl,
+                    transactionId: result['transactionId'],
+                    amount: result['amount']?.toDouble() ?? _selectedAmount,
+                    currency: result['currency'] ?? widget.currency,
+                  ),
             ),
           );
 
@@ -136,7 +141,7 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
     final userData = await SessionService.instance.getUserData();
     final userEmail = userData?['email'];
     final userPhone = userData?['phone'];
-    
+
     return {
       'name': 'مستخدم التطبيق',
       'email': userEmail ?? 'user@foodapp.com',
@@ -146,7 +151,10 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
     };
   }
 
-  Future<void> _processWebPaymentRedirect(String paymentUrl, String transactionId) async {
+  Future<void> _processWebPaymentRedirect(
+    String paymentUrl,
+    String transactionId,
+  ) async {
     try {
       // IMMEDIATE REDIRECT: No user confirmation dialog to prevent session expiration
       // PayTabs sessions on web expire quickly, so we redirect immediately
@@ -177,69 +185,74 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 28),
-            SizedBox(width: 12),
-            Text('تم الدفع بنجاح'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'تم إكمال عملية الدفع بنجاح!\nسيتم تحديث رصيدك خلال دقائق معدودة.',
-              textAlign: TextAlign.center,
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 28),
+                SizedBox(width: 12),
+                Text('تم الدفع بنجاح'),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: AppColors.secondary,
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'تم إكمال عملية الدفع بنجاح!\nسيتم تحديث رصيدك خلال دقائق معدودة.',
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context, true); // Return to wallet screen with success
-            },
-            child: const Text('ممتاز'),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: readableForeground(Colors.green),
+                ),
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(
+                    context,
+                    true,
+                  ); // Return to wallet screen with success
+                },
+                child: const Text('ممتاز'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showPaymentCancelledDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cancel, color: AppColors.error, size: 28),
-            SizedBox(width: 12),
-            Text('تم إلغاء الدفع'),
-          ],
-        ),
-        content: const Text(
-          'تم إلغاء عملية الدفع. لم يتم خصم أي مبلغ.',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إعادة المحاولة'),
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.cancel, color: AppColors.error, size: 28),
+                SizedBox(width: 12),
+                Text('تم إلغاء الدفع'),
+              ],
+            ),
+            content: const Text(
+              'تم إلغاء عملية الدفع. لم يتم خصم أي مبلغ.',
+              textAlign: TextAlign.center,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إعادة المحاولة'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context, false); // Return to wallet screen
+                },
+                child: const Text('موافق'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context, false); // Return to wallet screen
-            },
-            child: const Text('موافق'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -252,7 +265,7 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
           'شحن المحفظة',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: const Color(0xFF00296B),
           ),
         ),
         backgroundColor: AppColors.primary,
@@ -297,18 +310,18 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
         children: [
           const Text(
             'الرصيد الحالي',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey),
           ),
           const SizedBox(height: 8),
           Text(
-            WalletService.formatCurrency(widget.currentBalance, widget.currency),
+            WalletService.formatCurrency(
+              widget.currentBalance,
+              widget.currency,
+            ),
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              color: AppColors.primary,
+              color: const Color(0xFF00296B),
             ),
           ),
         ],
@@ -322,39 +335,43 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
       children: [
         const Text(
           'اختر مبلغ الشحن',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         Wrap(
           spacing: 12,
           runSpacing: 12,
-          children: _quickAmounts.map((amount) {
-            final isSelected = _selectedAmount == amount;
-            return GestureDetector(
-              onTap: () => _selectQuickAmount(amount),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isSelected ? AppColors.primary : Colors.grey.shade300,
-                    width: 2,
+          children:
+              _quickAmounts.map((amount) {
+                final isSelected = _selectedAmount == amount;
+                return GestureDetector(
+                  onTap: () => _selectQuickAmount(amount),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color:
+                            isSelected
+                                ? AppColors.primary
+                                : Colors.grey.shade300,
+                        width: 2,
+                      ),
+                    ),
+                    child: Text(
+                      WalletService.formatCurrency(amount, widget.currency),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : Colors.black,
+                      ),
+                    ),
                   ),
-                ),
-                child: Text(
-                  WalletService.formatCurrency(amount, widget.currency),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? Colors.white : Colors.black,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
         ),
       ],
     );
@@ -366,10 +383,7 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
       children: [
         const Text(
           'أو أدخل مبلغ مخصص',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -438,27 +452,26 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.secondary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           elevation: 2,
         ),
-        child: _isLoading
-            ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        child:
+            _isLoading
+                ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+                : Text(
+                  'شحن ${WalletService.formatCurrency(_selectedAmount, widget.currency)}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              )
-            : Text(
-                'شحن ${WalletService.formatCurrency(_selectedAmount, widget.currency)}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
       ),
     );
   }
@@ -524,10 +537,7 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
             '✅ تشفير SSL 256-bit آمن\n'
             '✅ إضافة فورية للرصيد بعد الدفع الناجح\n'
             '✅ متوافق مع إرشادات PayTabs الجديدة',
-            style: TextStyle(
-              color: Colors.blue.shade700,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.blue.shade700, fontSize: 14),
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'storefront_value.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -186,50 +187,100 @@ class RestaurantSummaryCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(child: TextButton(
-              onPressed: onDetails,
-              child: const Text(
-                'معلومات المطعم',
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w700,
+            Expanded(
+              child: TextButton(
+                onPressed: onDetails,
+                child: const Text(
+                  'معلومات المطعم',
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-            )),
+            ),
           ],
         ),
         const SizedBox(height: 12),
-        LayoutBuilder(builder: (context, constraints) {
-          final width = constraints.maxWidth < 300
-              ? constraints.maxWidth
-              : (constraints.maxWidth - 12) / 2;
-          Widget fact(IconData icon, String label, StorefrontField field) =>
-              SizedBox(width: width, child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [Icon(icon, size: 17, color: Colors.black54),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(label, style: const TextStyle(
-                      color: Colors.black54, fontSize: 12))),
-                  ]),
-                  const SizedBox(height: 6),
-                  StorefrontValue(branchId: store.id, field: field,
-                    initialPreparationMinutes: store.averagePreparationMinutes,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                ],
-              ));
-          return Wrap(spacing: 12, runSpacing: 18, children: [
-            fact(Icons.delivery_dining, 'الوصول المتوقع إلى عنوانك', StorefrontField.arrival),
-            fact(Icons.route_outlined, 'مسافة الطريق إلى عنوانك', StorefrontField.distance),
-            fact(Icons.payments_outlined, 'رسوم التوصيل', StorefrontField.fee),
-            fact(Icons.restaurant_outlined, 'تحضير المطعم فقط', StorefrontField.preparation),
-          ]);
-        }),
-        const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width =
+                constraints.maxWidth < 300
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 12) / 2;
+            Widget fact(IconData icon, String label, StorefrontField field) =>
+                SizedBox(
+                  width: width,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(icon, size: 17, color: Colors.black54),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              label,
+                              style: const TextStyle(
+                                color: Colors.black54,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      StorefrontValue(
+                        branchId: store.id,
+                        field: field,
+                        initialPreparationMinutes:
+                            store.averagePreparationMinutes,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+            return Wrap(
+              spacing: 12,
+              runSpacing: 18,
+              children: [
+                fact(
+                  Icons.delivery_dining,
+                  'الوصول المتوقع إلى عنوانك',
+                  StorefrontField.arrival,
+                ),
+                fact(
+                  Icons.route_outlined,
+                  'مسافة الطريق إلى عنوانك',
+                  StorefrontField.distance,
+                ),
+                fact(
+                  Icons.payments_outlined,
+                  'رسوم التوصيل',
+                  StorefrontField.fee,
+                ),
+                fact(
+                  Icons.restaurant_outlined,
+                  'تحضير المطعم فقط',
+                  StorefrontField.preparation,
+                ),
+              ],
+            );
+          },
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Divider(height: 1),
+        ),
         StorefrontMinimum(branchId: store.id),
         const SizedBox(height: 8),
-        const Text('وقت الوصول تقديري ويشمل التحضير والطريق؛ قد يتغير حسب توفر السائق.',
-          style: TextStyle(color: Colors.black54, fontSize: 11, height: 1.5)),
+        const Text(
+          'وقت الوصول تقديري ويشمل التحضير والطريق؛ قد يتغير حسب توفر السائق.',
+          style: TextStyle(color: Colors.black54, fontSize: 11, height: 1.5),
+        ),
       ],
     ),
   );
@@ -312,14 +363,14 @@ class RestaurantMenuTile extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.local_fire_department_rounded,
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         size: 10,
                       ),
                       SizedBox(width: 3),
                       Text(
                         'مميز',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: const Color(0xFF00296B),
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
@@ -399,6 +450,11 @@ class RestaurantMenuTile extends StatelessWidget {
                           size: 20,
                         ),
                         style: IconButton.styleFrom(
+                          foregroundColor: readableForeground(
+                            available
+                                ? AppColors.primary
+                                : Colors.grey.shade300,
+                          ),
                           backgroundColor:
                               available
                                   ? AppColors.primary

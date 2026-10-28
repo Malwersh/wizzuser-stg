@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import '../models/browsing_location.dart';
 import '../services/browsing_location_service.dart';
 import '../services/activity_link_navigation.dart';
@@ -609,8 +610,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           listen: false,
         );
 
-    final regionId=BrowsingLocationService.instance.selection?.regionId??_deliveryAddressManager.activeAddress?.regionId;
-    if (regionId!=null) {
+    final regionId =
+        BrowsingLocationService.instance.selection?.regionId ??
+        _deliveryAddressManager.activeAddress?.regionId;
+    if (regionId != null) {
       restaurantListProvider.startPolling(regionId);
 
       developer.log('✅ Restaurant list polling بدأ بنجاح');
@@ -813,17 +816,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // تهيئة DeliveryAddressManager
       await BrowsingLocationService.instance.restore();
-      if(BrowsingLocationService.instance.selection==null) await _deliveryAddressManager.initializeDeliveryAddress(
-        userId: userId,
-        isRegisteredUser: isRegistered,
-      );
+      if (BrowsingLocationService.instance.selection == null)
+        await _deliveryAddressManager.initializeDeliveryAddress(
+          userId: userId,
+          isRegisteredUser: isRegistered,
+        );
 
       // 🔥 تحميل أولي مباشرة إذا توفّر عنوان نشط بالفعل
       try {
         final initialAddress =
             _deliveryAddressManager.activeAddress ??
             await _deliveryAddressManager.getActiveAddress();
-        if (mounted && BrowsingLocationService.instance.selection!=null) {
+        if (mounted && BrowsingLocationService.instance.selection != null) {
           _onBrowseChanged();
         } else if (mounted && initialAddress != null) {
           developer.log(
@@ -886,7 +890,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 developer.log('   العنوان: ${emittedAddress.displayName}');
                 developer.log('   regionId: ${emittedAddress.regionId}');
                 await _onActiveAddressAvailable(emittedAddress);
-              } else if(BrowsingLocationService.instance.selection!=null) {
+              } else if (BrowsingLocationService.instance.selection != null) {
                 _onBrowseChanged();
               } else {
                 // 🆕 Fallback: لا يوجد عنوان - جلب جميع المطاعم
@@ -961,27 +965,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _onBrowseChanged() {
-    if(!mounted)return;
-    final browsing=BrowsingLocationService.instance.selection;
-    if(browsing==null){
+    if (!mounted) return;
+    final browsing = BrowsingLocationService.instance.selection;
+    if (browsing == null) {
       ++_addressLoadGeneration;
       context.read<RestaurantListProviderWithVersioning>().stopPolling();
-      setState((){_allRealBusinesses=[];_newBusinesses=[];_nearbyBusinesses=[];});
+      setState(() {
+        _allRealBusinesses = [];
+        _newBusinesses = [];
+        _nearbyBusinesses = [];
+      });
       return;
     }
-    _lastAddressChangeTime=DateTime.now();
-    final provider=context.read<RestaurantListProviderWithVersioning>();
-    provider.stopPolling();provider.startPolling(browsing.regionId);
-    setState((){_allRealBusinesses=[];_newBusinesses=[];_nearbyBusinesses=[];});
+    _lastAddressChangeTime = DateTime.now();
+    final provider = context.read<RestaurantListProviderWithVersioning>();
+    provider.stopPolling();
+    provider.startPolling(browsing.regionId);
+    setState(() {
+      _allRealBusinesses = [];
+      _newBusinesses = [];
+      _nearbyBusinesses = [];
+    });
     unawaited(_loadBusinessesByDeliveryAddress(null));
   }
 
   /// 🧭 التعامل عند توفر عنوان نشط: إعادة تشغيل polling وجلب المطاعم للقائمة الرئيسية
   Future<void> _onActiveAddressAvailable(DeliveryAddress address) async {
     if (!mounted) return;
-    final browsing=BrowsingLocationService.instance.selection;
-    if(browsing!=null && browsing.regionId!=address.regionId)return;
-    if(browsing==null && address.regionId!=null){await BrowsingLocationService.instance.select(BrowsingLocation(regionId:address.regionId!,regionName:address.regionNameAr??address.city,source:address.addressId!=null?'saved':'gps',latitude:address.latitude,longitude:address.longitude,addressText:address.formattedAddress,savedAddressId:address.addressId));return;}
+    final browsing = BrowsingLocationService.instance.selection;
+    if (browsing != null && browsing.regionId != address.regionId) return;
+    if (browsing == null && address.regionId != null) {
+      await BrowsingLocationService.instance.select(
+        BrowsingLocation(
+          regionId: address.regionId!,
+          regionName: address.regionNameAr ?? address.city,
+          source: address.addressId != null ? 'saved' : 'gps',
+          latitude: address.latitude,
+          longitude: address.longitude,
+          addressText: address.formattedAddress,
+          savedAddressId: address.addressId,
+        ),
+      );
+      return;
+    }
 
     developer.log(
       '🧭 Handling active address change -> regionId=${address.regionId}',
@@ -1049,11 +1075,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       // ✅ استدعاء API بناءً على العنوان/المنطقة
       developer.log('📡 استدعاء API: fetchRestaurantsByDeliveryAddress');
-      final browsing=BrowsingLocationService.instance.selection;
-      if(browsing==null&&deliveryAddress==null)return;
-      final response = browsing!=null
-        ? await RestaurantFetchingService.instance.fetchRestaurantsByRegion(regionId:browsing.regionId,page:0,limit:50)
-        : await RestaurantFetchingService.instance.fetchRestaurantsByDeliveryAddress(deliveryAddress:deliveryAddress!,page:0,limit:50);
+      final browsing = BrowsingLocationService.instance.selection;
+      if (browsing == null && deliveryAddress == null) return;
+      final response =
+          browsing != null
+              ? await RestaurantFetchingService.instance
+                  .fetchRestaurantsByRegion(
+                    regionId: browsing.regionId,
+                    page: 0,
+                    limit: 50,
+                  )
+              : await RestaurantFetchingService.instance
+                  .fetchRestaurantsByDeliveryAddress(
+                    deliveryAddress: deliveryAddress!,
+                    page: 0,
+                    limit: 50,
+                  );
 
       developer.log('📥 استجابة API: ${response.businesses.length} مطعم');
 
@@ -1229,7 +1266,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // الحصول على العنوان النشط الجديد
       final activeAddress = await _deliveryAddressManager.getActiveAddress();
 
-      if (BrowsingLocationService.instance.selection!=null) { await _loadBusinessesByDeliveryAddress(null); return; }
+      if (BrowsingLocationService.instance.selection != null) {
+        await _loadBusinessesByDeliveryAddress(null);
+        return;
+      }
       if (activeAddress == null) {
         developer.log('❌ لا يوجد عنوان نشط');
         return;
@@ -1548,7 +1588,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // تحميل البيانات الحقيقية للقسمين المحددين فقط
   Future<void> _loadRealBusinessData() async {
     final address = _deliveryAddressManager.activeAddress;
-    if(BrowsingLocationService.instance.selection!=null){await _loadBusinessesByDeliveryAddress(null);return;}
+    if (BrowsingLocationService.instance.selection != null) {
+      await _loadBusinessesByDeliveryAddress(null);
+      return;
+    }
     if (address == null) {
       await _loadAllBusinessesWithoutAddress();
       return;
@@ -1657,15 +1700,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // تحميل المزيد من البيانات الحقيقية لقسم "جميع المطاعم"
   Future<void> _loadMoreRealBusinesses() async {
     final address = _deliveryAddressManager.activeAddress;
-    final browsing=BrowsingLocationService.instance.selection;
-    if ((address == null && browsing==null) || _isLoadingRealData || !_hasMoreRealData) return;
+    final browsing = BrowsingLocationService.instance.selection;
+    if ((address == null && browsing == null) ||
+        _isLoadingRealData ||
+        !_hasMoreRealData)
+      return;
     final generation = _addressLoadGeneration;
     final nextPage = _realDataPage + 1;
     setState(() => _isLoadingRealData = true);
     try {
-      final response=browsing!=null
-        ? await RestaurantFetchingService.instance.fetchRestaurantsByRegion(regionId:browsing.regionId,page:nextPage,limit:50)
-        : await RestaurantFetchingService.instance.fetchRestaurantsByDeliveryAddress(deliveryAddress:address!,page:nextPage,limit:50);
+      final response =
+          browsing != null
+              ? await RestaurantFetchingService.instance
+                  .fetchRestaurantsByRegion(
+                    regionId: browsing.regionId,
+                    page: nextPage,
+                    limit: 50,
+                  )
+              : await RestaurantFetchingService.instance
+                  .fetchRestaurantsByDeliveryAddress(
+                    deliveryAddress: address!,
+                    page: nextPage,
+                    limit: 50,
+                  );
       if (!mounted || generation != _addressLoadGeneration) return;
       final items =
           response.businesses
@@ -1924,7 +1981,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 🛡️ GUARD 2: تحقق من أن Provider يحمل بيانات من نفس المنطقة
     // إذا كان المستخدم قد غيّر العنوان للتو، Provider قد لا يزال يحمل بيانات المنطقة القديمة
     final activeAddress = _deliveryAddressManager.activeAddress;
-    final currentRegionId = BrowsingLocationService.instance.selection?.regionId??activeAddress?.regionId;
+    final currentRegionId =
+        BrowsingLocationService.instance.selection?.regionId ??
+        activeAddress?.regionId;
     final providerRegionIds = <String>{};
     if (restaurantListProvider.restaurants != null) {
       for (final item in restaurantListProvider.restaurants!) {
@@ -2107,6 +2166,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(true),
                     style: ElevatedButton.styleFrom(
+                      foregroundColor: readableForeground(AppColors.primary),
                       backgroundColor: AppColors.primary,
                     ),
                     child: const Text(
@@ -2231,8 +2291,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: ListenableBuilder(
                         listenable: BrowsingLocationService.instance,
                         builder: (context, _) {
-                          final address=DeliveryAddressManager.instance.activeAddress;
-                          final browsing=BrowsingLocationService.instance.selection;
+                          final address =
+                              DeliveryAddressManager.instance.activeAddress;
+                          final browsing =
+                              BrowsingLocationService.instance.selection;
                           return Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -2254,7 +2316,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    browsing?.regionName ?? address?.regionNameAr ?? 'اختر المنطقة',
+                                    browsing?.regionName ??
+                                        address?.regionNameAr ??
+                                        'اختر المنطقة',
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,

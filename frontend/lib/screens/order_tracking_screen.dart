@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'order_rating_screen.dart';
 import 'customer_cash_review_screen.dart';
 import '../services/customer_cash_review_service.dart';
@@ -34,9 +35,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final OrderServiceV2 _orderService = OrderServiceV2();
   final WebSocketService _wsService = WebSocketService();
-  final OrderCancellationService _cancellationService = OrderCancellationService();
+  final OrderCancellationService _cancellationService =
+      OrderCancellationService();
 
-  String _money(num value) => '${NumberFormat('#,##0.###', 'en').format(value)} د.ع';
+  String _money(num value) =>
+      '${NumberFormat('#,##0.###', 'en').format(value)} د.ع';
 
   OrderModel? _order;
   bool _isLoading = true;
@@ -115,7 +118,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     // إذا وجد طلب محدث، حديث الطلب المحلي
     if (updatedOrder.id == widget.orderId && updatedOrder != _order) {
       debugPrint('OrderTracking: 📝 تحديث الطلب المحلي من OrderServiceV2');
-      debugPrint('   - الحالة القديمة: ${_order?.status.arabicName ?? 'غير محددة'}');
+      debugPrint(
+        '   - الحالة القديمة: ${_order?.status.arabicName ?? 'غير محددة'}',
+      );
       debugPrint('   - الحالة الجديدة: ${updatedOrder.status.arabicName}');
 
       // 🚀 FIX: تأخير setState() لتجنب خطأ "setState during build"
@@ -124,7 +129,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           setState(() {
             _order = updatedOrder;
           });
-          debugPrint('OrderTracking: ✅ تم تحديث الطلب المحلي بعد انتهاء البناء');
+          debugPrint(
+            'OrderTracking: ✅ تم تحديث الطلب المحلي بعد انتهاء البناء',
+          );
         }
       });
     }
@@ -135,13 +142,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    _pulseAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     _pulseController.repeat(reverse: true);
   }
 
@@ -161,11 +164,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
       final order = await _orderService.getOrderDetails(widget.orderId);
 
-      debugPrint('OrderTracking: Order data received: ${order != null ? "SUCCESS" : "NULL"}');
+      debugPrint(
+        'OrderTracking: Order data received: ${order != null ? "SUCCESS" : "NULL"}',
+      );
 
       if (order != null) {
-        if(!LiveActivityService.isTerminal(order.status)) unawaited(LiveActivityService.startForOrder(order));
-        debugPrint('OrderTracking: Order loaded successfully - ${order.orderNumber}');
+        if (!LiveActivityService.isTerminal(order.status))
+          unawaited(LiveActivityService.startForOrder(order));
+        debugPrint(
+          'OrderTracking: Order loaded successfully - ${order.orderNumber}',
+        );
         debugPrint('OrderTracking: Order status: ${order.status.arabicName}');
         debugPrint('OrderTracking: Order total: ${order.total}');
         debugPrint('OrderTracking: Order items count: ${order.items.length}');
@@ -195,7 +203,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
         // ✅ CORRECT: استخدام connectForOrder مع معرف الطلب
         try {
           if (!_wsService.isConnected && !_wsService.isConnecting) {
-            debugPrint('OrderTracking: 🚀 بدء اتصال WebSocket للطلب ${widget.orderId}');
+            debugPrint(
+              'OrderTracking: 🚀 بدء اتصال WebSocket للطلب ${widget.orderId}',
+            );
             // ✅ استخدام الطريقة الصحيحة: connectForOrder
             await _wsService.connectForOrder(widget.orderId);
             // Wait a moment for connection to establish
@@ -205,37 +215,61 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
             // انتظار قصير للاتصال الجاري
             await Future.delayed(Duration(seconds: 2));
           } else {
-            debugPrint('OrderTracking: WebSocket متصل بالفعل، اشتراك مباشر في التحديثات');
-          }            // 🔧 FIX: Enhanced WebSocket subscription for real-time order updates
+            debugPrint(
+              'OrderTracking: WebSocket متصل بالفعل، اشتراك مباشر في التحديثات',
+            );
+          } // 🔧 FIX: Enhanced WebSocket subscription for real-time order updates
           if (_wsService.isConnected) {
-            debugPrint('OrderTracking: WebSocket connected, subscribing to order updates for ${widget.orderId}');
+            debugPrint(
+              'OrderTracking: WebSocket connected, subscribing to order updates for ${widget.orderId}',
+            );
 
             // Subscribe to order-specific updates with proper stream management
-            debugPrint('OrderTracking: 🔔 بدء الاشتراك في تحديثات الطلب ${widget.orderId}...');
+            debugPrint(
+              'OrderTracking: 🔔 بدء الاشتراك في تحديثات الطلب ${widget.orderId}...',
+            );
             final orderStream = _wsService.subscribeToOrder(widget.orderId);
-            debugPrint('OrderTracking: 📡 تم إنشاء stream تحديثات الطلب ${widget.orderId}');
+            debugPrint(
+              'OrderTracking: 📡 تم إنشاء stream تحديثات الطلب ${widget.orderId}',
+            );
 
             // 🔧 ENHANCED: Listen to WebSocket message processing globally
-            debugPrint('OrderTracking: 🎧 بدء الاستماع لتحديثات WebSocket...');              _orderUpdates = orderStream.listen(
+            debugPrint('OrderTracking: 🎧 بدء الاستماع لتحديثات WebSocket...');
+            _orderUpdates = orderStream.listen(
               (updatedOrder) {
-                debugPrint('OrderTracking: 🎉 🔄 استلام تحديث WebSocket للطلب ${updatedOrder.id}');
-                debugPrint('OrderTracking: الحالة الجديدة: ${updatedOrder.status.arabicName}');
-                debugPrint('OrderTracking: الحالة الحالية: ${_order?.status.arabicName ?? 'غير محددة'}');
-                debugPrint('OrderTracking: معرف الطلب الحالي: ${widget.orderId}');
-                debugPrint('OrderTracking: معرف الطلب المحدث: ${updatedOrder.id}');
+                debugPrint(
+                  'OrderTracking: 🎉 🔄 استلام تحديث WebSocket للطلب ${updatedOrder.id}',
+                );
+                debugPrint(
+                  'OrderTracking: الحالة الجديدة: ${updatedOrder.status.arabicName}',
+                );
+                debugPrint(
+                  'OrderTracking: الحالة الحالية: ${_order?.status.arabicName ?? 'غير محددة'}',
+                );
+                debugPrint(
+                  'OrderTracking: معرف الطلب الحالي: ${widget.orderId}',
+                );
+                debugPrint(
+                  'OrderTracking: معرف الطلب المحدث: ${updatedOrder.id}',
+                );
 
                 if (mounted) {
-                  final bool statusChanged = _order?.status != updatedOrder.status;
+                  final bool statusChanged =
+                      _order?.status != updatedOrder.status;
                   debugPrint('OrderTracking: هل تغيرت الحالة؟ $statusChanged');
 
                   // 🚀 FIX: استخدم OrderServiceV2 للتحديث لضمان التزامن مع شاشة الطلبات
-                  debugPrint('OrderTracking: 🔄 تحديث الطلب في OrderServiceV2...');
+                  debugPrint(
+                    'OrderTracking: 🔄 تحديث الطلب في OrderServiceV2...',
+                  );
                   _orderService.updateOrderInList(updatedOrder);
 
                   // تحديث الطلب المحلي أيضاً
                   setState(() {
                     _order = updatedOrder;
-                    debugPrint('OrderTracking: ✅ تم تحديث الطلب محلياً وفي OrderServiceV2');
+                    debugPrint(
+                      'OrderTracking: ✅ تم تحديث الطلب محلياً وفي OrderServiceV2',
+                    );
                   });
 
                   // Show status change notification if status actually changed
@@ -243,10 +277,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     debugPrint('OrderTracking: 🔔 عرض إشعار تغيير الحالة');
                     _showStatusUpdate(updatedOrder.status);
                   } else {
-                    debugPrint('OrderTracking: الحالة لم تتغير، لكن تم تحديث البيانات الأخرى');
+                    debugPrint(
+                      'OrderTracking: الحالة لم تتغير، لكن تم تحديث البيانات الأخرى',
+                    );
                   }
                 } else {
-                  debugPrint('OrderTracking: ⚠️ الشاشة غير مفعلة - تجاهل التحديث');
+                  debugPrint(
+                    'OrderTracking: ⚠️ الشاشة غير مفعلة - تجاهل التحديث',
+                  );
                 }
               },
               onError: (error) {
@@ -255,7 +293,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 _startPollingFallback();
               },
               onDone: () {
-                debugPrint('OrderTracking: 🔚 انتهى stream تحديثات الطلب ${widget.orderId}');
+                debugPrint(
+                  'OrderTracking: 🔚 انتهى stream تحديثات الطلب ${widget.orderId}',
+                );
               },
             );
 
@@ -265,16 +305,21 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
             debugPrint('  - تم إنشاء اشتراك للطلب: ${widget.orderId}');
 
             // Also subscribe to general order updates that might not be order-specific
-            _connectionUpdates = _wsService.connectionStream.listen((isConnected) {
-              debugPrint('OrderTracking: WebSocket connection status changed: $isConnected');
+            _connectionUpdates = _wsService.connectionStream.listen((
+              isConnected,
+            ) {
+              debugPrint(
+                'OrderTracking: WebSocket connection status changed: $isConnected',
+              );
               if (!isConnected && mounted) {
                 // If connection is lost, start polling as backup
                 _startPollingFallback();
               }
             });
-
           } else {
-            debugPrint('OrderTracking: WebSocket connection failed, using polling fallback');
+            debugPrint(
+              'OrderTracking: WebSocket connection failed, using polling fallback',
+            );
             // If WebSocket connection failed, use polling fallback immediately
             _startPollingFallback();
           }
@@ -383,9 +428,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: status == OrderStatus.delivered
-            ? Colors.green
-            : status == OrderStatus.cancelled || status == OrderStatus.failed || status == OrderStatus.expired || status == OrderStatus.rejected
+        backgroundColor:
+            status == OrderStatus.delivered
+                ? Colors.green
+                : status == OrderStatus.cancelled ||
+                    status == OrderStatus.failed ||
+                    status == OrderStatus.expired ||
+                    status == OrderStatus.rejected
                 ? Colors.red
                 : AppColors.primary,
         behavior: SnackBarBehavior.floating,
@@ -410,7 +459,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       details.add('شقة ${_order!.deliveryAddress.apartmentNumber}');
     }
 
-    return details.isNotEmpty ? details.join(' - ') : 'تفاصيل إضافية غير متوفرة';
+    return details.isNotEmpty
+        ? details.join(' - ')
+        : 'تفاصيل إضافية غير متوفرة';
   }
 
   // Helper method to make phone calls
@@ -423,7 +474,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('لا يمكن إجراء المكالمة. تأكد من توفر تطبيق الهاتف.'),
+              content: Text(
+                'لا يمكن إجراء المكالمة. تأكد من توفر تطبيق الهاتف.',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -442,8 +495,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -460,15 +511,33 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
             onPressed: () => Navigator.pop(context),
           ),
           actions: [
-            IconButton(tooltip: 'مراجعة النقد ورد المبلغ', icon: const Icon(Icons.payments_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerCashReviewScreen(call: (body) => CustomerCashReviewService().call(widget.orderId, body))))),
+            IconButton(
+              tooltip: 'مراجعة النقد ورد المبلغ',
+              icon: const Icon(Icons.payments_outlined),
+              onPressed:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (_) => CustomerCashReviewScreen(
+                            call:
+                                (body) => CustomerCashReviewService().call(
+                                  widget.orderId,
+                                  body,
+                                ),
+                          ),
+                    ),
+                  ),
+            ),
             // Connection Status Icon with built-in tap functionality
             ConnectionStatusIcon(),
             const SizedBox(width: 16),
           ],
         ),
-        body: _isLoading
-            ? _buildLoadingState()
-            : _error != null
+        body:
+            _isLoading
+                ? _buildLoadingState()
+                : _error != null
                 ? _buildErrorState()
                 : _buildTrackingContent(),
       ),
@@ -486,10 +555,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           SizedBox(height: 16),
           Text(
             'جاري تحميل بيانات الطلب...',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey),
           ),
         ],
       ),
@@ -501,19 +567,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Colors.red[300],
-          ),
+          Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
           const SizedBox(height: 16),
           Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
           ),
           const SizedBox(height: 24),
           ElevatedButton(
@@ -549,17 +608,23 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           OrderArrivalCard(order: _order!),
           const SizedBox(height: 16),
           _buildOrderHeader(),
-          if (_order?.driverSearchUnavailable == true) const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('تعذر العثور على سائق حاليًا. طلبك ما زال قائمًا ويحتاج متابعة من المنصة.'),
-          ),
+          if (_order?.driverSearchUnavailable == true)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'تعذر العثور على سائق حاليًا. طلبك ما زال قائمًا ويحتاج متابعة من المنصة.',
+              ),
+            ),
           // إخفاء قسم تتبع الطلب عندما يكون الطلب ملغياً
           if (_order!.status != OrderStatus.cancelled &&
               _order!.status != OrderStatus.rejected &&
               _order!.status != OrderStatus.expired &&
               _order!.status != OrderStatus.failed) ...[
             const SizedBox(height: 24),
-            ExpansionTile(title: const Text('مراحل الطلب'), children: [_buildStatusTimeline()]),
+            ExpansionTile(
+              title: const Text('مراحل الطلب'),
+              children: [_buildStatusTimeline()],
+            ),
           ],
           // Driver Info Card - Show when driver is assigned
           if (_shouldShowDriverInfo) ...[
@@ -644,20 +709,22 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     const SizedBox(height: 4),
                     Text(
                       _formatDateTime(_order!.createdAt),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                     // Special message for rejected or expired orders
                     if (_order!.status == OrderStatus.rejected) ...[
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: Colors.red.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Text(
                           'طلبك تم رفضه من قبل المطعم',
@@ -671,11 +738,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     ] else if (_order!.status == OrderStatus.expired) ...[
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.orange.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Text(
                           'المطعم لم يؤكد طلبك في الوقت المحدد',
@@ -686,14 +758,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                           ),
                         ),
                       ),
-                    ] else if (_order!.status == OrderStatus.cancelled && _order!.cancelReason != null) ...[
+                    ] else if (_order!.status == OrderStatus.cancelled &&
+                        _order!.cancelReason != null) ...[
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: Colors.red.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -756,7 +831,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       OrderStatus.arrivedAtCustomer,
     ];
 
-    final hasDriverInfo = _order!.driverName != null || _order!.vehicleType != null;
+    final hasDriverInfo =
+        _order!.driverName != null || _order!.vehicleType != null;
     final shouldShow = driverStatuses.contains(_order!.status) && hasDriverInfo;
 
     debugPrint('🚗 _shouldShowDriverInfo check:');
@@ -856,18 +932,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   }) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 20,
-          color: Colors.grey[600],
-        ),
+        Icon(icon, size: 20, color: Colors.grey[600]),
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
         ),
         Expanded(
           child: Text(
@@ -886,17 +955,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   Widget _buildStatusTimeline() {
     // Timeline كامل يشمل جميع المراحل المهمة للمستخدم
     final statuses = [
-      OrderStatus.pending,           // 1. تم استلام الطلب
-      OrderStatus.confirmed,         // 2. تأكيد الطلب
-      OrderStatus.preparing,         // 3. يتم التحضير
-      OrderStatus.readyForPickup,    // 4. جاهز للاستلام
-      OrderStatus.accepted,          // 5. تم تعيين سائق (assigned → accepted)
-      OrderStatus.headingToStore,    // 6. السائق في الطريق للمطعم
-      OrderStatus.arrivedAtStore,    // 7. السائق وصل للمطعم
-      OrderStatus.pickedUp,          // 8. تم استلام الطلب من المطعم
+      OrderStatus.pending, // 1. تم استلام الطلب
+      OrderStatus.confirmed, // 2. تأكيد الطلب
+      OrderStatus.preparing, // 3. يتم التحضير
+      OrderStatus.readyForPickup, // 4. جاهز للاستلام
+      OrderStatus.accepted, // 5. تم تعيين سائق (assigned → accepted)
+      OrderStatus.headingToStore, // 6. السائق في الطريق للمطعم
+      OrderStatus.arrivedAtStore, // 7. السائق وصل للمطعم
+      OrderStatus.pickedUp, // 8. تم استلام الطلب من المطعم
       OrderStatus.headingToCustomer, // 9. السائق في الطريق للتوصيل
       OrderStatus.arrivedAtCustomer, // 10. السائق وصل للعميل
-      OrderStatus.delivered,         // 11. تم التوصيل
+      OrderStatus.delivered, // 11. تم التوصيل
     ];
 
     // معالجة الحالات القديمة: تحويل ready → readyForPickup و onTheWay → headingToCustomer
@@ -907,21 +976,27 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     }
     if (currentStatus == OrderStatus.onTheWay) {
       currentStatus = OrderStatus.headingToCustomer;
-      debugPrint('⚠️ Timeline: Converting legacy "onTheWay" to "headingToCustomer"');
+      debugPrint(
+        '⚠️ Timeline: Converting legacy "onTheWay" to "headingToCustomer"',
+      );
     }
 
     // التعامل مع حالة 'assigned' - نعرضها كـ 'accepted'
     // Backend/Driver يرسل 'assigned' عند تعيين سائق للطلب
     if (currentStatus == OrderStatus.assigned) {
       currentStatus = OrderStatus.accepted;
-      debugPrint('⚠️ Timeline: Converting "assigned" to "accepted" for timeline display');
+      debugPrint(
+        '⚠️ Timeline: Converting "assigned" to "accepted" for timeline display',
+      );
     }
 
     // 🚀 FIX: التعامل مع حالة 'reassigning' - عند إلغاء السائق، نعرضها كـ 'readyForPickup'
     // لأن الطلب عاد لمرحلة البحث عن سائق جديد
     if (currentStatus == OrderStatus.reassigning) {
       currentStatus = OrderStatus.readyForPickup;
-      debugPrint('⚠️ Timeline: Converting "reassigning" to "readyForPickup" for timeline display');
+      debugPrint(
+        '⚠️ Timeline: Converting "reassigning" to "readyForPickup" for timeline display',
+      );
     }
 
     final currentIndex = statuses.indexOf(currentStatus);
@@ -929,7 +1004,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     // إذا لم يتم العثور على الحالة في القائمة، استخدم موقع افتراضي بدلاً من -1
     final effectiveIndex = currentIndex >= 0 ? currentIndex : 0;
 
-    debugPrint('📊 Timeline: Current status = ${_order!.status}, Converted = $currentStatus, Index = $currentIndex, Effective = $effectiveIndex');
+    debugPrint(
+      '📊 Timeline: Current status = ${_order!.status}, Converted = $currentStatus, Index = $currentIndex, Effective = $effectiveIndex',
+    );
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -959,7 +1036,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           Column(
             children: List.generate(statuses.length, (index) {
               final status = statuses[index];
-              final isCompleted = index <= effectiveIndex;  // استخدام effectiveIndex بدلاً من currentIndex
+              final isCompleted =
+                  index <=
+                  effectiveIndex; // استخدام effectiveIndex بدلاً من currentIndex
               final isActive = index == effectiveIndex;
 
               return _buildTimelineItem(
@@ -997,21 +1076,23 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                       color: isCompleted ? AppColors.primary : Colors.grey[300],
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isActive
-                            ? AppColors.primary
-                            : isCompleted
+                        color:
+                            isActive
+                                ? AppColors.primary
+                                : isCompleted
                                 ? AppColors.primary
                                 : Colors.grey[300]!,
                         width: 2,
                       ),
                     ),
-                    child: isCompleted
-                        ? const Icon(
-                            Icons.check,
-                            color: Colors.white,
-                            size: 16,
-                          )
-                        : null,
+                    child:
+                        isCompleted
+                            ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 16,
+                            )
+                            : null,
                   ),
                 );
               },
@@ -1042,18 +1123,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 if (isActive && status == OrderStatus.preparing)
                   Text(
                     'الوقت المتوقع: 15-20 دقيقة',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 if (isActive && status == OrderStatus.onTheWay)
                   Text(
                     'الوقت المتوقع: 10-15 دقيقة',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
               ],
             ),
@@ -1148,19 +1223,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 ),
 
                 // Additional address details if available
-                if (_order!.deliveryAddress.buildingNumber?.isNotEmpty == true ||
+                if (_order!.deliveryAddress.buildingNumber?.isNotEmpty ==
+                        true ||
                     _order!.deliveryAddress.floorNumber?.isNotEmpty == true ||
-                    _order!.deliveryAddress.apartmentNumber?.isNotEmpty == true) ...[
+                    _order!.deliveryAddress.apartmentNumber?.isNotEmpty ==
+                        true) ...[
                   const SizedBox(height: 8),
                   const Divider(height: 1),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.apartment,
-                        color: Colors.grey,
-                        size: 16,
-                      ),
+                      const Icon(Icons.apartment, color: Colors.grey, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -1179,7 +1252,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           ),
 
           // Customer Contact Info
-          if (_order!.customerPhone?.isNotEmpty == true || _order!.customerName?.isNotEmpty == true) ...[
+          if (_order!.customerPhone?.isNotEmpty == true ||
+              _order!.customerName?.isNotEmpty == true) ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(16),
@@ -1387,8 +1461,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               children: [
                 Icon(
                   _order!.paymentMethod == PaymentMethod.cash
-                    ? Icons.payments_outlined
-                    : Icons.credit_card_outlined,
+                      ? Icons.payments_outlined
+                      : Icons.credit_card_outlined,
                   color: AppColors.primary,
                   size: 18,
                 ),
@@ -1418,21 +1492,28 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: _order!.paymentMethod == PaymentMethod.cash
-                      ? Colors.green[100]
-                      : Colors.blue[100],
+                    color:
+                        _order!.paymentMethod == PaymentMethod.cash
+                            ? Colors.green[100]
+                            : Colors.blue[100],
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    _order!.paymentMethod == PaymentMethod.cash ? 'نقدي' : 'إلكتروني',
+                    _order!.paymentMethod == PaymentMethod.cash
+                        ? 'نقدي'
+                        : 'إلكتروني',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
-                      color: _order!.paymentMethod == PaymentMethod.cash
-                        ? Colors.green[700]
-                        : Colors.blue[700],
+                      color:
+                          _order!.paymentMethod == PaymentMethod.cash
+                              ? Colors.green[700]
+                              : Colors.blue[700],
                     ),
                   ),
                 ),
@@ -1548,7 +1629,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                             ),
                             Text(
                               _money(item.unitPrice * item.quantity),
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Wrap(
@@ -1556,9 +1641,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                               runSpacing: 6,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.1),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.1,
+                                    ),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
@@ -1705,10 +1795,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
             ),
             child: Column(
               children: [
-                _buildSummaryRow('المجموع الفرعي', '${_money(_order!.subtotal)}'),
+                _buildSummaryRow(
+                  'المجموع الفرعي',
+                  '${_money(_order!.subtotal)}',
+                ),
                 if (_order!.deliveryFee > 0) ...[
                   const SizedBox(height: 8),
-                  _buildSummaryRow('رسوم التوصيل', '${_money(_order!.deliveryFee)}'),
+                  _buildSummaryRow(
+                    'رسوم التوصيل',
+                    '${_money(_order!.deliveryFee)}',
+                  ),
                 ],
                 if (_order!.serviceFee > 0) ...[
                   const SizedBox(height: 8),
@@ -1724,8 +1820,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 ],
                 if (_order!.discount > 0) ...[
                   const SizedBox(height: 8),
-                  _buildSummaryRow('الخصم', '-${_money(_order!.discount)}',
-                    valueColor: Colors.green),
+                  _buildSummaryRow(
+                    'الخصم',
+                    '-${_money(_order!.discount)}',
+                    valueColor: Colors.green,
+                  ),
                 ],
                 const SizedBox(height: 12),
                 const Divider(),
@@ -1763,13 +1862,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[600],
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
         Text(
           value,
           style: TextStyle(
@@ -1828,10 +1921,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     ),
                     Text(
                       'سيصل خلال 10-15 دقيقة',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -1847,7 +1937,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     // TODO: Implement call driver functionality
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('ميزة الاتصال بالسائق ستكون متاحة قريباً'),
+                        content: Text(
+                          'ميزة الاتصال بالسائق ستكون متاحة قريباً',
+                        ),
                       ),
                     );
                   },
@@ -1889,8 +1981,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
   Widget _buildCancelOrderSection() {
     if (_order?.cancellationStatus == 'REQUESTED') {
-      return Card(child: Padding(padding: const EdgeInsets.all(20), child: Text(
-        'طلب الإلغاء قيد المراجعة. يستمر الطلب حتى تأكيد الإلغاء.\nمرجع القضية: ${_order?.cancellationCaseId ?? ""}')));
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'طلب الإلغاء قيد المراجعة. يستمر الطلب حتى تأكيد الإلغاء.\nمرجع القضية: ${_order?.cancellationCaseId ?? ""}',
+          ),
+        ),
+      );
     }
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1936,11 +2034,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           const SizedBox(height: 16),
           const Text(
             'قبل قبول المطعم يمكن الإلغاء دون رسوم. بعد القبول أو بدء التجهيز يُرسل طلب للمراجعة ويستمر الطلب حتى تأكيد الإلغاء.',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-              height: 1.4,
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey, height: 1.4),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -1984,10 +2078,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 const SizedBox(height: 16),
                 const Text(
                   'سبب الإلغاء (اختياري):',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 TextField(
@@ -2012,11 +2103,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 onPressed: () {
                   Navigator.of(context).pop();
                   final reason = reasonController.text.trim();
-                  _cancelOrder(reason.isEmpty ? 'Order cancelled by user' : reason);
+                  _cancelOrder(
+                    reason.isEmpty ? 'Order cancelled by user' : reason,
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
-                  foregroundColor: AppColors.secondary,
+                  foregroundColor: readableForeground(Colors.red),
                 ),
                 child: const Text('تأكيد طلب الإلغاء'),
               ),
@@ -2060,7 +2153,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
       if (result.success && !result.cancelled) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result.message)));
         _initializeOrderTracking();
         return;
       }
@@ -2097,14 +2192,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
         // Also refresh order data in the background to ensure consistency
         _initializeOrderTracking();
-
       } else {
         // Show error message
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.message),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text(result.message), backgroundColor: Colors.red),
         );
       }
     } catch (e) {
@@ -2139,11 +2230,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       ),
       child: Column(
         children: [
-          const Icon(
-            Icons.check_circle,
-            color: Colors.green,
-            size: 60,
-          ),
+          const Icon(Icons.check_circle, color: Colors.green, size: 60),
           const SizedBox(height: 16),
           const Text(
             'تم توصيل طلبك بنجاح! 🎉',
@@ -2157,10 +2244,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
           const SizedBox(height: 8),
           const Text(
             'نشكرك لاختيارك تطبيق زاد',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
@@ -2169,9 +2253,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute<void>(
-                      builder: (_) => OrderRatingScreen(orderId: widget.orderId),
-                    ));
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder:
+                            (_) => OrderRatingScreen(orderId: widget.orderId),
+                      ),
+                    );
                   },
                   icon: const Icon(Icons.star),
                   label: const Text('تقييم الطلب'),
@@ -2285,11 +2372,14 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   }
 
   String _getStatusText() {
-    if (_order!.driverSearchUnavailable) return 'تعذر العثور على سائق؛ الطلب بانتظار متابعة المنصة';
+    if (_order!.driverSearchUnavailable)
+      return 'تعذر العثور على سائق؛ الطلب بانتظار متابعة المنصة';
     if (_order!.driverReplacementSearch) return 'الطلب جاهز؛ نبحث عن سائق بديل';
     switch (_order!.status) {
       case OrderStatus.returning:
-        return _order?.returnStatus=='REQUESTED'?'تعذر التسليم؛ نراجع معالجة طلبك':'السائق يعيد الطلب للمطعم';
+        return _order?.returnStatus == 'REQUESTED'
+            ? 'تعذر التسليم؛ نراجع معالجة طلبك'
+            : 'السائق يعيد الطلب للمطعم';
       case OrderStatus.returnArrived:
         return 'بانتظار تأكيد استلام المطعم';
       case OrderStatus.returned:
@@ -2336,7 +2426,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   String _getStatusDisplayText(OrderStatus status) {
     switch (status) {
       case OrderStatus.returning:
-        return _order?.returnStatus=='REQUESTED'?'تعذر التسليم؛ نراجع معالجة طلبك':'السائق يعيد الطلب للمطعم';
+        return _order?.returnStatus == 'REQUESTED'
+            ? 'تعذر التسليم؛ نراجع معالجة طلبك'
+            : 'السائق يعيد الطلب للمطعم';
       case OrderStatus.returnArrived:
         return 'بانتظار تأكيد استلام المطعم';
       case OrderStatus.returned:

@@ -17,7 +17,7 @@ class TermsConditionsScreen extends StatelessWidget {
             'الشروط والأحكام',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: const Color(0xFF00296B),
             ),
           ),
           backgroundColor: AppColors.primary,
@@ -25,7 +25,7 @@ class TermsConditionsScreen extends StatelessWidget {
           elevation: 0,
           leading: IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: const Icon(Icons.arrow_back, color: const Color(0xFF00296B)),
           ),
         ),
         body: SingleChildScrollView(
@@ -53,7 +53,7 @@ class TermsConditionsScreen extends StatelessWidget {
                       ),
                       child: const Icon(
                         Icons.article_outlined,
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         size: 24,
                       ),
                     ),
@@ -73,10 +73,7 @@ class TermsConditionsScreen extends StatelessWidget {
                           SizedBox(height: 4),
                           Text(
                             'الشروط والأحكام الخاصة باستخدام التطبيق',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
                           ),
                         ],
                       ),
@@ -84,13 +81,14 @@ class TermsConditionsScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
 
               // Content
               _buildSection(
                 title: '1. القبول بالشروط',
-                content: '''باستخدامك لتطبيق زاد للتوصيل، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي من هذه الشروط، يرجى عدم استخدام التطبيق.
+                content:
+                    '''باستخدامك لتطبيق زاد للتوصيل، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق على أي من هذه الشروط، يرجى عدم استخدام التطبيق.
 
 هذه الشروط قابلة للتطبيق على جميع المستخدمين، بما في ذلك:
 • العملاء
@@ -100,7 +98,8 @@ class TermsConditionsScreen extends StatelessWidget {
 
               _buildSection(
                 title: '2. وصف الخدمة',
-                content: '''زاد هو تطبيق يربط بين العملاء والمطاعم وسائقي التوصيل لتقديم خدمة توصيل الطعام. نحن نوفر منصة تقنية فقط ولا نملك أو نشغل المطاعم.
+                content:
+                    '''زاد هو تطبيق يربط بين العملاء والمطاعم وسائقي التوصيل لتقديم خدمة توصيل الطعام. نحن نوفر منصة تقنية فقط ولا نملك أو نشغل المطاعم.
 
 خدماتنا تشمل:
 • عرض قوائم المطاعم والأسعار
@@ -183,7 +182,8 @@ class TermsConditionsScreen extends StatelessWidget {
 
               _buildSection(
                 title: '9. تعديل الشروط',
-                content: '''نحتفظ بالحق في تعديل هذه الشروط في أي وقت. التعديلات المهمة سيتم الإشعار عنها عبر:
+                content:
+                    '''نحتفظ بالحق في تعديل هذه الشروط في أي وقت. التعديلات المهمة سيتم الإشعار عنها عبر:
 • إشعارات داخل التطبيق
 • رسائل البريد الإلكتروني
 • رسائل نصية
@@ -225,10 +225,7 @@ class TermsConditionsScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         const Text(
                           'legal@zad-app.com',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     ),
@@ -243,17 +240,14 @@ class TermsConditionsScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         const Text(
                           '+964 770 123 4567',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
             ],
           ),

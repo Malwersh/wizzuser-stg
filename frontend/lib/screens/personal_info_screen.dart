@@ -16,7 +16,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _birthdateController = TextEditingController();
-  
+
   // متغيرات الحالة
   bool _isLoading = true;
   bool _isSaving = false;
@@ -46,7 +46,6 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         _isLoading = true;
       });
 
-
       // الحصول على معرف المستخدم من الجلسة الحالية
       final userData = await SessionService.instance.getUserData();
       if (userData == null) {
@@ -57,13 +56,14 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
 
       // ✅ إصلاح: استخراج userId بالترتيب الصحيح مع دعم البيانات المتداخلة
       String? extractedUserId;
-      
+
       // البحث في المواقع المختلفة بالترتيب الأفضل
       if (userData['userId'] != null) {
         extractedUserId = userData['userId'].toString();
       } else if (userData['user_id'] != null) {
         extractedUserId = userData['user_id'].toString();
-      } else if (userData['user'] != null && userData['user']['userId'] != null) {
+      } else if (userData['user'] != null &&
+          userData['user']['userId'] != null) {
         extractedUserId = userData['user']['userId'].toString();
       } else if (userData['id'] != null) {
         extractedUserId = userData['id'].toString();
@@ -71,7 +71,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         extractedUserId = userData['email'].toString();
         print('⚠️ استخدام email كـ userId: $extractedUserId');
       }
-      
+
       _userId = extractedUserId;
       print('👤 بيانات المستخدم الكاملة: $userData');
       print('👤 معرف المستخدم المستخرج: $_userId');
@@ -84,21 +84,23 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
 
       // التحقق من أن userId ليس placeholder
       if (_userId == 'placeholder_user_id' || _userId == 'default_user_id') {
-        print('⚠️ تحذير: معرف المستخدم هو placeholder، استخدام بيانات افتراضية');
+        print(
+          '⚠️ تحذير: معرف المستخدم هو placeholder، استخدام بيانات افتراضية',
+        );
         _showErrorDialog('معرف المستخدم غير صحيح، يرجى تسجيل الدخول مرة أخرى');
         return;
       }
 
       // جلب البيانات من جدول WizzUser_users_dev
       final userProfile = await UserProfileService.getUserProfile(_userId!);
-      
+
       if (userProfile != null) {
         _populateUserData(userProfile);
       } else {
         print('⚠️ لم يتم العثور على بيانات المستخدم في قاعدة البيانات');
         // إضافة تشخيص إضافي للبيانات الأساسية
         print('🔍 بيانات الجلسة الحالية: $userData');
-        
+
         // محاولة ملء البيانات من الجلسة نفسها كبديل
         final basicProfile = {
           'id': _userId,
@@ -110,13 +112,14 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
           'marketing_consent': false,
           'newsletter_subscription': false,
         };
-        
-        _populateUserData(basicProfile);
-        
-        // عرض تحذير للمستخدم
-        _showErrorDialog('تم تحميل بيانات أساسية. قد تحتاج لإعادة تسجيل الدخول للحصول على البيانات الكاملة.');
-      }
 
+        _populateUserData(basicProfile);
+
+        // عرض تحذير للمستخدم
+        _showErrorDialog(
+          'تم تحميل بيانات أساسية. قد تحتاج لإعادة تسجيل الدخول للحصول على البيانات الكاملة.',
+        );
+      }
     } catch (e) {
       print('❌ خطأ في تحميل البيانات: $e');
       _showErrorDialog('خطأ في تحميل البيانات: $e');
@@ -132,14 +135,16 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   /// ملء البيانات من استجابة قاعدة البيانات
   void _populateUserData(Map<String, dynamic> userProfile) {
     setState(() {
-      _nameController.text = userProfile['name'] ?? userProfile['username'] ?? '';
+      _nameController.text =
+          userProfile['name'] ?? userProfile['username'] ?? '';
       _birthdateController.text = userProfile['birthdate'] ?? '';
       _selectedGender = userProfile['gender'] ?? 'male';
       _marketingConsent = userProfile['marketing_consent'] ?? false;
       _newsletterSubscription = userProfile['newsletter_subscription'] ?? false;
-      
+
       // تحويل تاريخ الميلاد إلى DateTime إذا كان موجوداً
-      if (userProfile['birthdate'] != null && userProfile['birthdate'].isNotEmpty) {
+      if (userProfile['birthdate'] != null &&
+          userProfile['birthdate'].isNotEmpty) {
         try {
           _selectedDate = DateTime.parse(userProfile['birthdate']);
         } catch (e) {
@@ -147,7 +152,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         }
       }
     });
-    
+
     print('📊 تم تحميل البيانات:');
     print('  - الاسم: ${_nameController.text}');
     print('  - تاريخ الميلاد: ${_birthdateController.text}');
@@ -181,9 +186,10 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         _showSuccessDialog('تم حفظ التحديثات بنجاح');
       } else {
         print('❌ فشل في حفظ التحديثات: ${result['message']}');
-        _showErrorDialog('فشل في حفظ التحديثات: ${result['message'] ?? 'خطأ غير معروف'}');
+        _showErrorDialog(
+          'فشل في حفظ التحديثات: ${result['message'] ?? 'خطأ غير معروف'}',
+        );
       }
-
     } catch (e) {
       print('❌ خطأ في حفظ البيانات: $e');
       _showErrorDialog('خطأ في حفظ البيانات: $e');
@@ -200,7 +206,9 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   Future<void> _selectBirthdate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now().subtract(const Duration(days: 365 * 18)),
+      initialDate:
+          _selectedDate ??
+          DateTime.now().subtract(const Duration(days: 365 * 18)),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       locale: const Locale('ar', 'SA'),
@@ -230,38 +238,43 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   /// عرض رسالة خطأ
   void _showErrorDialog(String message) {
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('خطأ', style: TextStyle(color: Colors.red)),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('حسناً'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('خطأ', style: TextStyle(color: Colors.red)),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('حسناً'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   /// عرض رسالة نجاح
   void _showSuccessDialog(String message) {
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تم بنجاح', style: TextStyle(color: Colors.green)),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('حسناً'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text(
+              'تم بنجاح',
+              style: TextStyle(color: Colors.green),
+            ),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('حسناً'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -275,57 +288,60 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: const Color(0xFF00296B),
           ),
         ),
         backgroundColor: AppColors.primary,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          icon: const Icon(
+            Icons.arrow_back_ios,
+            color: const Color(0xFF00296B),
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: _isLoading
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'جارٍ تحميل المعلومات...',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
+      body:
+          _isLoading
+              ? const Center(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // بطاقة معلومات أساسية
-                    _buildInfoCard(),
-                    const SizedBox(height: 16),
-                    
-                    // بطاقة التفضيلات
-                    _buildPreferencesCard(),
-                    const SizedBox(height: 24),
-                    
-                    // زر الحفظ
-                    _buildSaveButton(),
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.primary,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'جارٍ تحميل المعلومات...',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
                   ],
                 ),
+              )
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // بطاقة معلومات أساسية
+                      _buildInfoCard(),
+                      const SizedBox(height: 16),
+
+                      // بطاقة التفضيلات
+                      _buildPreferencesCard(),
+                      const SizedBox(height: 24),
+
+                      // زر الحفظ
+                      _buildSaveButton(),
+                    ],
+                  ),
+                ),
               ),
-            ),
     );
   }
 
@@ -348,7 +364,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // حقل الاسم
             TextFormField(
               controller: _nameController,
@@ -372,7 +388,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               },
             ),
             const SizedBox(height: 16),
-            
+
             // حقل تاريخ الميلاد
             TextFormField(
               controller: _birthdateController,
@@ -381,8 +397,14 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               decoration: InputDecoration(
                 labelText: 'تاريخ الميلاد',
                 hintText: 'اختر تاريخ الميلاد',
-                prefixIcon: Icon(Icons.calendar_today, color: AppColors.primary),
-                suffixIcon: Icon(Icons.arrow_drop_down, color: AppColors.primary),
+                prefixIcon: Icon(
+                  Icons.calendar_today,
+                  color: AppColors.primary,
+                ),
+                suffixIcon: Icon(
+                  Icons.arrow_drop_down,
+                  color: AppColors.primary,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -394,7 +416,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // اختيار الجنس
             const Text(
               'الجنس',
@@ -473,7 +495,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // موافقة التسويق
             SwitchListTile(
               title: const Text('استقبال رسائل التسويق'),
@@ -488,7 +510,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               secondary: Icon(Icons.campaign, color: AppColors.secondary),
             ),
             const Divider(),
-            
+
             // اشتراك النشرة الإخبارية
             SwitchListTile(
               title: const Text('النشرة الإخبارية'),
@@ -516,34 +538,33 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.secondary,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 2,
       ),
-      child: _isSaving
-          ? const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    strokeWidth: 2,
+      child:
+          _isSaving
+              ? const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      strokeWidth: 2,
+                    ),
                   ),
-                ),
-                SizedBox(width: 12),
-                Text(
-                  'جارٍ الحفظ...',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ],
-            )
-          : const Text(
-              'حفظ التغييرات',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+                  SizedBox(width: 12),
+                  Text(
+                    'جارٍ الحفظ...',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              )
+              : const Text(
+                'حفظ التغييرات',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
     );
   }
 }

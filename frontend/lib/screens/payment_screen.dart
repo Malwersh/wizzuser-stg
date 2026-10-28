@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -19,28 +20,30 @@ class PaymentScreen extends StatefulWidget {
   State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateMixin {
+class _PaymentScreenState extends State<PaymentScreen>
+    with TickerProviderStateMixin {
   late TabController _tabController;
-  int _selectedPaymentMethod = 0; // 0: بطاقة مصرفية، 1: محفظة رقمية، 2: نقداً عند التسليم
-  
+  int _selectedPaymentMethod =
+      0; // 0: بطاقة مصرفية، 1: محفظة رقمية، 2: نقداً عند التسليم
+
   // بيانات البطاقة المصرفية
   final _cardNameController = TextEditingController();
   final _cardNumberController = TextEditingController();
   final _expiryController = TextEditingController();
   final _cvvController = TextEditingController();
-  
+
   // بيانات المحفظة الرقمية
   final _phoneController = TextEditingController();
   final _pinController = TextEditingController();
-  
+
   // معلومات العميل
   final _customerNameController = TextEditingController();
   final _customerPhoneController = TextEditingController();
   final _customerEmailController = TextEditingController();
-  
+
   bool _isProcessing = false;
   String? _cardType;
-  
+
   // ألوان التطبيق
   static const Color _primaryColor = AppColors.primary;
   static const Color _secondaryColor = Color(0xFFe91e63);
@@ -81,20 +84,13 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.payment,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                child: const Icon(Icons.payment, color: Colors.white, size: 20),
               ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
                   'إتمام الدفع',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -108,10 +104,10 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
           children: [
             // ملخص الطلب
             _buildOrderSummary(),
-            
+
             // معلومات العميل
             _buildCustomerInfo(),
-            
+
             // طرق الدفع
             Expanded(
               child: Column(
@@ -182,7 +178,10 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: _primaryColor,
                     borderRadius: BorderRadius.circular(20),
@@ -190,7 +189,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   child: Text(
                     '${formatIqd(widget.totalAmount)}',
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: const Color(0xFF00296B),
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -240,11 +239,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                     color: _secondaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    Icons.person,
-                    color: _secondaryColor,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.person, color: _secondaryColor, size: 20),
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -349,18 +344,12 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
             indicatorColor: _primaryColor,
             indicatorWeight: 3,
             tabs: const [
-              Tab(
-                icon: Icon(Icons.credit_card),
-                text: 'بطاقة مصرفية',
-              ),
+              Tab(icon: Icon(Icons.credit_card), text: 'بطاقة مصرفية'),
               Tab(
                 icon: Icon(Icons.account_balance_wallet),
                 text: 'محفظة رقمية',
               ),
-              Tab(
-                icon: Icon(Icons.money),
-                text: 'نقداً عند التسليم',
-              ),
+              Tab(icon: Icon(Icons.money), text: 'نقداً عند التسليم'),
             ],
           ),
         ],
@@ -390,9 +379,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
             children: [
               // بطاقة تمثيلية
               _buildCreditCard(),
-              
+
               const SizedBox(height: 24),
-              
+
               // اسم حامل البطاقة
               _buildTextField(
                 controller: _cardNameController,
@@ -400,9 +389,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                 icon: Icons.person_outline,
                 inputType: TextInputType.name,
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // رقم البطاقة
               _buildTextField(
                 controller: _cardNumberController,
@@ -417,9 +406,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   });
                 },
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // تاريخ الانتهاء و CVV
               Row(
                 children: [
@@ -447,9 +436,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // ملاحظة الأمان
               Container(
                 padding: const EdgeInsets.all(12),
@@ -463,11 +452,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.security,
-                      color: Colors.green,
-                      size: 20,
-                    ),
+                    const Icon(Icons.security, color: Colors.green, size: 20),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
@@ -513,14 +498,26 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildWalletOption('زين كاش', Icons.phone_android, Colors.purple),
-                  _buildWalletOption('آسيا باي', Icons.account_balance_wallet, Colors.blue),
-                  _buildWalletOption('الكي كارد', Icons.credit_card, AppColors.primary),
+                  _buildWalletOption(
+                    'زين كاش',
+                    Icons.phone_android,
+                    Colors.purple,
+                  ),
+                  _buildWalletOption(
+                    'آسيا باي',
+                    Icons.account_balance_wallet,
+                    Colors.blue,
+                  ),
+                  _buildWalletOption(
+                    'الكي كارد',
+                    Icons.credit_card,
+                    AppColors.primary,
+                  ),
                 ],
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // رقم الهاتف
               _buildTextField(
                 controller: _phoneController,
@@ -529,9 +526,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                 inputType: TextInputType.phone,
                 placeholder: '07xxxxxxxx',
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // رمز PIN
               _buildTextField(
                 controller: _pinController,
@@ -541,9 +538,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                 maxLength: 6,
                 isObscure: true,
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // ملاحظة
               Container(
                 padding: const EdgeInsets.all(12),
@@ -609,15 +606,11 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   color: Colors.green.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.money,
-                  color: Colors.green,
-                  size: 48,
-                ),
+                child: const Icon(Icons.money, color: Colors.green, size: 48),
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               const Text(
                 'الدفع نقداً عند التسليم',
                 style: TextStyle(
@@ -626,20 +619,17 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   color: Colors.black87,
                 ),
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               Text(
                 'ادفع نقداً للسائق عند استلام طلبك',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 textAlign: TextAlign.center,
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // معلومات مهمة
               Container(
                 padding: const EdgeInsets.all(16),
@@ -687,9 +677,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // المبلغ المطلوب
               Container(
                 padding: const EdgeInsets.all(16),
@@ -758,18 +748,20 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
           borderSide: BorderSide(color: _primaryColor, width: 2),
         ),
         counterText: '',
-        suffixIcon: _cardType != null && controller == _cardNumberController
-            ? Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Image.asset(
-                  _getCardImage(_cardType!),
-                  width: 24,
-                  height: 24,
-                  errorBuilder: (context, error, stackTrace) => 
-                      Icon(Icons.credit_card, color: Colors.grey[400]),
-                ),
-              )
-            : null,
+        suffixIcon:
+            _cardType != null && controller == _cardNumberController
+                ? Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Image.asset(
+                    _getCardImage(_cardType!),
+                    width: 24,
+                    height: 24,
+                    errorBuilder:
+                        (context, error, stackTrace) =>
+                            Icon(Icons.credit_card, color: Colors.grey[400]),
+                  ),
+                )
+                : null,
       ),
     );
   }
@@ -783,10 +775,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            _primaryColor,
-            _primaryColor.withValues(alpha: 0.8),
-          ],
+          colors: [_primaryColor, _primaryColor.withValues(alpha: 0.8)],
         ),
         boxShadow: [
           BoxShadow(
@@ -807,14 +796,17 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                 const Text(
                   'بطاقة مصرفية',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: const Color(0xFF00296B),
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 if (_cardType != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
@@ -832,11 +824,11 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
             ),
             const Spacer(),
             Text(
-              _cardNumberController.text.isEmpty 
+              _cardNumberController.text.isEmpty
                   ? '**** **** **** ****'
                   : _cardNumberController.text,
               style: const TextStyle(
-                color: Colors.white,
+                color: const Color(0xFF00296B),
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 2,
@@ -851,17 +843,14 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   children: [
                     const Text(
                       'اسم حامل البطاقة',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 10),
                     ),
                     Text(
-                      _cardNameController.text.isEmpty 
+                      _cardNameController.text.isEmpty
                           ? 'اسم حامل البطاقة'
                           : _cardNameController.text.toUpperCase(),
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
@@ -873,17 +862,14 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   children: [
                     const Text(
                       'صالحة حتى',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 10),
                     ),
                     Text(
-                      _expiryController.text.isEmpty 
+                      _expiryController.text.isEmpty
                           ? 'MM/YY'
                           : _expiryController.text,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
@@ -906,16 +892,9 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: color.withValues(alpha: 0.3),
-              width: 1,
-            ),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
           ),
-          child: Icon(
-            icon,
-            color: color,
-            size: 32,
-          ),
+          child: Icon(icon, color: color, size: 32),
         ),
         const SizedBox(height: 8),
         Text(
@@ -959,7 +938,7 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      _selectedPaymentMethod == 0 
+                      _selectedPaymentMethod == 0
                           ? 'دفع بالبطاقة المصرفية'
                           : 'دفع بالمحفظة الرقمية',
                       style: const TextStyle(
@@ -979,14 +958,15 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   ],
                 ),
               ),
-            
+
             const SizedBox(height: 12),
-            
+
             // زر الدفع
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
+                  foregroundColor: readableForeground(_primaryColor),
                   backgroundColor: _primaryColor,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -996,52 +976,53 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
                   shadowColor: _primaryColor.withValues(alpha: 0.3),
                 ),
                 onPressed: _isProcessing ? null : _processPayment,
-                child: _isProcessing
-                    ? Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
+                child:
+                    _isProcessing
+                        ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: const Color(0xFF00296B),
+                                strokeWidth: 2,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'جارٍ المعالجة...',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                            const SizedBox(width: 12),
+                            const Text(
+                              'جارٍ المعالجة...',
+                              style: TextStyle(
+                                color: const Color(0xFF00296B),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _selectedPaymentMethod == 2 
-                                ? Icons.check_circle
-                                : Icons.payment,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            _selectedPaymentMethod == 2
-                                ? 'تأكيد الطلب'
-                                : 'ادفع الآن ${formatIqd(widget.totalAmount)}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                          ],
+                        )
+                        : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _selectedPaymentMethod == 2
+                                  ? Icons.check_circle
+                                  : Icons.payment,
+                              color: const Color(0xFF00296B),
+                              size: 22,
                             ),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 12),
+                            Text(
+                              _selectedPaymentMethod == 2
+                                  ? 'تأكيد الطلب'
+                                  : 'ادفع الآن ${formatIqd(widget.totalAmount)}',
+                              style: const TextStyle(
+                                color: const Color(0xFF00296B),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
               ),
             ),
           ],
@@ -1112,62 +1093,62 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
 
   bool _validateCard() {
     final cardNumber = _cardNumberController.text.replaceAll(' ', '');
-    return _validateCardLuhn(cardNumber) && 
-           _validateExpiryDate(_expiryController.text) &&
-           _cvvController.text.length >= 3;
+    return _validateCardLuhn(cardNumber) &&
+        _validateExpiryDate(_expiryController.text) &&
+        _cvvController.text.length >= 3;
   }
 
   bool _validateCardLuhn(String cardNumber) {
     if (cardNumber.length < 13 || cardNumber.length > 19) return false;
-    
+
     int sum = 0;
     bool alternate = false;
-    
+
     for (int i = cardNumber.length - 1; i >= 0; i--) {
       int n = int.parse(cardNumber[i]);
-      
+
       if (alternate) {
         n *= 2;
         if (n > 9) n = (n % 10) + 1;
       }
-      
+
       sum += n;
       alternate = !alternate;
     }
-    
+
     return sum % 10 == 0;
   }
 
   bool _validateExpiryDate(String expiry) {
     if (expiry.length != 5) return false;
-    
+
     final parts = expiry.split('/');
     if (parts.length != 2) return false;
-    
+
     final month = int.tryParse(parts[0]);
     final year = int.tryParse(parts[1]);
-    
+
     if (month == null || year == null) return false;
     if (month < 1 || month > 12) return false;
-    
+
     final now = DateTime.now();
     final currentYear = now.year % 100;
     final currentMonth = now.month;
-    
+
     if (year < currentYear) return false;
     if (year == currentYear && month < currentMonth) return false;
-    
+
     return true;
   }
 
   String? _getCardType(String cardNumber) {
     cardNumber = cardNumber.replaceAll(' ', '');
-    
+
     if (cardNumber.startsWith('4')) return 'Visa';
     if (cardNumber.startsWith(RegExp(r'5[1-5]'))) return 'MasterCard';
     if (cardNumber.startsWith(RegExp(r'3[47]'))) return 'American Express';
     if (cardNumber.startsWith('6011')) return 'Discover';
-    
+
     return null;
   }
 
@@ -1188,138 +1169,131 @@ class _PaymentScreenState extends State<PaymentScreen> with TickerProviderStateM
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.check_circle,
-                color: Colors.green,
-                size: 24,
-              ),
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'تم الدفع بنجاح!',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'تم الدفع بنجاح!',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'شكراً لك! تم استلام دفعتك بنجاح وسيتم التواصل معك قريباً لتأكيد التفاصيل.',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'تفاصيل الدفع:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text('المبلغ: ${formatIqd(widget.totalAmount)}'),
+                      Text('الطريقة: ${_getPaymentMethodName()}'),
+                      Text(
+                        'التاريخ: ${DateTime.now().toString().substring(0, 16)}',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // إغلاق الحوار
+                  widget.onPaymentSuccess(); // استدعاء callback النجاح
+                },
+                child: const Text(
+                  'حسناً',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'شكراً لك! تم استلام دفعتك بنجاح وسيتم التواصل معك قريباً لتأكيد التفاصيل.',
-              style: TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'تفاصيل الدفع:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('المبلغ: ${formatIqd(widget.totalAmount)}'),
-                  Text('الطريقة: ${_getPaymentMethodName()}'),
-                  Text('التاريخ: ${DateTime.now().toString().substring(0, 16)}'),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // إغلاق الحوار
-              widget.onPaymentSuccess(); // استدعاء callback النجاح
-            },
-            child: const Text(
-              'حسناً',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showErrorDialog(String message) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.error_outline,
-                color: Colors.red,
-                size: 24,
-              ),
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'خطأ في الدفع',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'خطأ في الدفع',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(message, style: const TextStyle(fontSize: 16)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'حسناً',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'حسناً',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -1346,14 +1320,14 @@ class _CardNumberFormatter extends TextInputFormatter {
   ) {
     final text = newValue.text.replaceAll(' ', '');
     final buffer = StringBuffer();
-    
+
     for (int i = 0; i < text.length; i++) {
       if (i > 0 && i % 4 == 0) {
         buffer.write(' ');
       }
       buffer.write(text[i]);
     }
-    
+
     return TextEditingValue(
       text: buffer.toString(),
       selection: TextSelection.collapsed(offset: buffer.length),
@@ -1368,14 +1342,14 @@ class _ExpiryDateFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) {
     final text = newValue.text.replaceAll('/', '');
-    
+
     if (text.length >= 2) {
       return TextEditingValue(
         text: '${text.substring(0, 2)}/${text.substring(2)}',
         selection: TextSelection.collapsed(offset: newValue.text.length),
       );
     }
-    
+
     return newValue;
   }
 }

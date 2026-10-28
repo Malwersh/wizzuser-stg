@@ -17,7 +17,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             'سياسة الخصوصية',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: const Color(0xFF00296B),
             ),
           ),
           backgroundColor: AppColors.primary,
@@ -25,7 +25,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
           elevation: 0,
           leading: IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_forward, color: Colors.white), // إصلاح أيقونة RTL
+            icon: const Icon(
+              Icons.arrow_forward,
+              color: const Color(0xFF00296B),
+            ), // إصلاح أيقونة RTL
           ),
         ),
         body: SingleChildScrollView(
@@ -53,7 +56,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                       ),
                       child: const Icon(
                         Icons.privacy_tip_outlined,
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         size: 24,
                       ),
                     ),
@@ -73,10 +76,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                           SizedBox(height: 4),
                           Text(
                             'نلتزم بحماية خصوصيتك وبياناتك الشخصية',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
                           ),
                         ],
                       ),
@@ -84,7 +84,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
 
               // Content
@@ -116,7 +116,8 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
               _buildSection(
                 title: '3. مشاركة المعلومات',
-                content: '''لا نشارك معلوماتك الشخصية مع أطراف ثالثة إلا في الحالات التالية:
+                content:
+                    '''لا نشارك معلوماتك الشخصية مع أطراف ثالثة إلا في الحالات التالية:
 • مع شركاء التوصيل لإتمام الطلبات
 • مع المطاعم المشاركة لتحضير الطلبات
 • عند الحاجة للامتثال للقوانين
@@ -153,7 +154,8 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
               _buildSection(
                 title: '7. تحديث السياسة',
-                content: '''قد نقوم بتحديث هذه السياسة من وقت لآخر. سنقوم بإشعارك بأي تغييرات مهمة عبر:
+                content:
+                    '''قد نقوم بتحديث هذه السياسة من وقت لآخر. سنقوم بإشعارك بأي تغييرات مهمة عبر:
 • إشعارات داخل التطبيق
 • رسائل البريد الإلكتروني
 • رسائل نصية
@@ -193,10 +195,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         const Text(
                           'support@zad-app.com',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     ),
@@ -211,17 +210,14 @@ class PrivacyPolicyScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         const Text(
                           '+964 770 123 4567',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
             ],
           ),

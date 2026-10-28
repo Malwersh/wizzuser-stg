@@ -542,7 +542,9 @@ class _ChangeEmailPhoneScreenState extends State<ChangeEmailPhoneScreen> {
         ),
         child:
             _isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
+                ? const CircularProgressIndicator(
+                  color: const Color(0xFF00296B),
+                )
                 : const Text(
                   'حفظ التغييرات',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

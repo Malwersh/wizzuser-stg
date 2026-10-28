@@ -95,7 +95,7 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
     try {
       // TODO: تحميل الدولة الحالية من الإعدادات المحفوظة
       await Future.delayed(const Duration(seconds: 1));
-      
+
       // بيانات تجريبية - يجب استبدالها بالبيانات الحقيقية
       setState(() {
         _selectedCountry = 'IQ'; // العراق كافتراضي
@@ -121,7 +121,9 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
     if (_countries[countryCode]!['available'] == 'false') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خدماتنا غير متوفرة حالياً في ${_countries[countryCode]!['name']}'),
+          content: Text(
+            'خدماتنا غير متوفرة حالياً في ${_countries[countryCode]!['name']}',
+          ),
           backgroundColor: AppColors.primary,
         ),
       );
@@ -137,7 +139,7 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
     try {
       // TODO: حفظ الدولة الجديدة
       await Future.delayed(const Duration(seconds: 1));
-      
+
       setState(() {
         _selectedCountry = countryCode;
       });
@@ -145,7 +147,9 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم تغيير الدولة إلى ${_countries[countryCode]!['name']}'),
+            content: Text(
+              'تم تغيير الدولة إلى ${_countries[countryCode]!['name']}',
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -180,20 +184,21 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
         foregroundColor: AppColors.secondary,
         elevation: 0,
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                _buildCountrySelectionCard(),
-                const SizedBox(height: 20),
-                _buildInfoCard(),
-              ],
-            ),
-          ),
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    _buildCountrySelectionCard(),
+                    const SizedBox(height: 20),
+                    _buildInfoCard(),
+                  ],
+                ),
+              ),
     );
   }
 
@@ -225,10 +230,12 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
               ),
             ),
           ),
-          ..._countries.entries.map((entry) => _buildCountryTile(
-            countryCode: entry.key,
-            countryData: entry.value,
-          )),
+          ..._countries.entries.map(
+            (entry) => _buildCountryTile(
+              countryCode: entry.key,
+              countryData: entry.value,
+            ),
+          ),
         ],
       ),
     );
@@ -240,18 +247,18 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
   }) {
     final isSelected = _selectedCountry == countryCode;
     final isAvailable = countryData['available'] == 'true';
-    
+
     return InkWell(
       onTap: () => _changeCountry(countryCode),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : Colors.transparent,
+          color:
+              isSelected
+                  ? AppColors.primary.withValues(alpha: 0.1)
+                  : Colors.transparent,
           border: Border(
-            bottom: BorderSide(
-              color: Colors.grey[200]!,
-              width: 0.5,
-            ),
+            bottom: BorderSide(color: Colors.grey[200]!, width: 0.5),
           ),
         ),
         child: Row(
@@ -282,17 +289,23 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: isSelected ? AppColors.primary : Colors.black87,
+                          color:
+                              isSelected ? AppColors.primary : Colors.black87,
                         ),
                       ),
                       if (!isAvailable) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                            ),
                           ),
                           child: Text(
                             'قريباً',
@@ -309,10 +322,7 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
                   const SizedBox(height: 4),
                   Text(
                     countryData['nativeName']!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -326,7 +336,7 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
                 ),
                 child: const Icon(
                   Icons.check,
-                  color: Colors.white,
+                  color: const Color(0xFF00296B),
                   size: 16,
                 ),
               )
@@ -340,11 +350,7 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
                 ),
               )
             else
-              Icon(
-                Icons.lock_outline,
-                color: Colors.grey[400],
-                size: 20,
-              ),
+              Icon(Icons.lock_outline, color: Colors.grey[400], size: 20),
           ],
         ),
       ),
@@ -404,10 +410,7 @@ class _CountrySettingsScreenState extends State<CountrySettingsScreen> {
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                color: AppColors.secondaryDark,
-                height: 1.5,
-              ),
+              style: TextStyle(color: AppColors.secondaryDark, height: 1.5),
             ),
           ),
         ],

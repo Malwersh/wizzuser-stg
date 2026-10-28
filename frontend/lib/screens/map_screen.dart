@@ -12,12 +12,10 @@ import './store_detail_screen.dart';
 import '../models/store.dart';
 
 class MapScreen extends StatefulWidget {
-  final List<BusinessModel>? businesses; // قائمة المطاعم المصفاة من الشاشة الرئيسية
-  
-  const MapScreen({
-    super.key,
-    this.businesses,
-  });
+  final List<BusinessModel>?
+  businesses; // قائمة المطاعم المصفاة من الشاشة الرئيسية
+
+  const MapScreen({super.key, this.businesses});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -34,10 +32,10 @@ class _MapScreenState extends State<MapScreen> {
   Set<Marker> _markers = {};
   final TextEditingController _searchController = TextEditingController();
   bool _showList = false; // للتبديل بين عرض الخريطة والقائمة
-  
+
   // إحداثيات بغداد الافتراضية
   static const LatLng _defaultLocation = LatLng(33.3128, 44.3615);
-  
+
   // مفاتيح للخريطة
   BitmapDescriptor? _restaurantIcon;
   BitmapDescriptor? _userLocationIcon;
@@ -56,29 +54,31 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _initializeMap() async {
     try {
       developer.log('🗺️ بدء تهيئة شاشة الخريطة...');
-      
+
       // طباعة حالة إعداد Google Maps
       SecureGoogleMapsConfig.logConfigurationStatus();
-      
+
       // التحقق من صحة مفتاح API
-      if (!SecureGoogleMapsConfig.isValidApiKey(SecureGoogleMapsConfig.apiKey)) {
+      if (!SecureGoogleMapsConfig.isValidApiKey(
+        SecureGoogleMapsConfig.apiKey,
+      )) {
         developer.log('⚠️ تحذير: مفتاح Google Maps API غير صحيح أو مفقود');
         // يمكن عرض رسالة خطأ للمستخدم هنا
       }
-      
+
       // تحميل الأيقونات المخصصة
       await _loadCustomIcons();
-      
+
       // الحصول على الموقع الحالي
       await _getCurrentLocation();
-      
+
       // تحميل المطاعم
       await _loadRestaurants();
-      
+
       setState(() {
         _isLoading = false;
       });
-      
+
       developer.log('✅ تم تهيئة شاشة الخريطة بنجاح');
     } catch (e) {
       developer.log('❌ خطأ في تهيئة شاشة الخريطة: $e');
@@ -97,14 +97,20 @@ class _MapScreenState extends State<MapScreen> {
       );
       developer.log('✅ تم تحميل أيقونة المطعم المخصصة');
     } catch (e) {
-      developer.log('⚠️ لم يتم العثور على الأيقونة المخصصة، استخدام الافتراضية: $e');
+      developer.log(
+        '⚠️ لم يتم العثور على الأيقونة المخصصة، استخدام الافتراضية: $e',
+      );
       // إذا لم تكن الأيقونة موجودة، استخدم الافتراضية
-      _restaurantIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+      _restaurantIcon = BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueOrange,
+      );
     }
 
     try {
       // استخدم الأيقونة الافتراضية للمستخدم
-      _userLocationIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue);
+      _userLocationIcon = BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueBlue,
+      );
       developer.log('✅ تم تحميل أيقونة المستخدم');
     } catch (e) {
       developer.log('❌ خطأ في تحميل أيقونة المستخدم: $e');
@@ -135,7 +141,9 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       _currentPosition = await Geolocator.getCurrentPosition();
-      developer.log('📍 تم الحصول على الموقع الحالي: ${_currentPosition?.latitude}, ${_currentPosition?.longitude}');
+      developer.log(
+        '📍 تم الحصول على الموقع الحالي: ${_currentPosition?.latitude}, ${_currentPosition?.longitude}',
+      );
     } catch (e) {
       developer.log('❌ خطأ في الحصول على الموقع: $e');
     }
@@ -144,19 +152,20 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _loadRestaurants() async {
     try {
       developer.log('🔄 تحميل المطاعم للخريطة...');
-      
-      final businessesResponse = await BusinessService.getAllBusinessesWithPagination(
-        page: 0,
-        limit: 50, // تحميل عدد أكبر للخريطة
-      );
-      
+
+      final businessesResponse =
+          await BusinessService.getAllBusinessesWithPagination(
+            page: 0,
+            limit: 50, // تحميل عدد أكبر للخريطة
+          );
+
       setState(() {
         _allBusinesses = businessesResponse.businesses;
         _filteredBusinesses = _allBusinesses;
       });
-      
+
       await _updateMarkers();
-      
+
       developer.log('✅ تم تحميل ${_allBusinesses.length} مطعم على الخريطة');
     } catch (e) {
       developer.log('❌ خطأ في تحميل المطاعم: $e');
@@ -168,32 +177,45 @@ class _MapScreenState extends State<MapScreen> {
 
     // إضافة مطعم الموقع الحالي للمستخدم
     if (_currentPosition != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('user_location'),
-        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        icon: _userLocationIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: const InfoWindow(
-          title: 'موقعك الحالي',
-          snippet: 'أنت هنا',
+      markers.add(
+        Marker(
+          markerId: const MarkerId('user_location'),
+          position: LatLng(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+          ),
+          icon:
+              _userLocationIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          infoWindow: const InfoWindow(
+            title: 'موقعك الحالي',
+            snippet: 'أنت هنا',
+          ),
         ),
-      ));
+      );
     }
 
     // إضافة علامات المطاعم المفلترة
     for (int i = 0; i < _filteredBusinesses.length; i++) {
       final business = _filteredBusinesses[i];
-      
+
       if (business.latitude != null && business.longitude != null) {
-        markers.add(Marker(
-          markerId: MarkerId(business.id),
-          position: LatLng(business.latitude!, business.longitude!),
-          icon: _restaurantIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          infoWindow: InfoWindow(
-            title: business.businessName,
-            snippet: '${business.deliveryTime} • ${business.businessType}',
+        markers.add(
+          Marker(
+            markerId: MarkerId(business.id),
+            position: LatLng(business.latitude!, business.longitude!),
+            icon:
+                _restaurantIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueOrange,
+                ),
+            infoWindow: InfoWindow(
+              title: business.businessName,
+              snippet: '${business.deliveryTime} • ${business.businessType}',
+            ),
+            onTap: () => _showRestaurantBottomSheet(business),
           ),
-          onTap: () => _showRestaurantBottomSheet(business),
-        ));
+        );
       }
     }
 
@@ -233,7 +255,7 @@ class _MapScreenState extends State<MapScreen> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // محتوى المطعم
           Expanded(
             child: Padding(
@@ -253,15 +275,24 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: business.businessPhotoUrl.isNotEmpty
-                              ? Image.network(
-                                  business.businessPhotoUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(Icons.restaurant, size: 40, color: Colors.grey);
-                                  },
-                                )
-                              : const Icon(Icons.restaurant, size: 40, color: Colors.grey),
+                          child:
+                              business.businessPhotoUrl.isNotEmpty
+                                  ? Image.network(
+                                    business.businessPhotoUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(
+                                        Icons.restaurant,
+                                        size: 40,
+                                        color: Colors.grey,
+                                      );
+                                    },
+                                  )
+                                  : const Icon(
+                                    Icons.restaurant,
+                                    size: 40,
+                                    color: Colors.grey,
+                                  ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -288,18 +319,32 @@ class _MapScreenState extends State<MapScreen> {
                             const SizedBox(height: 4),
                             Row(
                               children: [
-                                Icon(Icons.star, color: Colors.amber, size: 16),
+                                Icon(
+                                  Icons.star,
+                                  color: const Color(0xFF00296B),
+                                  size: 16,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   business.ratingString,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                                 const SizedBox(width: 12),
-                                Icon(Icons.access_time, color: Colors.grey[600], size: 16),
+                                Icon(
+                                  Icons.access_time,
+                                  color: Colors.grey[600],
+                                  size: 16,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   business.deliveryTime,
-                                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
                                 ),
                               ],
                             ),
@@ -311,9 +356,9 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // معلومات الرسوم والتوصيل
                   Row(
                     children: [
@@ -334,9 +379,9 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
                   ),
-                  
+
                   const Spacer(),
-                  
+
                   // زر عرض المطعم
                   SizedBox(
                     width: double.infinity,
@@ -355,11 +400,14 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                       child: const Text(
                         'عرض المطعم',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 20),
                 ],
               ),
@@ -370,7 +418,11 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget _buildInfoCard({required IconData icon, required String title, required String value}) {
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -382,10 +434,7 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           Icon(icon, color: AppColors.primary, size: 24),
           const SizedBox(height: 8),
-          Text(
-            title,
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
+          Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
           const SizedBox(height: 4),
           Text(
             value,
@@ -398,8 +447,12 @@ class _MapScreenState extends State<MapScreen> {
 
   void _navigateToRestaurant(BusinessModel business) {
     // استخدام acceptingOrders و isOnline للحكم على حالة المطعم
-    final isBusinessOpen = business.isActive && business.acceptingOrders && business.isOnline && !business.isBusy;
-    
+    final isBusinessOpen =
+        business.isActive &&
+        business.acceptingOrders &&
+        business.isOnline &&
+        !business.isBusy;
+
     final store = Store(
       id: business.id,
       name: business.businessName,
@@ -422,24 +475,26 @@ class _MapScreenState extends State<MapScreen> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => StoreDetailScreen(store: store),
-      ),
+      MaterialPageRoute(builder: (context) => StoreDetailScreen(store: store)),
     );
   }
 
   String _calculateDistance(BusinessModel business) {
-    if (_currentPosition == null || business.latitude == null || business.longitude == null) {
+    if (_currentPosition == null ||
+        business.latitude == null ||
+        business.longitude == null) {
       return '';
     }
-    
-    final distance = Geolocator.distanceBetween(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-      business.latitude!,
-      business.longitude!,
-    ) / 1000; // تحويل إلى كيلومتر
-    
+
+    final distance =
+        Geolocator.distanceBetween(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+          business.latitude!,
+          business.longitude!,
+        ) /
+        1000; // تحويل إلى كيلومتر
+
     return '${distance.toStringAsFixed(1)} كم';
   }
 
@@ -448,7 +503,7 @@ class _MapScreenState extends State<MapScreen> {
       _selectedFilter = filter;
       _filterBusinesses();
     });
-    
+
     _updateMarkers();
   }
 
@@ -457,21 +512,34 @@ class _MapScreenState extends State<MapScreen> {
 
     // تطبيق فلتر البحث
     if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((business) =>
-          business.businessName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          business.businessType.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+      filtered =
+          filtered
+              .where(
+                (business) =>
+                    business.businessName.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ||
+                    business.businessType.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ),
+              )
+              .toList();
     }
 
     // تطبيق فلاتر أخرى
     switch (_selectedFilter) {
       case 'open':
         // استخدام جميع حقول الحالة للتأكد من أن المطعم متاح ويستقبل طلبات
-        filtered = filtered.where((business) => 
-            business.isActive && 
-            business.acceptingOrders && 
-            business.isOnline && 
-            !business.isBusy
-        ).toList();
+        filtered =
+            filtered
+                .where(
+                  (business) =>
+                      business.isActive &&
+                      business.acceptingOrders &&
+                      business.isOnline &&
+                      !business.isBusy,
+                )
+                .toList();
         break;
       case 'rating':
         // ترتيب حسب التقييم (الأعلى أولاً)
@@ -490,7 +558,7 @@ class _MapScreenState extends State<MapScreen> {
       _searchQuery = query;
       _filterBusinesses();
     });
-    
+
     _updateMarkers();
   }
 
@@ -511,7 +579,7 @@ class _MapScreenState extends State<MapScreen> {
         itemBuilder: (context, index) {
           final filter = filters[index];
           final isSelected = _selectedFilter == filter['key'];
-          
+
           return Container(
             margin: const EdgeInsets.only(left: 8),
             child: FilterChip(
@@ -551,9 +619,13 @@ class _MapScreenState extends State<MapScreen> {
     try {
       return GoogleMap(
         initialCameraPosition: CameraPosition(
-          target: _currentPosition != null
-              ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-              : _defaultLocation,
+          target:
+              _currentPosition != null
+                  ? LatLng(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                  )
+                  : _defaultLocation,
           zoom: SecureGoogleMapsConfig.defaultZoom,
         ),
         markers: _markers,
@@ -567,12 +639,16 @@ class _MapScreenState extends State<MapScreen> {
           try {
             _mapController = controller;
             developer.log('✅ تم إنشاء كنترولر الخريطة بنجاح');
-            
+
             // التحرك إلى الموقع الحالي أو الموقع الافتراضي
-            final targetLocation = _currentPosition != null
-                ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                : _defaultLocation;
-                
+            final targetLocation =
+                _currentPosition != null
+                    ? LatLng(
+                      _currentPosition!.latitude,
+                      _currentPosition!.longitude,
+                    )
+                    : _defaultLocation;
+
             await _mapController!.animateCamera(
               CameraUpdate.newCameraPosition(
                 CameraPosition(
@@ -595,11 +671,7 @@ class _MapScreenState extends State<MapScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.map_outlined,
-                size: 64,
-                color: Colors.grey[400],
-              ),
+              Icon(Icons.map_outlined, size: 64, color: Colors.grey[400]),
               const SizedBox(height: 16),
               Text(
                 'عذراً، لا يمكن تحميل الخريطة',
@@ -612,10 +684,7 @@ class _MapScreenState extends State<MapScreen> {
               const SizedBox(height: 8),
               Text(
                 'تحقق من اتصال الإنترنت أو جرب مرة أخرى',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[500],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
@@ -642,7 +711,10 @@ class _MapScreenState extends State<MapScreen> {
     return Container(
       color: Colors.grey[100],
       child: ListView.builder(
-        padding: const EdgeInsets.only(top: 120, bottom: 120), // مساحة للفلاتر والشريط السفلي
+        padding: const EdgeInsets.only(
+          top: 120,
+          bottom: 120,
+        ), // مساحة للفلاتر والشريط السفلي
         itemCount: _filteredBusinesses.length,
         itemBuilder: (context, index) {
           final business = _filteredBusinesses[index];
@@ -677,15 +749,24 @@ class _MapScreenState extends State<MapScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: business.businessPhotoUrl.isNotEmpty
-                ? Image.network(
-                    business.businessPhotoUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.restaurant, size: 30, color: Colors.grey);
-                    },
-                  )
-                : const Icon(Icons.restaurant, size: 30, color: Colors.grey),
+            child:
+                business.businessPhotoUrl.isNotEmpty
+                    ? Image.network(
+                      business.businessPhotoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          Icons.restaurant,
+                          size: 30,
+                          color: Colors.grey,
+                        );
+                      },
+                    )
+                    : const Icon(
+                      Icons.restaurant,
+                      size: 30,
+                      color: Colors.grey,
+                    ),
           ),
         ),
         title: Text(
@@ -702,19 +783,19 @@ class _MapScreenState extends State<MapScreen> {
             const SizedBox(height: 4),
             Text(
               business.businessType,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.star, color: Colors.amber, size: 16),
+                Icon(Icons.star, color: const Color(0xFF00296B), size: 16),
                 const SizedBox(width: 4),
                 Text(
                   business.ratingString,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Icon(Icons.access_time, color: Colors.grey[600], size: 16),
@@ -771,7 +852,10 @@ class _MapScreenState extends State<MapScreen> {
               _mapController!.animateCamera(
                 CameraUpdate.newCameraPosition(
                   CameraPosition(
-                    target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                    target: LatLng(
+                      _currentPosition!.latitude,
+                      _currentPosition!.longitude,
+                    ),
                     zoom: SecureGoogleMapsConfig.detailZoom,
                   ),
                 ),
@@ -808,7 +892,7 @@ class _MapScreenState extends State<MapScreen> {
               padding: const EdgeInsets.all(12),
               child: Icon(
                 Icons.restaurant,
-                color: AppColors.primary,
+                color: const Color(0xFF00296B),
                 size: 24,
               ),
             ),
@@ -827,10 +911,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   Text(
                     _getFilterDescription(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -844,7 +925,10 @@ class _MapScreenState extends State<MapScreen> {
                   });
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: _showList ? AppColors.primary : AppColors.secondary,
                     borderRadius: BorderRadius.circular(8),
@@ -904,7 +988,7 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           // الخريطة أو القائمة
           _showList ? _buildListView() : _buildMapView(),
-          
+
           // شريط البحث والفلاتر العلوي
           SafeArea(
             child: Column(
@@ -928,31 +1012,38 @@ class _MapScreenState extends State<MapScreen> {
                     decoration: InputDecoration(
                       hintText: 'ابحث عن المطاعم والأطباق...',
                       prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey),
-                              onPressed: () {
-                                _searchController.clear();
-                                _onSearchChanged('');
-                              },
-                            )
-                          : null,
+                      suffixIcon:
+                          _searchQuery.isNotEmpty
+                              ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  color: Colors.grey,
+                                ),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _onSearchChanged('');
+                                },
+                              )
+                              : null,
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                     onChanged: _onSearchChanged,
                   ),
                 ),
-                
+
                 // الفلاتر
                 _buildFilterChips(),
               ],
             ),
           ),
-          
+
           // تراكبات الخريطة فقط في وضع الخريطة (زر الموقع الحالي)
           if (!_showList) ..._buildMapOverlays(),
-          
+
           // الشريط السفلي للتبديل - يظهر في الحالتين
           _buildToggleBar(),
         ],
@@ -983,7 +1074,7 @@ class _MapScreenState extends State<MapScreen> {
     Color badgeColor;
     String statusText;
     IconData statusIcon;
-    
+
     if (!business.isActive) {
       badgeColor = Colors.grey;
       statusText = 'غير نشط';
@@ -1005,7 +1096,7 @@ class _MapScreenState extends State<MapScreen> {
       statusText = 'متاح';
       statusIcon = Icons.check_circle_outline;
     }
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
