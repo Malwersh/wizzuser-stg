@@ -4,8 +4,8 @@
  */
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
-const {writeContext}=require('../create-order/guarded-write');
+const { DynamoDBDocumentClient, GetCommand, ScanCommand, TransactWriteCommand, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const {writeContext,commitBook,fullAddress319}=require('../shared/address-book-319');
 
 const client = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(client);
@@ -31,117 +31,6 @@ const CORS_HEADERS = {
 };
 
 /**
- * Build full address from components
- * Format: Country, Province, District, Neighborhood, Landmark
- */
-function buildFullAddress(addressData) {
-    // إذا كان العنوان الكامل موجود، استخدمه مباشرة
-    if (addressData.fullAddress && addressData.fullAddress.trim()) {
-        return addressData.fullAddress.trim();
-    }
-    
-    // إذا كان detailed_address موجود ويحتوي على بيانات حقيقية (ليس "-")
-    // استخدمه كمصدر رئيسي (يحتوي على: البلد، المحافظة، القضاء، الحي)
-    if (addressData.detailed_address && 
-        addressData.detailed_address.trim() && 
-        addressData.detailed_address.trim() !== '-') {
-        
-        // تنظيف العنوان من كلمة "محافظة"
-        let cleanedAddress = addressData.detailed_address
-            .replace(/\s+محافظة/g, '')
-            .replace(/محافظة\s+/g, '');
-        
-        // تقسيم العنوان إلى أجزاء لإعادة ترتيبها
-        const addressParts = cleanedAddress.split('، ').map(p => p.trim()).filter(p => p);
-        
-        // إعادة ترتيب: العراق (آخر جزء) يأتي أولاً، ثم المحافظة، ثم الباقي
-        const reorderedParts = [];
-        
-        if (addressParts.length > 0) {
-            // البلد (آخر جزء) يأتي أولاً
-            const country = addressParts[addressParts.length - 1];
-            reorderedParts.push(country);
-            
-            // المحافظة (قبل الأخير) تأتي ثانياً
-            if (addressParts.length > 1) {
-                const province = addressParts[addressParts.length - 2];
-                reorderedParts.push(province);
-            }
-            
-            // الباقي (الناحية/القضاء، الحي) بنفس ترتيبهم
-            if (addressParts.length > 2) {
-                for (let i = 0; i < addressParts.length - 2; i++) {
-                    reorderedParts.push(addressParts[i]);
-                }
-            }
-        }
-        
-        // أضف landmark في النهاية إذا كان موجود وليس "-"
-        if (addressData.landmark && 
-            addressData.landmark.trim() && 
-            addressData.landmark.trim() !== '-') {
-            reorderedParts.push(`قرب ${addressData.landmark}`);
-        }
-        
-        return reorderedParts.join('، ');
-    }
-    
-    // وإلا، ابنِ العنوان من الأجزاء (للعناوين القديمة)
-    const parts = [];
-    
-    if (addressData.province && addressData.province !== '-') parts.push(addressData.province);
-    if (addressData.district && addressData.district !== '-') parts.push(addressData.district);
-    if (addressData.neighborhood && addressData.neighborhood !== '-') parts.push(addressData.neighborhood);
-    if (addressData.landmark && addressData.landmark !== '-') parts.push(`قرب ${addressData.landmark}`);
-    
-    return parts.join('، ') || 'عنوان غير محدد';
-}
-
-/**
- * Clear existing default addresses for user
- */
-async function clearDefaultAddresses(userId, excludeAddressId, write) {
-    try {
-        // First, find all default addresses for this user
-        const queryParams = {
-            TableName: TABLE_NAME,
-            IndexName: 'userId-isDefault-index',
-            KeyConditionExpression: 'userId = :userId AND isDefault = :isDefault',
-            ExpressionAttributeValues: {
-                ':userId': userId,
-                ':isDefault': 'true'
-            }
-        };
-
-        const result = await dynamodb.send(new QueryCommand(queryParams));
-        
-        // Update each default address to not be default (except the one being updated)
-        for (const address of result.Items) {
-            if (address.addressId !== excludeAddressId) {
-                const updateParams = {
-                    TableName: TABLE_NAME,
-                    Key: { addressId: address.addressId },
-                    UpdateExpression: 'SET isDefault = :isDefault, updatedAt = :updatedAt',
-                    ExpressionAttributeValues: {
-                        ':isDefault': 'false',
-                        ':updatedAt': new Date().toISOString()
-                    }
-                };
-                
-                updateParams.ConditionExpression='attribute_exists(addressId) AND userId = :owner';
-                updateParams.ExpressionAttributeValues[':owner']=userId;
-                await write('Update',updateParams);
-            }
-        }
-        
-        console.log(`✅ Cleared default addresses for user ${userId}`);
-    } catch (error) {
-        console.error('❌ Error clearing default addresses:', error);
-        throw error;
-    }
-}
-
-/**
  * Main Lambda handler
  */
 exports.handler = async (event) => {
@@ -161,8 +50,7 @@ exports.handler = async (event) => {
         const userId = event.pathParameters?.user_id;
         const addressId = event.pathParameters?.address_id;
         
-        console.log('👤 User ID:', userId);
-        console.log('🏠 Address ID:', addressId);
+
 
         if (!userId || !addressId) {
             return {
@@ -191,12 +79,12 @@ exports.handler = async (event) => {
             };
         }
 
-        console.log('📋 Update data:', JSON.stringify(updateData, null, 2));
+
 
         // First, verify that the address exists and belongs to the user
         const getParams = {
             TableName: TABLE_NAME,
-            Key: { addressId: addressId }
+            Key: { addressId: addressId }, ConsistentRead:true
         };
 
         const existingResult = await dynamodb.send(new GetCommand(getParams));
@@ -212,7 +100,7 @@ exports.handler = async (event) => {
             };
         }
 
-        if (existingResult.Item.userId !== userId) {
+        if (existingResult.Item.userId !== userId || existingResult.Item.recordType==='CHECKOUT_ADDRESS') {
             return {
                 statusCode: 403,
                 headers: CORS_HEADERS,
@@ -223,6 +111,10 @@ exports.handler = async (event) => {
             };
         }
 
+        for (const key of ['neighborhood','landmark']) {
+            const value=updateData[key]??existingResult.Item[key];
+            if(typeof value!=='string'||value.trim().length<2||['-','موقع محدد من الخريطة'].includes(value.trim()))return{statusCode:400,headers:CORS_HEADERS,body:JSON.stringify({success:false,code:'ADDRESS_DETAILS_REQUIRED',message:'أدخل اسم الحي وأقرب نقطة دالة بشكل واضح.'})};
+        }
         // Build update expression
         const updateExpressions = [];
         const expressionAttributeNames = {};
@@ -233,11 +125,14 @@ exports.handler = async (event) => {
         expressionAttributeNames['#updatedAt'] = 'updatedAt';
         expressionAttributeValues[':updatedAt'] = new Date().toISOString();
 
-        // Check if setting as default
-        if (updateData.is_default === true) {
-            await clearDefaultAddresses(userId, addressId,write);
+        const regionApi=require('../../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
+        const verifiedRegion=await regionApi.resolve(updateData.latitude??existingResult.Item.latitude,updateData.longitude??existingResult.Item.longitude);
+        updateData.region_id=verifiedRegion.regionId;updateData.region_name_ar=verifiedRegion.regionNameAr;
+        updateData.province=verifiedRegion.path[1].base.name_ar||verifiedRegion.path[1].base.name;updateData.district=verifiedRegion.path[2].base.name_ar||verifiedRegion.path[2].base.name;
+        for (const key of ['neighborhood','landmark']) {
+            const value=updateData[key]??existingResult.Item[key];
+            if(typeof value!=='string'||value.trim().length<2||['-','موقع محدد من الخريطة'].includes(value.trim()))return{statusCode:400,headers:CORS_HEADERS,body:JSON.stringify({success:false,code:'ADDRESS_DETAILS_REQUIRED',message:'أدخل اسم الحي وأقرب نقطة دالة بشكل واضح.'})};
         }
-
         // Build update expressions for provided fields
         const updatableFields = {
             'name': 'name',
@@ -246,10 +141,11 @@ exports.handler = async (event) => {
             'neighborhood': 'neighborhood',
             'landmark': 'landmark',
             'detailed_address': 'detailedAddress',
+            'region_id': 'regionId',
+            'region_name_ar': 'regionNameAr',
             'latitude': 'latitude',
             'longitude': 'longitude',
             'address_type': 'addressType',
-            'is_default': 'isDefault',
             'building_number': 'buildingNumber',
             'floor_number': 'floorNumber',
             'apartment_number': 'apartmentNumber',
@@ -288,7 +184,7 @@ exports.handler = async (event) => {
                 detailed_address: updateData.detailed_address || currentAddress.detailedAddress
             };
             
-            const newFullAddress = buildFullAddress(mergedData);
+            const newFullAddress = fullAddress319({...mergedData,regionNameAr:verifiedRegion.regionNameAr},currentAddress);
             updateExpressions.push('#fullAddress = :fullAddress');
             expressionAttributeNames['#fullAddress'] = 'fullAddress';
             expressionAttributeValues[':fullAddress'] = newFullAddress;
@@ -319,7 +215,9 @@ exports.handler = async (event) => {
 
         updateParams.ConditionExpression='attribute_exists(addressId) AND userId = :owner';
         updateParams.ExpressionAttributeValues[':owner']=userId;
-        const result = await write('Update',updateParams);
+        const checkedUpdate={...updateParams};delete checkedUpdate.ReturnValues;
+        await commitBook({db:dynamodb,write,operation:{Update:checkedUpdate},makeDefault:updateData.is_default===true,expectedAddress:existingResult.Item,regionChecks:regionApi.checks(verifiedRegion.path)});
+        const result={Attributes:(await dynamodb.send(new GetCommand({TableName:TABLE_NAME,Key:{addressId},ConsistentRead:true}))).Item};
         const updatedAddress = result.Attributes;
 
         // Format response
@@ -333,8 +231,10 @@ exports.handler = async (event) => {
             landmark: updatedAddress.landmark || '',
             detailed_address: updatedAddress.detailedAddress || null,
             full_address: updatedAddress.fullAddress,
-            latitude: updatedAddress.latitude || null,
-            longitude: updatedAddress.longitude || null,
+            region_id: updatedAddress.regionId,
+            region_name_ar: updatedAddress.regionNameAr,
+            latitude: updatedAddress.latitude ?? null,
+            longitude: updatedAddress.longitude ?? null,
             address_type: updatedAddress.addressType || 'other',
             is_default: updatedAddress.isDefault === 'true',
             building_number: updatedAddress.buildingNumber || null,
@@ -365,8 +265,8 @@ exports.handler = async (event) => {
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,
-                message: 'خطأ في تحديث العنوان',
-                error: error.message
+                code: error.code||error.name,
+                message: error.code==='ADDRESS_BOOK_CHANGED'?'تغيّرت العناوين. حدّث القائمة وأعد المحاولة.':'تعذر تأكيد تحديث العنوان. حدّث القائمة وأعد المحاولة.'
             })
         };
     }

@@ -1,3 +1,5 @@
+import '../models/browsing_location.dart';
+import 'browsing_location_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -88,6 +90,7 @@ class StorefrontPricing extends ChangeNotifier {
   final DateTime Function() now;
   final _businessFacts = <String, Map<String, dynamic>>{};
   final String? Function() regionId;
+  final BrowsingLocation? Function() destination;
   final _cache = <String, StorefrontPreview>{};
   // Route information is independent of basket contents. Never reuse its fee.
   final _routes = <String, StorefrontRoute>{};
@@ -95,6 +98,7 @@ class StorefrontPricing extends ChangeNotifier {
   final _errors = <String, String>{};
   final _retryAt = <String, DateTime>{};
   StreamSubscription? _addresses, _sessions;
+  void _browsingChanged() => notifyListeners();
   String? _lastAccount;
   int _active = 0;
   Timer? _termsBoundary;
@@ -107,12 +111,20 @@ class StorefrontPricing extends ChangeNotifier {
     String? Function()? addressId,
     String? Function()? addressRevision,
     String? Function()? regionId,
+    BrowsingLocation? Function()? destination,
     http.Client? client,
     DateTime Function()? now,
     bool listenToAddress = true,
-  }) : regionId =
+  }) : destination =
+           destination ??
+           (listenToAddress
+               ? (() => BrowsingLocationService.instance.selection)
+               : (() => null)),
+       regionId =
            regionId ??
-           (() => DeliveryAddressManager.instance.activeAddress?.regionId),
+           (() =>
+               BrowsingLocationService.instance.selection?.regionId ??
+               DeliveryAddressManager.instance.activeAddress?.regionId),
        account = account ?? (() => SessionService.instance.currentUserId),
        token = token ?? (() => SessionService.instance.accessToken),
        freshToken =
@@ -134,6 +146,7 @@ class StorefrontPricing extends ChangeNotifier {
        client = client ?? http.Client(),
        now = now ?? DateTime.now {
     if (listenToAddress) {
+      BrowsingLocationService.instance.addListener(_browsingChanged);
       _addresses = DeliveryAddressManager.instance.addressStream.listen((_) {
         notifyListeners();
       });
@@ -200,7 +213,7 @@ class StorefrontPricing extends ChangeNotifier {
   }
 
   Map? _agreement(String branch) {
-    if (addressId() == null || regionId() == null) return null;
+    if (regionId() == null) return null;
     final rows = _businessFacts[branch]?['storefrontDeliveryAgreements'];
     if (rows is! List) return null;
     final matching =
@@ -223,6 +236,13 @@ class StorefrontPricing extends ChangeNotifier {
               minimum >= 0;
         }).toList();
     return matching.length == 1 ? matching.single : null;
+  }
+
+  double? agreementFeeIqd(String branch) {
+    final agreement = _agreement(branch);
+    return agreement == null
+        ? null
+        : (agreement['deliveryFeeIqd'] as int).toDouble();
   }
 
   double? feeIqd(
@@ -272,11 +292,35 @@ class StorefrontPricing extends ChangeNotifier {
           };
         }).toList()
         ..sort((a, b) => '${a['productId']}'.compareTo('${b['productId']}'));
+  BrowsingLocation? get pointDestination {
+    final selected = destination();
+    return selected?.hasPoint == true &&
+            (addressId() == null || account() == null || account() == 'guest')
+        ? selected
+        : null;
+  }
+
+  double? browsingPointFeeIqd(String branch, List<dynamic> items) =>
+      pointDestination == null
+          ? agreementFeeIqd(branch)
+          : cachedDisplayFeeIqd(branch, items);
   String? key(
     String branch,
     List<dynamic> items, {
     bool hasGoodsDiscount = false,
   }) {
+    final point = pointDestination;
+    if (point != null)
+      return jsonEncode([
+        'POINT_PREVIEW_317',
+        account() ?? 'guest',
+        point.regionId,
+        point.latitude,
+        point.longitude,
+        branch,
+        selections(items),
+        hasGoodsDiscount,
+      ]);
     if (account() == null ||
         account() == 'guest' ||
         addressId() == null ||
@@ -329,6 +373,13 @@ class StorefrontPricing extends ChangeNotifier {
     bool hasGoodsDiscount = false,
     bool force = false,
   }) async {
+    if (pointDestination != null)
+      return _loadPoint(
+        branch,
+        items,
+        hasGoodsDiscount: hasGoodsDiscount,
+        force: force,
+      );
     final k = key(branch, items, hasGoodsDiscount: hasGoodsDiscount);
     if (k == null) return null;
     if (!force) {
@@ -482,8 +533,104 @@ class StorefrontPricing extends ChangeNotifier {
     }
   }
 
+  Future<StorefrontPreview?> _loadPoint(
+    String branch,
+    List<dynamic> items, {
+    required bool hasGoodsDiscount,
+    required bool force,
+  }) async {
+    final selected = pointDestination,
+        k = key(branch, items, hasGoodsDiscount: hasGoodsDiscount);
+    if (selected == null || k == null) return null;
+    if (!force) {
+      final cached = peek(branch, items, hasGoodsDiscount: hasGoodsDiscount);
+      if (cached != null) return cached;
+      if (_retryAt[k]?.isAfter(now()) == true) return null;
+    }
+    if (_running[k] != null) return _running[k]!;
+    Future<StorefrontPreview?> run() async {
+      if (_active >= 2) {
+        final slot = Completer<void>();
+        _slots.add(slot);
+        await slot.future;
+      } else {
+        _active++;
+      }
+      try {
+        if (k != key(branch, items, hasGoodsDiscount: hasGoodsDiscount))
+          return null;
+        final response = await client
+            .post(
+              Uri.parse(ApiConfig.buildUrl('/storefront-point-preview')),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'action': 'storefront_point_preview',
+                'branchId': branch,
+                'regionId': selected.regionId,
+                'point': {
+                  'latitude': selected.latitude,
+                  'longitude': selected.longitude,
+                },
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
+        if (_disposed ||
+            k != key(branch, items, hasGoodsDiscount: hasGoodsDiscount))
+          return null;
+        final body = jsonDecode(response.body);
+        if (response.statusCode != 200 || body['success'] != true)
+          throw const FormatException('Point preview unavailable');
+        final value = StorefrontPreview(
+          Map<String, dynamic>.from(body['preview']),
+        );
+        final point = value.data['destination'];
+        if (value.data['informationalOnly'] != true ||
+            value.data['requiresFinalConfirmation'] != true ||
+            value.data['branchId'] != branch ||
+            value.data['regionId'] != selected.regionId ||
+            point is! Map ||
+            point['latitude'] != selected.latitude ||
+            point['longitude'] != selected.longitude ||
+            !now().isBefore(value.expiresAt))
+          throw const FormatException('Point preview scope changed');
+        if (_cache.length >= 80) _cache.remove(_cache.keys.first);
+        _cache[k] = value;
+        final rk = _routeKey(branch);
+        if (rk != null) {
+          if (_routes.length >= 80) _routes.remove(_routes.keys.first);
+          _routes[rk] = value;
+        }
+        _errors.remove(k);
+        return value;
+      } catch (_) {
+        if (!_disposed &&
+            k == key(branch, items, hasGoodsDiscount: hasGoodsDiscount)) {
+          _errors[k] = 'تعذر حساب التوصيل. أعد المحاولة';
+          _retryAt[k] = now().add(const Duration(seconds: 15));
+        }
+        return null;
+      } finally {
+        if (_slots.isNotEmpty) {
+          _slots.removeAt(0).complete();
+        } else {
+          _active--;
+        }
+      }
+    }
+
+    final task = run();
+    _running[k] = task;
+    try {
+      return await task;
+    } finally {
+      _running.remove(k);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
+    BrowsingLocationService.instance.removeListener(_browsingChanged);
     _disposed = true;
     _termsBoundary?.cancel();
     _addresses?.cancel();

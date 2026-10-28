@@ -1,3 +1,4 @@
+import '../services/iraqi_delivery_details.dart';
 // lib/screens/add_address_screen.dart
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   
   // 🔥 النظام الجديد: حقلان فقط
   final _fullAddressController = TextEditingController(); // العنوان الكامل من Google
+  final _neighborhoodController = TextEditingController();
   final _landmarkController = TextEditingController(); // الوصف الإجباري
 
   // 🔥 GPS & Region System
@@ -41,6 +43,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   void dispose() {
     _nameController.dispose();
     _fullAddressController.dispose();
+    _neighborhoodController.dispose();
     _landmarkController.dispose();
     super.dispose();
   }
@@ -158,7 +161,13 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                     icon: Icons.location_on,
                     isRequired: true,
                     maxLines: 3,
-                    readOnly: true, // للقراءة فقط - يتم ملؤه من الخريطة
+                    readOnly: false, // للقراءة فقط - يتم ملؤه من الخريطة
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _neighborhoodController,
+                    label: 'اسم الحي أو المحلة *',
+                    hint: 'اكتب اسم الحي',icon: Icons.location_city,isRequired: true,
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
@@ -391,6 +400,9 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   }
 
   Future<void> _saveAddress() async {
+    if(!IraqiDeliveryDetails.meaningful(_neighborhoodController.text)||!IraqiDeliveryDetails.meaningful(_landmarkController.text)){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('أكمل اسم الحي وأقرب نقطة دالة.')));return;
+    }
     if (!_formKey.currentState!.validate()) return;
     
     // 🔥 تحقق من وجود العنوان والموقع
@@ -443,7 +455,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         // 🔥 العنوان الكامل من Google Places
         province: extractedProvince ?? 'غير محدد',
         district: '-', // placeholder - سيتم تحديثه في Backend
-        neighborhood: '-', // placeholder - سيتم تحديثه في Backend
+        neighborhood: _neighborhoodController.text.trim(),
         landmark: _landmarkController.text.trim(), // الوصف الإجباري من المستخدم
         detailedAddress: fullAddress, // العنوان الكامل
         // 🔥 GPS Data - إجباري الآن

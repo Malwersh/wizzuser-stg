@@ -1,3 +1,5 @@
+import '../services/point_invoice_321.dart';
+import '../services/browsing_location_service.dart';
 import '../config/api_config.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -32,6 +34,7 @@ class _BasketInvoiceWarmupState extends State<BasketInvoiceWarmup> {
   @override
   void initState() {
     super.initState();
+    BrowsingLocationService.instance.addListener(_schedule);
     _address = DeliveryAddressManager.instance.addressStream.listen(
       (_) => _schedule(),
     );
@@ -63,7 +66,7 @@ class _BasketInvoiceWarmupState extends State<BasketInvoiceWarmup> {
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed)
         return;
       unawaited(
-        CheckoutInvoiceStore.instance.warmBasket(
+        PointInvoice321.instance.warmBasket(
           widget.branch,
           widget.items,
           storeName: widget.storeName,
@@ -78,6 +81,7 @@ class _BasketInvoiceWarmupState extends State<BasketInvoiceWarmup> {
     _refresh?.cancel();
     _address?.cancel();
     _session?.cancel();
+    BrowsingLocationService.instance.removeListener(_schedule);
     super.dispose();
   }
 
@@ -99,6 +103,17 @@ class BasketInvoiceTotals extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!ApiConfig.commercialPricingEnabled) return const SizedBox.shrink();
+    if(store==null){
+      final r=PointInvoice321.basketRequest(branch,items,storeName:storeName);
+      if(r==null)return const SizedBox.shrink();
+      return ListenableBuilder(listenable:PointInvoice321.instance,builder:(context,_){
+        final p=PointInvoice321.instance.peek(r);if(p==null)return const SizedBox.shrink();
+        return Column(children:[
+          Padding(padding:const EdgeInsets.only(top:10),child:Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('رسوم الخدمة'),Text(basketMoney((p['serviceFee']['minorAmount']as num)/1000),style:const TextStyle(color:AppColors.secondary))])),
+          Padding(padding:const EdgeInsets.only(top:10),child:Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('المجموع الكلي',style:TextStyle(fontWeight:FontWeight.bold)),Text(basketMoney((p['customerTotal']['minorAmount']as num)/1000),style:const TextStyle(color:AppColors.secondary,fontWeight:FontWeight.bold))])),
+        ]);
+      });
+    }
     final source = store ?? CheckoutInvoiceStore.instance;
     return ListenableBuilder(
       listenable: source,
@@ -191,20 +206,22 @@ class BasketInvoiceDelivery extends StatelessWidget {
     final source = store ?? CheckoutInvoiceStore.instance;
     final display = pricing ?? StorefrontPricing.instance;
     return ListenableBuilder(
-      listenable: Listenable.merge([source, display]),
+      listenable: Listenable.merge([source, display,PointInvoice321.instance]),
       builder: (context, _) {
         final request = source.basketRequest(branch, items);
         final invoice = request == null ? null : source.peek(request);
-        final cachedFee = display.cachedDisplayFeeIqd(branch, items);
-        return invoice == null
+        final pointRequest=store==null?PointInvoice321.basketRequest(branch,items):null;
+        final proposal=(pointRequest==null?null:PointInvoice321.instance.peek(pointRequest))??invoice?.proposal;
+        final cachedFee = request == null ? display.browsingPointFeeIqd(branch, items) : display.cachedDisplayFeeIqd(branch, items);
+        return proposal == null
             ? Text(
-              request == null ? 'اختر عنوان التوصيل' :
+              request == null ? (cachedFee!=null?basketMoney(cachedFee):'يُحسب بعد إكمال عنوان التوصيل') :
                   cachedFee != null ? '${basketMoney(cachedFee)} (تقديري)' : 'بانتظار سعر التوصيل',
               style: const TextStyle(color: AppColors.textSecondary),
             )
             : Text(
               basketMoney(
-                (invoice.proposal['deliveryFee']['minorAmount'] as num) / 1000,
+                (proposal['deliveryFee']['minorAmount'] as num) / 1000,
               ),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             );

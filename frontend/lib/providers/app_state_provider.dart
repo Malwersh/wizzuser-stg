@@ -1,3 +1,6 @@
+import 'dart:async';
+import '../services/point_invoice_321.dart';
+import '../services/browsing_location_service.dart';
 import 'package:flutter/foundation.dart';
 import '../services/session_service.dart';
 import '../models/cart_model.dart';
@@ -25,10 +28,29 @@ class AppStateProvider extends ChangeNotifier {
   // 🔥 بيانات المطعم للاقتراحات
   Map<String, BusinessSuggestionData> _businessSuggestionData = {};
   
-  AppStateProvider() {
+  final Future<void> Function(String,List<Map<String,dynamic>>,String)? warmInvoice;
+  final bool Function()? canWarmInvoice;
+  AppStateProvider({this.warmInvoice,this.canWarmInvoice}) {
+    _cart.addListener(_scheduleBasketInvoice);
+    BrowsingLocationService.instance.addListener(_scheduleBasketInvoice);
     _initializeState();
   }
   
+  Timer? _invoiceWarm;
+  bool _disposed=false;
+  StreamSubscription? _sessionSubscription;
+  void _scheduleBasketInvoice(){
+    _invoiceWarm?.cancel();
+    if(_disposed||!(canWarmInvoice?.call()??_sessionService.isLoggedIn)||_cart.currentStoreId==null)return;
+    if(warmInvoice==null&&PointInvoice321.basketRequest(_cart.currentStoreId!,cartItems)==null)return;
+    _invoiceWarm=Timer(const Duration(milliseconds:350),(){
+      if(_disposed||!(canWarmInvoice?.call()??_sessionService.isLoggedIn)||_cart.currentStoreId==null)return;
+      unawaited(warmInvoice==null?PointInvoice321.instance.warmBasket(_cart.currentStoreId!,cartItems,storeName:_cart.storeName??'المطعم'):warmInvoice!(_cart.currentStoreId!,cartItems,_cart.storeName??'المطعم'));
+    });
+  }
+  @override
+  void dispose(){_disposed=true;_invoiceWarm?.cancel();_sessionSubscription?.cancel();_cart.removeListener(_scheduleBasketInvoice);BrowsingLocationService.instance.removeListener(_scheduleBasketInvoice);super.dispose();}
+
   // Getters
   CartModel get cart => _cart;
   String? get cartStoreName => _cart.storeName;
@@ -74,7 +96,7 @@ class AppStateProvider extends ChangeNotifier {
   // Initialize state and listen to session changes
   Future<void> _initializeState() async {
     // Listen to session changes
-    _sessionService.sessionStateStream.listen((sessionState) async {
+    _sessionSubscription=_sessionService.sessionStateStream.listen((sessionState) async {
       final previousUserId = _currentUser?['userId'] ?? _currentUser?['user_id'];
       
       if (sessionState is SessionActive) {
@@ -100,7 +122,7 @@ class AppStateProvider extends ChangeNotifier {
           await _cart.clearOnSessionChange();
         }
       }
-      notifyListeners();
+      if(!_disposed){notifyListeners();_scheduleBasketInvoice();}
     });
     
     // Initialize with current session state

@@ -20,6 +20,22 @@ exports.handler = async event => {
         !env.USER_POOL_CLIENT_ID || !/^(?:[1-9]|[1-9][0-9]|1[01][0-9]|120)$/.test(env.DELIVERY_QUOTE_MAX_PER_MINUTE || '') || !env.MAPBOX_SECRET_ARN?.startsWith('arn:aws:secretsmanager:us-east-1:699561669180:secret:'))
       return reply(503, { success: false, code: 'QUOTES_NOT_CONFIGURED' });
     if (!['GET', 'POST'].includes(event.httpMethod)) return reply(405, { success: false, code: 'METHOD_NOT_ALLOWED' });
+    if(event.httpMethod==='POST' && !event.isBase64Encoded && typeof event.body==='string' && Buffer.byteLength(event.body)<=2048){
+      let request;try{request=JSON.parse(event.body);}catch(_){}
+      if(request?.action==='storefront_point_preview'){
+        if(env.STOREFRONT_POINT_PREVIEW_ENABLED!=='true')return reply(503,{success:false,code:'POINT_PREVIEW_NOT_ENABLED'});
+        if(Object.keys(event.queryStringParameters||{}).length)return reply(400,{success:false,code:'INVALID_STOREFRONT_REQUEST'});
+        const {pointSelection317,createStagingPointStorefrontPreview317,reservePublicPointPreview317}=require('./point-preview-runtime-317');
+        const {action,...input}=request;
+        const selection=pointSelection317(input);
+        const operating=await readDeliveryOperations(db,env);
+        const sourceIp=event.requestContext?.identity?.sourceIp||event.requestContext?.http?.sourceIp;
+        await reservePublicPointPreview317({db,sourceIp,maxPerMinute:Math.min(30,operating.values.quoteMaxPerCustomerPerMinute*2)});
+        const preview=await createStagingPointStorefrontPreview317({db,createRouter:guardedDb=>createStagingSecretDeliveryRouting({db:guardedDb,secrets,secretArn:env.MAPBOX_SECRET_ARN,profile:'driving',ttlSeconds:120,timeoutMs:8000,credentialTimeoutMs:2000})}).preview(selection);
+        return reply(200,{success:true,preview});
+      }
+    }
+    if(String(event.resource||event.path||'').endsWith('/storefront-point-preview'))return reply(400,{success:false,code:'INVALID_STOREFRONT_REQUEST'});
     // This header selects a profile, never authorizes it. GetUser + accountGuard bind it to the live subject.
     const selected = Object.entries(event.headers || {}).find(([k]) => k.toLowerCase() === 'x-customer-id')?.[1];
     if (typeof selected !== 'string' || !/^[A-Za-z0-9_.:-]{1,150}$/.test(selected) || selected === 'guest')

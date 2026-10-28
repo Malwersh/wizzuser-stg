@@ -14,11 +14,11 @@
  * 6. Apply limit
  */
 
-const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
-const {DynamoDBDocumentClient,ScanCommand,BatchGetCommand}=require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { haversineDistance, sortByDistance } = require('../utils/haversine');
 
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 // Table name
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
@@ -28,7 +28,7 @@ const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Busines
  */
 exports.handler = async (event) => {
   console.log('🔍 Get Nearby Businesses');
-
+  console.log('Event:', JSON.stringify(event, null, 2));
 
   try {
     // Extract parameters
@@ -55,6 +55,9 @@ exports.handler = async (event) => {
     console.log(`📏 Radius: ${radiusKm} km`);
     console.log(`🔢 Limit: ${limitNum}`);
 
+    const regionApi=require('../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
+    const selected=await regionApi.resolve(lat,lng);
+
     // Step 1: Get all active businesses
     // Note: For production with large datasets, consider using GSI with geo-hashing
     const scanParams = {
@@ -73,7 +76,7 @@ exports.handler = async (event) => {
     }
 
     console.log('📊 Scanning businesses...');
-    const businesses = await scanAllItems(scanParams);
+    const businesses = (await scanAllItems(scanParams)).filter(b=>require('../utils/customer-regions-313').contains(selected.path[3].base.geometry,b.latitude??b.address?.latitude,b.longitude??b.address?.longitude)).map(b=>({...b,regionId:selected.regionId}));
     console.log(`📦 Found ${businesses.length} active businesses`);
 
     // Step 2: Calculate distance and filter
@@ -95,7 +98,7 @@ exports.handler = async (event) => {
     if (sort === 'distance') {
       nearbyBusinesses.sort((a, b) => a.distance - b.distance);
     } else if (sort === 'rating') {
-      nearbyBusinesses.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      nearbyBusinesses.sort((a, b) => (b.customerRating ?? b.rating ?? 0) - (a.customerRating ?? a.rating ?? 0));
     }
 
     // Step 4: Apply limit
@@ -115,6 +118,7 @@ exports.handler = async (event) => {
       },
     });
   } catch (error) {
+    if(error.status)return errorResponse(error.status,error.code,error.status===404?'الخدمة غير متاحة في هذه المنطقة حاليًا.':'تعذر التحقق من المنطقة.');
     console.error('❌ Error:', error);
     return errorResponse(500, 'INTERNAL_ERROR', 'Internal server error', {
       message: error.message,

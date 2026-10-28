@@ -891,12 +891,6 @@ class OrderServiceV2 extends ChangeNotifier {
       final responseData = json.decode(response.body);
 
       if (response.statusCode == 200 && responseData['success'] == true) {
-        if (responseData['cancellationStatus'] == 'REQUESTED' && responseData['cancelled'] == false) {
-          lastCancellationPending = true;
-          lastCancellationMessage = responseData['message'] as String?;
-          notifyListeners();
-          return true;
-        }
         // تحديث الطلب في القائمة المحلية
         final index = _orders.indexWhere((o) => o.id == orderId);
         if (index != -1) {
@@ -976,6 +970,12 @@ class OrderServiceV2 extends ChangeNotifier {
       );
 
       if (response.statusCode == 200 && responseData['success'] == true) {
+        if (responseData['cancellationStatus'] == 'REQUESTED' && responseData['cancelled'] == false) {
+          lastCancellationPending = true;
+          lastCancellationMessage = responseData['message'] as String?;
+          notifyListeners();
+          return true;
+        }
         // تحديث الطلب في القائمة المحلية
         final index = _orders.indexWhere((o) => o.id == orderId);
         print('   - موقع الطلب في القائمة: $index من ${_orders.length}');

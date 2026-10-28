@@ -1,0 +1,19 @@
+{
+  "status": "READ_PERMISSIONS_APPLIED_VERIFIED_HUMAN_INVOICE_RETRY_PENDING",
+  "date": "2026-10-27T18:53:31.544996+00:00",
+  "name": "WizzUser-CreateOrder-staging",
+  "beforeHash": "IW8XisGH1ZVBSViT+Kb2Cfx9FItqlc27eJ/VVTqudqU=",
+  "hash": "qUgVj28VOdSri7QToBoH3b+GxkpmNezE8U4zER0GUcE=",
+  "changedEntryOnly": "functions/create-order/point-order-handler-321.js",
+  "legacyFinancialBundleAndRootUnchanged": true,
+  "environmentAndRoleUnchanged": true,
+  "newPermissionsApplied": true,
+  "businessWritesPerformed": false,
+  "tests": {
+    "pointBoundaryAndRealEngine": 5,
+    "existingFinancialCompatibility": 50,
+    "candidateIAMPositiveAndNegativeSimulation": 6
+  },
+  "reason": "Allow real ConditionCheck-only read transactions while retaining ephemeral point/quote isolation; block all state-changing operations.",
+  "permissionsPublication": "docs/point-invoice-read-permissions-publication-322.json"
+}

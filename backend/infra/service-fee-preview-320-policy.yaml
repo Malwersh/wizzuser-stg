@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Read-only approval evidence for public informational service fee preview.
+Parameters:
+  QuoteRoleName:
+    Type: String
+Resources:
+  ServiceFeeApprovalRead320:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ServiceFeeApprovalRead320
+      Roles: [!Ref QuoteRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/staging-PlatformStaff
+            Condition:
+              ForAllValues:StringLike:
+                dynamodb:LeadingKeys: ['COMMERCIAL_AGREEMENT#*']

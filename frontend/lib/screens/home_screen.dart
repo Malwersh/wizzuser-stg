@@ -1,3 +1,5 @@
+import '../models/browsing_location.dart';
+import '../services/browsing_location_service.dart';
 import '../services/activity_link_navigation.dart';
 import '../widgets/platform_benefits_sheet.dart';
 import '../services/pending_offer.dart';
@@ -52,7 +54,6 @@ import '../services/promo_card_session.dart';
 import 'package:foodapp_user/services/delivery_address_manager.dart';
 import 'package:foodapp_user/services/restaurant_fetching_service.dart';
 import 'package:foodapp_user/models/delivery_address.dart';
-import 'package:geolocator/geolocator.dart';
 import 'address_gate_screen.dart'; // ✅ لفتح شاشة تغيير العنوان
 import '../utils/distance_calculator.dart'; // 🔥 لحساب المسافة الحقيقية
 
@@ -71,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       []; // للقسم "الأقرب إليك" بناءً على GPS
   bool _isLoadingRealData = false;
   int _realDataPage = 0;
+  int _addressLoadGeneration = 0;
   bool _hasMoreRealData = true;
 
   // أكواد خصم المنصة (المنصة المركزية)
@@ -98,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String get _campaignScope =>
-      '${SessionService.instance.currentUserId}|${DeliveryAddressManager.instance.activeAddress?.regionId}';
+      '${SessionService.instance.currentUserId}|${BrowsingLocationService.instance.selection?.regionId ?? DeliveryAddressManager.instance.activeAddress?.regionId}';
   Future<void> _loadCampaigns() async {
     if (_loadingCampaigns || !mounted) return;
     _loadingCampaigns = true;
@@ -177,6 +179,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    BrowsingLocationService.instance.addListener(_onBrowseChanged);
     ActivityLinkNavigation.ready(true);
     NotificationNavigation.campaignHandler = _openCampaignById;
     StorefrontPricing.instance.addListener(_storefrontUpdated);
@@ -606,18 +609,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           listen: false,
         );
 
-    // الحصول على region_id من العنوان النشط
-    final activeAddress = _deliveryAddressManager.activeAddress;
-    developer.log('📍 activeAddress: ${activeAddress?.formattedAddress}');
-    developer.log('🗺️ activeAddress.regionId: ${activeAddress?.regionId}');
-
-    if (activeAddress?.regionId != null) {
-      developer.log(
-        '🆕 بدء polling لقائمة المطاعم - Region: ${activeAddress!.regionId}',
-      );
-
-      // بدء polling - سيتم استدعاء callback عند وجود تحديث
-      restaurantListProvider.startPolling(activeAddress.regionId!);
+    final regionId=BrowsingLocationService.instance.selection?.regionId??_deliveryAddressManager.activeAddress?.regionId;
+    if (regionId!=null) {
+      restaurantListProvider.startPolling(regionId);
 
       developer.log('✅ Restaurant list polling بدأ بنجاح');
     } else {
@@ -688,7 +682,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
           } else if (item is Map<String, dynamic>) {
             debugPrint('🧪 RAW MAP KEYS (${i + 1}): ${item.keys.join(', ')}');
-            debugPrint('🧪 RAW businessId=${item['businessId'] ?? item['business_id']} businessName=${item['businessName'] ?? item['business_name']}');
+            debugPrint(
+              '🧪 RAW businessId=${item['businessId'] ?? item['business_id']} businessName=${item['businessName'] ?? item['business_name']}',
+            );
             final business = BusinessService.parseBusiness(item);
             convertedBusinesses.add(business);
             debugPrint(
@@ -816,7 +812,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       developer.log('👤 نوع المستخدم: ${isRegistered ? "مسجل" : "ضيف"}');
 
       // تهيئة DeliveryAddressManager
-      await _deliveryAddressManager.initializeDeliveryAddress(
+      await BrowsingLocationService.instance.restore();
+      if(BrowsingLocationService.instance.selection==null) await _deliveryAddressManager.initializeDeliveryAddress(
         userId: userId,
         isRegisteredUser: isRegistered,
       );
@@ -826,7 +823,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final initialAddress =
             _deliveryAddressManager.activeAddress ??
             await _deliveryAddressManager.getActiveAddress();
-        if (mounted && initialAddress != null) {
+        if (mounted && BrowsingLocationService.instance.selection!=null) {
+          _onBrowseChanged();
+        } else if (mounted && initialAddress != null) {
           developer.log(
             '🚀 Found initial active address — loading businesses and starting polling',
           );
@@ -887,6 +886,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 developer.log('   العنوان: ${emittedAddress.displayName}');
                 developer.log('   regionId: ${emittedAddress.regionId}');
                 await _onActiveAddressAvailable(emittedAddress);
+              } else if(BrowsingLocationService.instance.selection!=null) {
+                _onBrowseChanged();
               } else {
                 // 🆕 Fallback: لا يوجد عنوان - جلب جميع المطاعم
                 developer.log('⚠️ لا يوجد عنوان توصيل - جلب جميع المطاعم');
@@ -959,9 +960,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _onBrowseChanged() {
+    if(!mounted)return;
+    final browsing=BrowsingLocationService.instance.selection;
+    if(browsing==null){
+      ++_addressLoadGeneration;
+      context.read<RestaurantListProviderWithVersioning>().stopPolling();
+      setState((){_allRealBusinesses=[];_newBusinesses=[];_nearbyBusinesses=[];});
+      return;
+    }
+    _lastAddressChangeTime=DateTime.now();
+    final provider=context.read<RestaurantListProviderWithVersioning>();
+    provider.stopPolling();provider.startPolling(browsing.regionId);
+    setState((){_allRealBusinesses=[];_newBusinesses=[];_nearbyBusinesses=[];});
+    unawaited(_loadBusinessesByDeliveryAddress(null));
+  }
+
   /// 🧭 التعامل عند توفر عنوان نشط: إعادة تشغيل polling وجلب المطاعم للقائمة الرئيسية
   Future<void> _onActiveAddressAvailable(DeliveryAddress address) async {
     if (!mounted) return;
+    final browsing=BrowsingLocationService.instance.selection;
+    if(browsing!=null && browsing.regionId!=address.regionId)return;
+    if(browsing==null && address.regionId!=null){await BrowsingLocationService.instance.select(BrowsingLocation(regionId:address.regionId!,regionName:address.regionNameAr??address.city,source:address.addressId!=null?'saved':'gps',latitude:address.latitude,longitude:address.longitude,addressText:address.formattedAddress,savedAddressId:address.addressId));return;}
 
     developer.log(
       '🧭 Handling active address change -> regionId=${address.regionId}',
@@ -1003,13 +1023,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// 🆕 جلب المطاعم بناءً على عنوان التوصيل - REWRITTEN
   Future<void> _loadBusinessesByDeliveryAddress(
-    DeliveryAddress deliveryAddress,
+    DeliveryAddress? deliveryAddress,
   ) async {
     developer.log('═══════════════════════════════════════════════════');
     developer.log('🚀🚀🚀 START: _loadBusinessesByDeliveryAddress');
     developer.log('⏰ Timestamp: ${DateTime.now().toIso8601String()}');
-    developer.log('📍 العنوان: ${deliveryAddress.displayName}');
-    developer.log('🗺️ Region ID: ${deliveryAddress.regionId}');
+    developer.log('📍 العنوان: ${deliveryAddress?.displayName}');
+    developer.log('🗺️ Region ID: ${deliveryAddress?.regionId}');
     developer.log('🎯 TESTING: This is the main data loading function!');
     developer.log('═══════════════════════════════════════════════════');
 
@@ -1018,11 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // 🛡️ GUARD: منع الطلبات المتعددة المتزامنة
-    if (_isLoadingRealData) {
-      developer.log('⚠️ GUARD: طلب قيد التنفيذ بالفعل - تخطي هذا الطلب');
-      return;
-    }
+    final loadGeneration = ++_addressLoadGeneration;
 
     setState(() {
       _isLoadingRealData = true;
@@ -1033,12 +1049,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       // ✅ استدعاء API بناءً على العنوان/المنطقة
       developer.log('📡 استدعاء API: fetchRestaurantsByDeliveryAddress');
-      final response = await RestaurantFetchingService.instance
-          .fetchRestaurantsByDeliveryAddress(
-            deliveryAddress: deliveryAddress,
-            page: 0,
-            limit: 50, // زيادة الحد لجلب جميع المطاعم
-          );
+      final browsing=BrowsingLocationService.instance.selection;
+      if(browsing==null&&deliveryAddress==null)return;
+      final response = browsing!=null
+        ? await RestaurantFetchingService.instance.fetchRestaurantsByRegion(regionId:browsing.regionId,page:0,limit:50)
+        : await RestaurantFetchingService.instance.fetchRestaurantsByDeliveryAddress(deliveryAddress:deliveryAddress!,page:0,limit:50);
 
       developer.log('📥 استجابة API: ${response.businesses.length} مطعم');
 
@@ -1072,9 +1087,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             '🔄 [${i + 1}/${response.businesses.length}] Parsing MAP: $businessName (ID: $businessId)',
           );
           developer.log('   📋 Item type: ${item.runtimeType}');
-          developer.log('   📋 Item keys: ${(item as Map).keys.take(10).join(", ")}...');
-          
-          final business = BusinessService.parseBusiness(item as Map<String, dynamic>);
+          developer.log(
+            '   📋 Item keys: ${(item as Map).keys.take(10).join(", ")}...',
+          );
+
+          final business = BusinessService.parseBusiness(
+            item as Map<String, dynamic>,
+          );
           allBusinesses.add(business);
 
           developer.log(
@@ -1128,8 +1147,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       developer.log('🆕 مطاعم جديدة: ${newBusinesses.length}');
 
-      if (!mounted) {
-        developer.log('❌ Widget unmounted before setState - ABORT');
+      if (!mounted || loadGeneration != _addressLoadGeneration) {
+        developer.log('Discarded stale address response');
         return;
       }
 
@@ -1144,7 +1163,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _nearbyBusinesses =
             []; // إفراغ تماماً - نعتمد فقط على _allRealBusinesses
         _isLoadingRealData = false;
-        _hasMoreRealData = allBusinesses.length >= 50;
+        _hasMoreRealData = response.hasMore;
         _realDataPage = 0;
         // 🛡️ تحديث وقت آخر تحديث للبيانات
         _lastDataUpdateTime = DateTime.now();
@@ -1187,8 +1206,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       developer.log('═══════════════════════════════════════════════════');
     } catch (e) {
       developer.log('❌ خطأ في جلب المطاعم: $e');
-      if (mounted) {
+      if (mounted && loadGeneration == _addressLoadGeneration) {
         setState(() {
+          _allRealBusinesses = [];
+          _newBusinesses = [];
+          _nearbyBusinesses = [];
           _isLoadingRealData = false;
         });
       }
@@ -1207,6 +1229,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // الحصول على العنوان النشط الجديد
       final activeAddress = await _deliveryAddressManager.getActiveAddress();
 
+      if (BrowsingLocationService.instance.selection!=null) { await _loadBusinessesByDeliveryAddress(null); return; }
       if (activeAddress == null) {
         developer.log('❌ لا يوجد عنوان نشط');
         return;
@@ -1227,127 +1250,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 🆕 جلب المطاعم بناءً على موقع الجهاز GPS (إلزامي)
   Future<void> _loadAllBusinessesWithoutAddress() async {
     if (!mounted) return;
-
+    _addressLoadGeneration++;
     setState(() {
-      _isLoadingRealData = true;
+      _allRealBusinesses = [];
+      _nearbyBusinesses = [];
+      _isLoadingRealData = false;
     });
-
-    try {
-      developer.log('🔄 جلب المطاعم بناءً على موقع الجهاز GPS...');
-
-      // الحصول على موقع الجهاز (إلزامي)
-      Position? position;
-      try {
-        // التحقق من إذن الموقع
-        LocationPermission permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-
-        if (permission != LocationPermission.denied &&
-            permission != LocationPermission.deniedForever) {
-          position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-          ).timeout(Duration(seconds: 10));
-
-          developer.log(
-            '📍 تم الحصول على الموقع: ${position.latitude}, ${position.longitude}',
-          );
-        } else {
-          developer.log('❌ إذن الموقع مرفوض');
-        }
-      } catch (e) {
-        developer.log('❌ فشل الحصول على الموقع: $e');
-      }
-
-      if (position != null) {
-        // ✅ جلب المطاعم القريبة بناءً على GPS
-        developer.log('🎯 جلب المطاعم القريبة (20 كم)...');
-
-        final businesses = await BusinessService.getNearbyBusinesses(
-          userLatitude: position.latitude,
-          userLongitude: position.longitude,
-          maxDistanceKm: 20.0,
-          limit: 20,
-        );
-
-        developer.log('✅ تم جلب ${businesses.length} مطعم قريب');
-
-        // جلب المطاعم الجديدة من نفس المنطقة
-        final newBusinesses =
-            businesses
-                .where((b) {
-                  final createdAt = b.metadata?['createdAt'];
-                  if (createdAt is int) {
-                    final thirtyDaysAgo = DateTime.now().subtract(
-                      const Duration(days: 30),
-                    );
-                    return DateTime.fromMillisecondsSinceEpoch(
-                      createdAt,
-                    ).isAfter(thirtyDaysAgo);
-                  }
-                  return false;
-                })
-                .take(10)
-                .toList();
-
-        if (mounted) {
-          setState(() {
-            _allRealBusinesses = businesses;
-            _newBusinesses = newBusinesses;
-            _nearbyBusinesses = businesses.take(6).toList();
-            _isLoadingRealData = false;
-            _hasMoreRealData = businesses.length >= 20;
-            _realDataPage = 0;
-          });
-
-          // تحديث status polling
-          _updateStatusPollingWatchedIds();
-          _statusPolling.forceImmediateFetch();
-
-          developer.log('✅ تم عرض المطاعم القريبة من موقعك');
-        }
-      } else {
-        // ❌ لا يوجد GPS - عرض رسالة للمستخدم
-        developer.log('❌ لا يمكن جلب المطاعم بدون موقع GPS');
-
-        if (mounted) {
-          setState(() {
-            _isLoadingRealData = false;
-            _allRealBusinesses = [];
-            _newBusinesses = [];
-            _nearbyBusinesses = [];
-          });
-
-          // عرض رسالة للمستخدم
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'يرجى السماح بالوصول إلى الموقع لعرض المطاعم القريبة منك',
-                style: TextStyle(fontSize: 14),
-              ),
-              backgroundColor: AppColors.primary,
-              duration: const Duration(seconds: 5),
-              action: SnackBarAction(
-                label: 'السماح',
-                textColor: Colors.white,
-                onPressed: () async {
-                  // إعادة المحاولة
-                  await Geolocator.openLocationSettings();
-                },
-              ),
+    final appState = context.read<AppStateProvider>();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => AddressGateScreen(
+              isGuest: appState.isGuest,
+              showBackButton: true,
             ),
-          );
-        }
-      }
-    } catch (e) {
-      developer.log('❌ خطأ في جلب المطاعم: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingRealData = false;
-        });
-      }
-    }
+      ),
+    );
   }
 
   /// مساعد: تحويل dynamic إلى BusinessModel
@@ -1519,6 +1438,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     // 🆕 إلغاء اشتراك Delivery Address
+    BrowsingLocationService.instance.removeListener(_onBrowseChanged);
     _deliveryAddressSubscription?.cancel();
 
     NotificationNavigation.campaignHandler = null;
@@ -1627,124 +1547,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // تحميل البيانات الحقيقية للقسمين المحددين فقط
   Future<void> _loadRealBusinessData() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoadingRealData = true;
-    });
-
-    try {
-      // 🔧 FIX: Wait for session to be ready before making API calls
-      await SessionService.instance.waitForSessionReady();
-
-      developer.log('🔄 بدء تحميل البيانات الحقيقية باستخدام GPS...');
-
-      // الحصول على موقع الجهاز
-      Position? position;
-      try {
-        LocationPermission permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-
-        if (permission != LocationPermission.denied &&
-            permission != LocationPermission.deniedForever) {
-          position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-          ).timeout(Duration(seconds: 10));
-
-          developer.log(
-            '📍 تم الحصول على الموقع: ${position.latitude}, ${position.longitude}',
-          );
-        }
-      } catch (e) {
-        developer.log('❌ فشل الحصول على الموقع: $e');
-      }
-
-      if (position != null) {
-        // جلب المطاعم بناءً على GPS
-        final businesses = await BusinessService.getNearbyBusinesses(
-          userLatitude: position.latitude,
-          userLongitude: position.longitude,
-          maxDistanceKm: 20.0,
-          limit: 20,
-        );
-
-        developer.log('✅ تم تحميل ${businesses.length} مطعم قريب');
-
-        // جلب المطاعم الجديدة من نفس النتائج
-        final newBusinesses =
-            businesses
-                .where((b) {
-                  final createdAt = b.metadata?['createdAt'];
-                  if (createdAt is int) {
-                    final thirtyDaysAgo = DateTime.now().subtract(
-                      const Duration(days: 30),
-                    );
-                    return DateTime.fromMillisecondsSinceEpoch(
-                      createdAt,
-                    ).isAfter(thirtyDaysAgo);
-                  }
-                  return false;
-                })
-                .take(10)
-                .toList();
-
-        if (mounted) {
-          setState(() {
-            _newBusinesses = newBusinesses;
-            _allRealBusinesses = businesses;
-            _nearbyBusinesses = businesses.take(6).toList();
-            _isLoadingRealData = false;
-            _hasMoreRealData = businesses.length >= 20;
-            _realDataPage = 0;
-          });
-
-          developer.log('✅ تم تحديث الواجهة بالبيانات الحقيقية');
-
-          _updateStatusPollingWatchedIds();
-          _statusPolling.forceImmediateFetch();
-        }
-      } else {
-        // لا يوجد GPS - عرض رسالة
-        developer.log('❌ لا يمكن جلب المطاعم بدون GPS');
-
-        if (mounted) {
-          setState(() {
-            _isLoadingRealData = false;
-            _allRealBusinesses = [];
-            _newBusinesses = [];
-            _nearbyBusinesses = [];
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'يرجى السماح بالوصول إلى الموقع أو إدخال عنوان للتوصيل',
-                style: TextStyle(fontSize: 14),
-              ),
-              backgroundColor: AppColors.primary,
-              duration: const Duration(seconds: 5),
-              action: SnackBarAction(
-                label: 'السماح',
-                textColor: Colors.white,
-                onPressed: () async {
-                  await Geolocator.openLocationSettings();
-                },
-              ),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      developer.log('❌ خطأ في تحميل البيانات الحقيقية: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingRealData = false;
-          _hasMoreRealData = false;
-        });
-      }
+    final address = _deliveryAddressManager.activeAddress;
+    if(BrowsingLocationService.instance.selection!=null){await _loadBusinessesByDeliveryAddress(null);return;}
+    if (address == null) {
+      await _loadAllBusinessesWithoutAddress();
+      return;
     }
+    await _loadBusinessesByDeliveryAddress(address);
   }
 
   /// 🔥 الاستماع لتحديثات polling وتحديث UI مباشرة
@@ -1847,86 +1656,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // تحميل المزيد من البيانات الحقيقية لقسم "جميع المطاعم"
   Future<void> _loadMoreRealBusinesses() async {
-    if (_isLoadingRealData || !_hasMoreRealData) return;
-
-    setState(() {
-      _isLoadingRealData = true;
-    });
-
+    final address = _deliveryAddressManager.activeAddress;
+    final browsing=BrowsingLocationService.instance.selection;
+    if ((address == null && browsing==null) || _isLoadingRealData || !_hasMoreRealData) return;
+    final generation = _addressLoadGeneration;
+    final nextPage = _realDataPage + 1;
+    setState(() => _isLoadingRealData = true);
     try {
-      _realDataPage++;
-      developer.log('🔄 تحميل المزيد من المطاعم القريبة...');
-
-      // الحصول على موقع الجهاز
-      Position? position;
-      try {
-        position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        ).timeout(Duration(seconds: 10));
-      } catch (e) {
-        developer.log('❌ فشل الحصول على الموقع: $e');
-      }
-
-      if (position != null) {
-        // جلب المزيد من المطاعم بناءً على GPS مع نطاق أوسع
-        final moreBusinesses = await BusinessService.getNearbyBusinesses(
-          userLatitude: position.latitude,
-          userLongitude: position.longitude,
-          maxDistanceKm: 20.0 + (_realDataPage * 5.0), // زيادة النطاق تدريجياً
-          limit: 20 + (_realDataPage * 10),
-        );
-
-        developer.log('✅ تم تحميل ${moreBusinesses.length} مطعم إضافي');
-
-        if (mounted) {
-          setState(() {
-            if (moreBusinesses.isNotEmpty) {
-              // فحص التكرار قبل الإضافة
-              final existingIds = _allRealBusinesses.map((b) => b.id).toSet();
-              final newBusinesses =
-                  moreBusinesses
-                      .where((b) => !existingIds.contains(b.id))
-                      .toList();
-
-              if (newBusinesses.isNotEmpty) {
-                _allRealBusinesses.addAll(newBusinesses);
-                developer.log('✅ تم إضافة ${newBusinesses.length} مطعم جديد');
-              } else {
-                developer.log('⚠️ جميع المطاعم المحملة مكررة - توقف التحميل');
-                _hasMoreRealData = false;
-              }
-
-              // التحقق إذا كان هناك المزيد
-              _hasMoreRealData = newBusinesses.length >= 10;
-            } else {
-              _hasMoreRealData = false;
-            }
-            _isLoadingRealData = false;
-          });
-
-          developer.log(
-            '✅ إجمالي المطاعم المحملة: ${_allRealBusinesses.length}',
-          );
-
-          _updateStatusPollingWatchedIds();
-          _statusPolling.forceImmediateFetch();
-        }
-      } else {
-        // لا يوجد GPS
-        if (mounted) {
-          setState(() {
-            _isLoadingRealData = false;
-            _hasMoreRealData = false;
-          });
-        }
-      }
+      final response=browsing!=null
+        ? await RestaurantFetchingService.instance.fetchRestaurantsByRegion(regionId:browsing.regionId,page:nextPage,limit:50)
+        : await RestaurantFetchingService.instance.fetchRestaurantsByDeliveryAddress(deliveryAddress:address!,page:nextPage,limit:50);
+      if (!mounted || generation != _addressLoadGeneration) return;
+      final items =
+          response.businesses
+              .map(
+                (b) =>
+                    b is BusinessModel ? b : BusinessService.parseBusiness(b),
+              )
+              .toList();
+      setState(() {
+        final ids = _allRealBusinesses.map((b) => b.id).toSet();
+        _allRealBusinesses.addAll(items.where((b) => ids.add(b.id)));
+        _realDataPage = nextPage;
+        _hasMoreRealData = response.hasMore;
+        _isLoadingRealData = false;
+      });
+      _updateStatusPollingWatchedIds();
     } catch (e) {
-      developer.log('❌ خطأ في تحميل المزيد من المطاعم: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingRealData = false;
-        });
-      }
+      if (mounted && generation == _addressLoadGeneration)
+        setState(() => _isLoadingRealData = false);
     }
   }
 
@@ -2017,11 +1775,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     developer.log('    - Status message: "$statusMessage"');
 
-    final pricing=StorefrontPricing.instance;
-    pricing.seedBusiness(business.id, business.metadata ?? const {}, onlyIfAbsent: true);
+    final pricing = StorefrontPricing.instance;
+    pricing.seedBusiness(
+      business.id,
+      business.metadata ?? const {},
+      onlyIfAbsent: true,
+    );
     // Warm only a bounded first screen; opening another store loads it on demand.
-    if (_allRealBusinesses.take(4).any((b)=>b.id==business.id)) {
-      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)pricing.load(business.id,context.read<AppStateProvider>().cartItems.where((item)=>item['store_id']==business.id).toList());});
+    if (_allRealBusinesses.take(4).any((b) => b.id == business.id)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted)
+          pricing.load(
+            business.id,
+            context
+                .read<AppStateProvider>()
+                .cartItems
+                .where((item) => item['store_id'] == business.id)
+                .toList(),
+          );
+      });
     }
     final preview = pricing.peek(business.id, const []);
     final store = Store(
@@ -2152,7 +1924,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 🛡️ GUARD 2: تحقق من أن Provider يحمل بيانات من نفس المنطقة
     // إذا كان المستخدم قد غيّر العنوان للتو، Provider قد لا يزال يحمل بيانات المنطقة القديمة
     final activeAddress = _deliveryAddressManager.activeAddress;
-    final currentRegionId = activeAddress?.regionId;
+    final currentRegionId = BrowsingLocationService.instance.selection?.regionId??activeAddress?.regionId;
     final providerRegionIds = <String>{};
     if (restaurantListProvider.restaurants != null) {
       for (final item in restaurantListProvider.restaurants!) {
@@ -2456,12 +2228,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _reloadBusinessesAfterAddressChange();
                         }
                       },
-                      child: StreamBuilder<DeliveryAddress?>(
-                        stream: DeliveryAddressManager.instance.addressStream,
-                        initialData:
-                            DeliveryAddressManager.instance.activeAddress,
-                        builder: (context, snapshot) {
-                          final address = snapshot.data;
+                      child: ListenableBuilder(
+                        listenable: BrowsingLocationService.instance,
+                        builder: (context, _) {
+                          final address=DeliveryAddressManager.instance.activeAddress;
+                          final browsing=BrowsingLocationService.instance.selection;
                           return Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -2483,7 +2254,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    address?.label ?? 'اختر عنوان التوصيل',
+                                    browsing?.regionName ?? address?.regionNameAr ?? 'اختر المنطقة',
                                     style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
@@ -2883,7 +2654,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // الشريط العلوي القابل للتمرير (بدون شريط البحث)
-  Widget _buildBannerSection() => Column(children:[HomeSlideshow(onTap: _openHomeSlide),TextButton.icon(onPressed:_openPlatformBenefits,icon:const Icon(Icons.card_giftcard),label:Text(Localizations.localeOf(context).languageCode=='ar'?'مزاياي من ويز':'My Wizz benefits'))]);
+  Widget _buildBannerSection() => Column(
+    children: [
+      HomeSlideshow(onTap: _openHomeSlide),
+      TextButton.icon(
+        onPressed: _openPlatformBenefits,
+        icon: const Icon(Icons.card_giftcard),
+        label: Text(
+          Localizations.localeOf(context).languageCode == 'ar'
+              ? 'مزاياي من ويز'
+              : 'My Wizz benefits',
+        ),
+      ),
+    ],
+  );
 
   Future<void> _openPlatformBenefits() async {
     final selected = await showPlatformBenefitsSheet(context);
@@ -2891,9 +2675,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final offer = PendingOffer.current;
     if (offer == null) return;
     if (offer.merchantId.isNotEmpty) {
-      await _openHomeSlide(HomeSlide(id: '', title: offer.offer['title']?.toString() ?? '', imageUrl: '', imageVersion: '', actionType: 'merchant', targetId: offer.merchantId, endAt: offer.expiresAt));
+      await _openHomeSlide(
+        HomeSlide(
+          id: '',
+          title: offer.offer['title']?.toString() ?? '',
+          imageUrl: '',
+          imageVersion: '',
+          actionType: 'merchant',
+          targetId: offer.merchantId,
+          endAt: offer.expiresAt,
+        ),
+      );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(Localizations.localeOf(context).languageCode == 'ar' ? 'تم اختيار العرض. أضف منتجاتك وسيُراجع العرض عند الدفع.' : 'Benefit selected. Add your items; eligibility is checked at checkout.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Localizations.localeOf(context).languageCode == 'ar'
+                ? 'تم اختيار العرض. أضف منتجاتك وسيُراجع العرض عند الدفع.'
+                : 'Benefit selected. Add your items; eligibility is checked at checkout.',
+          ),
+        ),
+      );
     }
   }
 

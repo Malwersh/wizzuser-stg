@@ -1,8 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'address_book_api_319.dart';
+import 'address_save_attempt_319.dart';
+import 'browsing_location_service.dart';
+import 'saved_address_selection_319.dart';
+import 'delivery_address_manager.dart';
+import 'address_write_result.dart';
 // lib/services/address_service.dart - Dynamic Version
 
 import 'package:flutter/material.dart';
 import '../models/address_model.dart';
-import 'package:foodapp_user/services/api_service.dart';
 import "session_service.dart";
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -12,56 +20,92 @@ class EnhancedAddressService extends ChangeNotifier {
   List<AddressModel> _addresses = [];
   AddressModel? _currentAddress;
   AddressModel? _selectedAddress;
-  
+
   // API-based models
   List<DetailedAddress> _detailedAddresses = [];
   DetailedAddress? _currentLocationAddress;
-  
+
   bool _isLoadingLocation = false;
   bool _isLoading = false;
   String? _locationError;
   String? _error;
   bool _disposed = false;
 
-  // Getters for compatibility
-  List<AddressModel> get addresses => _addresses;  
-  List<DetailedAddress> get detailedAddresses => _detailedAddresses;
-  AddressModel? get currentAddress => _currentAddress;
-  AddressModel? get selectedAddress => _selectedAddress ?? _currentAddress;
+  final AddressBookApi319 api;
+  final String? Function() owner;
+  final bool Function() loggedIn;
+  final Future<String?> Function() freshToken;
+  final Future<void> Function(DetailedAddress) activate;
+  final BrowsingLocationService browsing;
+  String? _scope;
+  int _epoch = 0;
+  bool _cacheLoaded = false;
+  StreamSubscription? _session;
+  Future<void> _cacheWrites = Future.value();
+  final _creates = <String, Future<DetailedAddress?>>{};
+  EnhancedAddressService({
+    AddressBookApi319? api,
+    String? Function()? owner,
+    bool Function()? loggedIn,
+    Future<String?> Function()? freshToken,
+    Future<void> Function(DetailedAddress)? activate,
+    BrowsingLocationService? browsing,
+  }) : api = api ?? AddressBookApi319.instance,
+       owner = owner ?? (() => SessionService.instance.currentUserId),
+       loggedIn = loggedIn ?? (() => SessionService.instance.isLoggedIn),
+       freshToken = freshToken ?? (() => SessionService.instance.getToken()),
+       activate = activate ?? SavedAddressSelection319.activate,
+       browsing = browsing ?? BrowsingLocationService.instance {
+    _scope = this.owner();
+    if (owner == null)
+      _session = SessionService.instance.sessionStateStream.listen((_) {
+        _syncScope();
+      });
+  }
+  void _syncScope() {
+    if (_scope != owner()) {
+      ++_epoch;
+      _scope = owner();
+      _cacheLoaded = false;
+      _detailedAddresses = [];
+      _addresses = [];
+      _currentAddress = null;
+      _selectedAddress = null;
+      _currentLocationAddress = null;
+      _error = null;
+      _isLoading = false;
+      _notifyIfNotDisposed();
+    }
+  }
+
+  bool get _sameOwner => _scope == owner();
+  List<AddressModel> get addresses =>
+      _sameOwner ? List.unmodifiable(_addresses) : [];
+  List<DetailedAddress> get detailedAddresses =>
+      _sameOwner ? List.unmodifiable(_detailedAddresses) : [];
+  AddressModel? get currentAddress => _sameOwner ? _currentAddress : null;
+  AddressModel? get selectedAddress =>
+      _sameOwner ? (_selectedAddress ?? _currentAddress) : null;
   DetailedAddress? get currentLocationAddress => _currentLocationAddress;
   bool get isLoadingLocation => _isLoadingLocation;
   bool get isLoading => _isLoading;
   String? get locationError => _locationError;
   String? get error => _error;
-  
-  // Additional getters for UI compatibility
   DetailedAddress? get defaultAddress {
-    try {
-      // البحث عن عنوان افتراضي محدد
-      final defaultAddr = _detailedAddresses.where((addr) => addr.isDefault).isNotEmpty 
-          ? _detailedAddresses.where((addr) => addr.isDefault).first 
-          : null;
-      
-      // إذا لم يوجد عنوان افتراضي، استخدم أول عنوان متاح
-      if (defaultAddr == null && _detailedAddresses.isNotEmpty) {
-        print('⚠️ لا يوجد عنوان افتراضي - استخدام أول عنوان');
-        return _detailedAddresses.first;
-      }
-      
-      return defaultAddr;
-    } catch (e) {
-      // في حالة الخطأ، حاول إرجاع أول عنوان
-      return _detailedAddresses.isNotEmpty ? _detailedAddresses.first : null;
+    for (final a in detailedAddresses) {
+      if (a.isDefault) return a;
     }
+    return null;
   }
-  
-  bool get hasAddresses => _detailedAddresses.isNotEmpty;
-  
-  int get addressCount => _detailedAddresses.length;
+
+  bool get hasAddresses => detailedAddresses.isNotEmpty;
+  int get addressCount => detailedAddresses.length;
 
   @override
   void dispose() {
     _disposed = true;
+    ++_epoch;
+    _session?.cancel();
     super.dispose();
   }
 
@@ -87,526 +131,310 @@ class EnhancedAddressService extends ChangeNotifier {
     await fetchAddresses();
   }
 
-  /// Fetch addresses from API
+  Map<String, dynamic> _data(Map<String, dynamic> result) {
+    dynamic value = result;
+    for (var i = 0; i < 4; i++) {
+      if (value is! Map) break;
+      if (value.containsKey('addresses'))
+        return Map<String, dynamic>.from(value);
+      value = value['data'];
+    }
+    throw const FormatException('Invalid address book');
+  }
+
+  Future<void> _loadCachedBook(String id, int generation) async {
+    if (_cacheLoaded) return;
+    _cacheLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance(),
+          raw = prefs.getString('address_book_319_$id');
+      if (raw == null || owner() != id || generation != _epoch) return;
+      final data = jsonDecode(raw) as List;
+      final rows =
+          data
+              .map(
+                (r) => DetailedAddress.fromJson(Map<String, dynamic>.from(r)),
+              )
+              .toList();
+      if (rows.any((a) => a.userId != id || a.id.isEmpty)) return;
+      _detailedAddresses = rows;
+      _addresses = rows.map(_convertDetailedToAddressModel).toList();
+      await _setDefaultAddressLocally();
+    } catch (_) {}
+  }
+
+  bool _lastFetchConfirmed = false;
   Future<void> fetchAddresses() async {
-    if (_disposed) return;
-    
-    _isLoading = true;
-    _error = null;
-    _notifyIfNotDisposed();
-    
-    try {
-      print('🏠 بدء جلب العناوين المحفوظة من API...');
-      
-      // 🔧 تشخيص شامل لحالة الجلسة
-      final sessionService = SessionService.instance;
-      print('🔍 تشخيص حالة الجلسة:');
-      print('   - isLoggedIn: ${sessionService.isLoggedIn}');
-      print('   - isGuest: ${sessionService.isGuest}');
-      print('   - currentUserId: ${sessionService.currentUserId}');
-      print('   - accessToken متوفر: ${sessionService.accessToken != null ? "نعم" : "لا"}');
-      print('   - idToken متوفر: ${sessionService.idToken != null ? "نعم" : "لا"}');
-      
-      // التحقق من حالة تسجيل الدخول أولاً
-      final isLoggedIn = sessionService.isLoggedIn;
-      final isGuest = sessionService.isGuest;
-      
-      // إذا كان المستخدم ضيف، لا نحتاج لتحميل العناوين
-      if (isGuest || !isLoggedIn) {
-        print('👤 المستخدم ضيف أو غير مسجل - لا توجد عناوين');
-        _detailedAddresses.clear();
-        _addresses.clear();
-        _error = null;
-        _isLoading = false;
-        _notifyIfNotDisposed();
-        return;
-      }
-      
-      // التحقق من وجود المصادقة
-      String? token = SessionService.instance.accessToken;
-      String? userId = SessionService.instance.currentUserId;
-
-      if (token == null || token.isEmpty) {
-        _error = 'لم يتم العثور على token المصادقة. يرجى إعادة تسجيل الدخول';
-        print('❌ Token is empty');
-        _isLoading = false;
-        _notifyIfNotDisposed();
-        return;
-      }
-
-      if (userId == null || userId.isEmpty) {
-        _error = 'لم يتم العثور على معرف المستخدم. يرجى إعادة تسجيل الدخول';
-        print('❌ User ID is empty');
-        _isLoading = false;
-        _notifyIfNotDisposed();
-        return;
-      }
-      
-      print('🔑 Access Token: ${token.substring(0, 20)}...');
-      print('👤 User ID: $userId');
-
-      
-      // استدعاء API
-      final result = await ApiService.getUserAddresses(token);
-      
-      print('📊 تفاصيل استجابة API: $result');
-      
-      if (result['success'] == true) {
-        // فحص هيكل البيانات المُرجعة
-        var addressesData = <dynamic>[];
-        
-        print('🔍 فحص هيكل البيانات المُستلمة...');
-        print('📊 البيانات الأساسية: ${result['data']}');
-        
-        // التعامل مع هياكل البيانات المختلفة
-        if (result['data'] != null) {
-          var currentData = result['data'];
-          
-          // فحص ما إذا كانت البيانات ملفوفة مرتين (nested data structure)
-          if (currentData is Map<String, dynamic> && currentData.containsKey('data')) {
-            currentData = currentData['data'];
-          }
-          
-          if (currentData is Map<String, dynamic>) {
-            // هيكل بيانات من النوع: {addresses: [...], total: X}
-            if (currentData['addresses'] != null && currentData['addresses'] is List) {
-              addressesData = currentData['addresses'];
-            } else {
-              print('⚠️ لم يتم العثور على addresses في currentData');
-              addressesData = [];
-            }
-          } else if (currentData is List) {
-            // هيكل بيانات من النوع: [...]
-            addressesData = currentData;
-          }
-        }
-        
-        
-        if (addressesData.isNotEmpty) {
-          try {
-            _detailedAddresses = addressesData
-                .map((data) => DetailedAddress.fromJson(data as Map<String, dynamic>))
-                .toList();
-            
-            // تحديث العناوين المحلية للتوافق
-            _addresses = _detailedAddresses
-                .map((addr) => _convertDetailedToAddressModel(addr))
-                .toList();
-            
-            print('📍 العناوين المحملة:');
-            for (int i = 0; i < _detailedAddresses.length; i++) {
-              final addr = _detailedAddresses[i];
-              print('   ${i + 1}. ${addr.name} - ${addr.fullAddress}');
-            }
-            
-            // تعيين العنوان الافتراضي
-            await _setDefaultAddressLocally();
-            
-            // حفظ العناوين محلياً
-            await _saveAddressesLocally();
-            
-            _error = null;
-            
-          } catch (e) {
-            print('❌ خطأ في تحويل بيانات العناوين: $e');
-            print('🔍 البيانات المُستلمة: $addressesData');
-            _error = 'خطأ في معالجة بيانات العناوين: $e';
-            _detailedAddresses.clear();
-            _addresses.clear();
-          }
-        } else {
-          print('⚠️ لا توجد عناوين مسجلة للمستخدم');
-          _detailedAddresses.clear();
-          _addresses.clear();
-          _error = null; // ليس خطأ، فقط لا توجد عناوين
-        }
-      } else {
-        final errorMessage = result['message'] ?? 'فشل في تحميل العناوين';
-        _error = errorMessage;
-        print('❌ فشل في تحميل العناوين: $errorMessage');
-        print('📊 تفاصيل الاستجابة: $result');
-        _detailedAddresses.clear();
-        _addresses.clear();
-      }
-      
-    } catch (e) {
-      _error = 'خطأ في الاتصال بالخادم: $e';
-      print('💥 خطأ في تحميل العناوين: $e');
-      _detailedAddresses.clear();
-      _addresses.clear();
-    } finally {
+    _syncScope();
+    final id = owner(), generation = ++_epoch;
+    _lastFetchConfirmed = false;
+    if (id == null || !loggedIn()) {
+      _detailedAddresses = [];
+      _addresses = [];
+      _currentAddress = null;
+      _selectedAddress = null;
+      _error = null;
       _isLoading = false;
-      
-      // إجبار تحديث الـ UI مع تأخير قصير لضمان انتشار التحديث
       _notifyIfNotDisposed();
-      
-      // تأخير إضافي لضمان وصول التحديث للـ UI
-      await Future.delayed(const Duration(milliseconds: 100));
-      _notifyIfNotDisposed();
-      
+      return;
     }
-  }
-
-  // Create new address - Dynamic
-  Future<DetailedAddress?> createAddress(AddressCreateRequest address) async {
+    _isLoading = true;
+    _notifyIfNotDisposed();
     try {
-      print('📍 إنشاء عنوان جديد: ${address.name}');
-      
-      // التحقق من حالة تسجيل الدخول
-      final isLoggedIn = SessionService.instance.isLoggedIn;
-      if (!isLoggedIn) {
-        _error = 'المستخدم غير مسجل دخول. يرجى تسجيل الدخول أولاً';
-        print('❌ المستخدم غير مسجل دخول');
-        _notifyIfNotDisposed();
-        return null;
+      await _loadCachedBook(id, generation);
+      final token = await freshToken();
+      if (owner() != id || generation != _epoch || _disposed) return;
+      if (token == null) throw StateError('Session unavailable');
+      final result = await api.request(method: 'GET', owner: id, token: token);
+      if (owner() != id || generation != _epoch || _disposed) return;
+      if (result['success'] != true) {
+        _error = result['message'];
+        return;
       }
-
-      // الحصول على token وuser_id من الجلسة النشطة
-      String? token = await SessionService.instance.getToken();
-      String? userId = SessionService.instance.currentUserId;
-      
-      // التحقق من وجود البيانات المطلوبة
-      if (token == null || userId == null) {
-        _error = 'المستخدم غير مسجل دخول. يرجى تسجيل الدخول أولاً';
-        print('❌ لا يوجد token أو user ID - المستخدم بحاجة لتسجيل الدخول');
-        _notifyIfNotDisposed();
-        return null;
-      }
-      
-      print('🆔 User ID: $userId');
-      
-      if (token.isEmpty) {
-        _error = 'لم يتم العثور على token المصادقة';
-        print('❌ Token is empty');
-        return null;
-      }
-
-      if (userId.isEmpty) {
-        _error = 'لم يتم العثور على معرف المستخدم';
-        print('❌ User ID is empty');
-        return null;
-      }
-
-      print('📋 بيانات العنوان المرسلة: ${address.toJson()}');
-
-      // 🔥 استدعاء API مع Region System Fields
-      final result = await ApiService.addUserAddress(
-        token: token,
-        name: address.name,
-        province: address.province,
-        district: address.district,
-        neighborhood: address.neighborhood,
-        landmark: address.landmark,
-        isDefault: address.isDefault,
-        detailedAddress: address.detailedAddress,
-        buildingNumber: address.buildingNumber,
-        floorNumber: address.floorNumber,
-        apartmentNumber: address.apartmentNumber,
-        phoneNumber: address.phoneNumber,
-        latitude: address.latitude,
-        longitude: address.longitude,
-        addressType: address.addressType,
-        // 🆕 Region System Fields
-        regionId: address.regionId,
-        regionName: address.regionName,
-        regionNameAr: address.regionNameAr,
-        regionLevel: address.regionLevel,
-        regionIsActive: address.regionIsActive,
-        deliveryFee: address.deliveryFee,
-        minimumOrder: address.minimumOrder,
-        maxDistanceKm: address.maxDistanceKm,
-        pricePerKm: address.pricePerKm,
-      );
-
-      // في الوقت الحالي، الـ Backend سيحفظ GPS ويمكننا إضافة Region fields لاحقاً
-      if (address.regionId != null) {
-        print('📍 Region Data متوفرة لكن لم يتم إرسالها بعد:');
-        print('   - regionId: ${address.regionId}');
-        print('   - regionName: ${address.regionNameAr}');
-        print('   - deliveryFee: ${address.deliveryFee}');
-      }
-      
-      if (result['success'] == true && result['data'] != null) {
-        
-        // إنشاء DetailedAddress من الاستجابة
-        final newAddress = DetailedAddress.fromJson(result['data']);
-        
-        // إضافة العنوان للقائمة
-        _detailedAddresses.add(newAddress);
-        _addresses.add(_convertDetailedToAddressModel(newAddress));
-        
-        // إذا كان هذا العنوان الأول أو محدد كافتراضي، اجعله افتراضي
-        if (_detailedAddresses.length == 1 || newAddress.isDefault) {
-          await _setDefaultAddressLocally();
+      final data = _data(result), raw = data['addresses'];
+      if (raw is! List) throw const FormatException('Missing book');
+      final rows =
+          raw
+              .map(
+                (r) => DetailedAddress.fromJson(Map<String, dynamic>.from(r)),
+              )
+              .toList();
+      if (rows.any((a) => a.id.isEmpty || a.userId != id) ||
+          rows.map((a) => a.id).toSet().length != rows.length)
+        throw const FormatException('Wrong owner');
+      final defaultId = data['default_address_id'];
+      if (defaultId != null && !rows.any((a) => a.id == defaultId))
+        throw const FormatException('Missing default');
+      _detailedAddresses =
+          rows.map((a) => a.copyWith(isDefault: a.id == defaultId)).toList();
+      _addresses =
+          _detailedAddresses.map(_convertDetailedToAddressModel).toList();
+      await _setDefaultAddressLocally();
+      await _saveAddressesLocally();
+      if (owner() != id || generation != _epoch || _disposed) return;
+      _lastFetchConfirmed = true;
+      _error = null;
+      final selected = browsing.selection;
+      if (selected?.source == 'saved') {
+        final found = _detailedAddresses.where(
+          (a) => a.id == selected!.savedAddressId,
+        );
+        if (found.isEmpty) {
+          final fallback = defaultAddress;
+          await browsing.clear();
+          DeliveryAddressManager.instance.clearActiveSelection();
+          await DeliveryAddressManager.instance.clearCache();
+          if (fallback != null) await activate(fallback);
+        } else {
+          final a = found.first;
+          if (a.latitude != selected!.latitude ||
+              a.longitude != selected.longitude ||
+              a.regionId != selected.regionId ||
+              a.fullAddress != selected.addressText) {
+            await activate(a);
+          }
         }
-        
-        // حفظ محلياً
-        await _saveAddressesLocally();
-        
-        _error = null;
-        
-        // ضمان التحديث الفوري للـ UI
-        _notifyIfNotDisposed();
-        
-        // إضافة تأخير قصير لضمان انتشار التحديث
-        await Future.delayed(const Duration(milliseconds: 100));
-        _notifyIfNotDisposed();
-        
-        return newAddress;
-        
-      } else {
-        final errorMessage = result['message'] ?? 'فشل في إنشاء العنوان';
-        _error = errorMessage;
-        print('❌ فشل في إنشاء العنوان: $errorMessage');
-        _notifyIfNotDisposed();
-        return null;
       }
-      
-    } catch (e) {
-      _error = 'خطأ في إنشاء العنوان: $e';
-      print('💥 خطأ في إنشاء العنوان: $e');
-      _notifyIfNotDisposed();
-      return null;
+    } catch (_) {
+      if (owner() == id && generation == _epoch)
+        _error = 'تعذر تحديث عناوينك. تحقق من الاتصال وأعد المحاولة.';
+    } finally {
+      if (owner() == id && generation == _epoch && !_disposed) {
+        _isLoading = false;
+        _notifyIfNotDisposed();
+      }
     }
   }
 
-  // Set default address
-  Future<bool> setDefaultAddress(String addressId) async {
-    try {
-      print('📍 تعيين العنوان الافتراضي: $addressId');
-      
-      // التحقق من حالة تسجيل الدخول
-      final isLoggedIn = SessionService.instance.isLoggedIn;
-      if (!isLoggedIn) {
-        _error = 'المستخدم غير مسجل دخول. يرجى تسجيل الدخول أولاً';
-        print('❌ المستخدم غير مسجل دخول');
-        _notifyIfNotDisposed();
-        return false;
-      }
-
-      // الحصول على token وuser_id من الجلسة النشطة
-      String? token = SessionService.instance.accessToken;
-      
-      if (token == null) {
-        _error = 'لم يتم العثور على token المصادقة';
-        print('❌ Token is empty');
-        return false;
-      }
-
-      // استدعاء API
-      final result = await ApiService.setDefaultAddress(
-        token: token,
-        addressId: addressId,
-      );
-      
-      if (result['success'] == true) {
-        
-        // تحديث العناوين محلياً
-        for (int i = 0; i < _detailedAddresses.length; i++) {
-          _detailedAddresses[i] = _detailedAddresses[i].copyWith(
-            isDefault: _detailedAddresses[i].id == addressId,
+  Future<DetailedAddress?> createAddress(AddressCreateRequest address) {
+    _syncScope();
+    final id = owner();
+    if (id == null || !loggedIn()) {
+      _error = 'سجل الدخول لحفظ عنوانك.';
+      _notifyIfNotDisposed();
+      return Future.value(null);
+    }
+    final body = address.toJson();
+    if (address.detailedAddress?.trim().isNotEmpty == true)
+      body['fullAddress'] = address.detailedAddress!.trim();
+    final signature = AddressSaveAttempt319.signature(id, body);
+    if (_creates[signature] != null) return _creates[signature]!;
+    Future<DetailedAddress?> run() async {
+      ++_epoch;
+      try {
+        final key = await AddressSaveAttempt319.key(
+          id,
+          body,
+          suggested: address.idempotencyKey,
+        );
+        body['idempotency_key'] = key;
+        final token = await freshToken();
+        if (token == null || owner() != id || _disposed) return null;
+        var result = await api.request(
+          method: 'POST',
+          owner: id,
+          token: token,
+          body: body,
+        );
+        if (result['code'] == 'ADDRESS_BOOK_CHANGED')
+          result = await api.request(
+            method: 'POST',
+            owner: id,
+            token: token,
+            body: body,
           );
+        if (owner() != id || _disposed) return null;
+        if (result['success'] != true) {
+          _error = result['message'];
+          return null;
         }
-        
-        // تحديث العناوين المحلية للتوافق
-        _addresses = _detailedAddresses
-            .map((addr) => _convertDetailedToAddressModel(addr))
-            .toList();
-        
-        // تعيين العنوان الافتراضي
-        await _setDefaultAddressLocally();
-        
-        // حفظ محلياً
-        await _saveAddressesLocally();
-        
+        final created = AddressWriteResult.parse(result, ownerId: id);
+        await AddressSaveAttempt319.confirmed(id, body, key);
+        if (address.saveToAddressBook) await fetchAddresses();
+        if (owner() != id || _disposed) return null;
         _error = null;
+        return created;
+      } catch (_) {
+        if (owner() == id)
+          _error = 'تعذر تأكيد حفظ العنوان. أعد المحاولة للتحقق من النتيجة.';
+        return null;
+      } finally {
+        _creates.remove(signature);
         _notifyIfNotDisposed();
-        
-        return true;
-        
-      } else {
-        final errorMessage = result['message'] ?? 'فشل في تعيين العنوان الافتراضي';
-        _error = errorMessage;
-        print('❌ فشل في تعيين العنوان الافتراضي: $errorMessage');
-        _notifyIfNotDisposed();
+      }
+    }
+
+    final task = run();
+    _creates[signature] = task;
+    return task;
+  }
+
+  Future<bool> setDefaultAddress(String addressId) async {
+    _syncScope();
+    final id = owner();
+    if (id == null || !loggedIn()) return false;
+    ++_epoch;
+    try {
+      final token = await freshToken();
+      if (token == null || owner() != id) return false;
+      final result = await api.request(
+        method: 'PUT',
+        owner: id,
+        token: token,
+        addressId: addressId,
+        setDefault: true,
+      );
+      if (owner() != id || _disposed) return false;
+      if (result['success'] != true && result['uncertain'] != true) {
+        _error = result['message'];
         return false;
       }
-      
-    } catch (e) {
-      _error = 'خطأ في تعيين العنوان الافتراضي: $e';
-      print('💥 خطأ في تعيين العنوان الافتراضي: $e');
-      _notifyIfNotDisposed();
+      await fetchAddresses();
+      if (owner() != id || !_lastFetchConfirmed) return false;
+      final target = defaultAddress;
+      if (target?.id != addressId) {
+        _error = 'لم يتم تأكيد تغيير الافتراضي. حدّث القائمة وأعد المحاولة.';
+        return false;
+      }
+      await activate(target!);
+      if (owner() != id) return false;
+      await _setDefaultAddressLocally();
+      _error = null;
+      return true;
+    } catch (_) {
+      _error = 'تعذر تأكيد تغيير الافتراضي. حدّث القائمة وأعد المحاولة.';
       return false;
+    } finally {
+      _notifyIfNotDisposed();
     }
   }
 
-  // Delete address
   Future<bool> deleteAddress(String addressId) async {
+    _syncScope();
+    final id = owner();
+    if (id == null || !loggedIn()) return false;
+    ++_epoch;
     try {
-      print('🗑️ حذف العنوان: $addressId');
-      
-      // التحقق من حالة تسجيل الدخول
-      final isLoggedIn = SessionService.instance.isLoggedIn;
-      if (!isLoggedIn) {
-        _error = 'المستخدم غير مسجل دخول. يرجى تسجيل الدخول أولاً';
-        print('❌ المستخدم غير مسجل دخول');
-        _notifyIfNotDisposed();
-        return false;
-      }
-
-      // الحصول على token وuser_id من الجلسة النشطة
-      String? token = SessionService.instance.accessToken;
-      
-      if (token == null) {
-        _error = 'لم يتم العثور على token المصادقة';
-        print('❌ Token is empty');
-        return false;
-      }
-
-      // استدعاء API
-      final result = await ApiService.deleteUserAddress(
+      final token = await freshToken();
+      if (token == null || owner() != id) return false;
+      final result = await api.request(
+        method: 'DELETE',
+        owner: id,
         token: token,
         addressId: addressId,
       );
-      
-      if (result['success'] == true) {
-        
-        // إزالة العنوان من القائمة
-        _detailedAddresses.removeWhere((addr) => addr.id == addressId);
-        _addresses.removeWhere((addr) => addr.id == addressId);
-        
-        // إذا كان العنوان المحذوف هو الافتراضي، عين الأول كافتراضي
-        await _setDefaultAddressLocally();
-        
-        // حفظ محلياً
-        await _saveAddressesLocally();
-        
-        _error = null;
-        _notifyIfNotDisposed();
-        
-        return true;
-        
-      } else {
-        final errorMessage = result['message'] ?? 'فشل في حذف العنوان';
-        _error = errorMessage;
-        print('❌ فشل في حذف العنوان: $errorMessage');
-        _notifyIfNotDisposed();
+      if (owner() != id || _disposed) return false;
+      if (result['success'] != true && result['uncertain'] != true) {
+        _error = result['message'];
         return false;
       }
-      
-    } catch (e) {
-      _error = 'خطأ في حذف العنوان: $e';
-      print('💥 خطأ في حذف العنوان: $e');
-      _notifyIfNotDisposed();
+      await fetchAddresses();
+      if (owner() != id || !_lastFetchConfirmed) return false;
+      if (_detailedAddresses.any((a) => a.id == addressId)) {
+        _error = 'لم يتم تأكيد الحذف. أعد المحاولة.';
+        return false;
+      }
+      _error = null;
+      return true;
+    } catch (_) {
+      _error = 'تعذر تأكيد الحذف. حدّث القائمة وأعد المحاولة.';
       return false;
+    } finally {
+      _notifyIfNotDisposed();
     }
   }
 
-  // Update address
-  Future<DetailedAddress?> updateAddress(String addressId, AddressUpdateRequest request) async {
+  Future<DetailedAddress?> updateAddress(
+    String addressId,
+    AddressUpdateRequest request,
+  ) async {
+    _syncScope();
+    final id = owner();
+    if (id == null || !loggedIn()) return null;
+    ++_epoch;
     try {
-      print('📝 تحديث العنوان: $addressId');
-      
-      // التحقق من حالة تسجيل الدخول
-      final isLoggedIn = SessionService.instance.isLoggedIn;
-      if (!isLoggedIn) {
-        _error = 'المستخدم غير مسجل دخول. يرجى تسجيل الدخول أولاً';
-        print('❌ المستخدم غير مسجل دخول');
-        _notifyIfNotDisposed();
-        return null;
-      }
-
-      // الحصول على token وuser_id من الجلسة النشطة
-      String? token = SessionService.instance.accessToken;
-      
-      if (token == null) {
-        _error = 'لم يتم العثور على token المصادقة';
-        print('❌ Token is empty');
-        return null;
-      }
-
-      // تحضير بيانات العنوان للتحديث
-      final addressData = <String, dynamic>{};
-      if (request.name != null) addressData['name'] = request.name;
-      if (request.province != null) addressData['province'] = request.province;
-      if (request.district != null) addressData['district'] = request.district;
-      if (request.neighborhood != null) addressData['neighborhood'] = request.neighborhood;
-      if (request.landmark != null) addressData['landmark'] = request.landmark;
-      if (request.detailedAddress != null) addressData['detailed_address'] = request.detailedAddress;
-      if (request.latitude != null) addressData['latitude'] = request.latitude;
-      if (request.longitude != null) addressData['longitude'] = request.longitude;
-      if (request.addressType != null) addressData['address_type'] = request.addressType;
-      if (request.isDefault != null) addressData['is_default'] = request.isDefault;
-      if (request.buildingNumber != null) addressData['building_number'] = request.buildingNumber;
-      if (request.floorNumber != null) addressData['floor_number'] = request.floorNumber;
-      if (request.apartmentNumber != null) addressData['apartment_number'] = request.apartmentNumber;
-      if (request.phoneNumber != null) addressData['phone_number'] = request.phoneNumber;
-
-      print('📋 بيانات العنوان المحدثة: $addressData');
-
-      // استدعاء API
-      final result = await ApiService.updateUserAddress(
+      final body = request.toJson()..removeWhere((k, v) => v == null);
+      if (request.detailedAddress?.trim().isNotEmpty == true)
+        body['fullAddress'] = request.detailedAddress!.trim();
+      final token = await freshToken();
+      if (token == null || owner() != id) return null;
+      final result = await api.request(
+        method: 'PUT',
+        owner: id,
         token: token,
         addressId: addressId,
-        name: request.name ?? '',
-        province: request.province ?? '',
-        district: request.district ?? '',
-        neighborhood: request.neighborhood ?? '',
-        landmark: request.landmark ?? '',
-        isDefault: request.isDefault ?? false,
-        detailedAddress: request.detailedAddress,
-        buildingNumber: request.buildingNumber,
-        floorNumber: request.floorNumber,
-        apartmentNumber: request.apartmentNumber,
-        phoneNumber: request.phoneNumber,
-        latitude: request.latitude,
-        longitude: request.longitude,
-        addressType: request.addressType,
+        body: body,
       );
-      
-      if (result['success'] == true && result['data'] != null) {
-        
-        // إنشاء DetailedAddress من الاستجابة
-        final updatedAddress = DetailedAddress.fromJson(result['data']);
-        
-        // تحديث العنوان في القائمة
-        final index = _detailedAddresses.indexWhere((addr) => addr.id == addressId);
-        if (index != -1) {
-          _detailedAddresses[index] = updatedAddress;
-          _addresses[index] = _convertDetailedToAddressModel(updatedAddress);
-        }
-        
-        // إذا كان العنوان محدد كافتراضي، تعيينه
-        if (updatedAddress.isDefault) {
-          await _setDefaultAddressLocally();
-        }
-        
-        // حفظ محلياً
-        await _saveAddressesLocally();
-        
-        _error = null;
-        _notifyIfNotDisposed();
-        
-        return updatedAddress;
-        
-      } else {
-        final errorMessage = result['message'] ?? 'فشل في تحديث العنوان';
-        _error = errorMessage;
-        print('❌ فشل في تحديث العنوان: $errorMessage');
-        _notifyIfNotDisposed();
+      if (owner() != id || _disposed) return null;
+      if (result['success'] != true) {
+        final message = result['message'] as String?;
+        if (result['uncertain'] == true) await fetchAddresses();
+        if (owner() == id)
+          _error = message ?? 'تعذر تأكيد التحديث. حدّث القائمة وأعد المحاولة.';
         return null;
       }
-      
-    } catch (e) {
-      _error = 'خطأ في تحديث العنوان: $e';
-      print('💥 خطأ في تحديث العنوان: $e');
-      _notifyIfNotDisposed();
+      final updated = AddressWriteResult.parse(result, ownerId: id);
+      await fetchAddresses();
+      if (owner() != id) return null;
+      if (request.isDefault == true &&
+          _lastFetchConfirmed &&
+          defaultAddress?.id == addressId)
+        await activate(updated);
+      _error = null;
+      return updated;
+    } catch (_) {
+      _error = 'تعذر تأكيد تحديث العنوان. حدّث القائمة ثم أعد المحاولة.';
       return null;
+    } finally {
+      _notifyIfNotDisposed();
     }
   }
 
   // Clear all data
   void clearData() {
+    ++_epoch;
+    _cacheLoaded = false;
+    _lastFetchConfirmed = false;
     _addresses.clear();
     _detailedAddresses.clear();
     _currentAddress = null;
@@ -619,7 +447,6 @@ class EnhancedAddressService extends ChangeNotifier {
 
   // Refresh addresses
   Future<void> refreshAddresses() async {
-    clearData();
     await loadAddressesFromAPI();
   }
 
@@ -637,35 +464,41 @@ class EnhancedAddressService extends ChangeNotifier {
     );
   }
 
-  // Helper method to set default address locally
   Future<void> _setDefaultAddressLocally() async {
-    // Find the default address and set others to non-default
-    for (int i = 0; i < _detailedAddresses.length; i++) {
-      if (_detailedAddresses[i].isDefault) {
-        _currentAddress = _convertDetailedToAddressModel(_detailedAddresses[i]);
-        _selectedAddress = _currentAddress;
-        break;
-      }
+    _currentAddress = null;
+    _selectedAddress = null;
+    final activeId = browsing.selection?.savedAddressId;
+    DetailedAddress? selected;
+    for (final a in _detailedAddresses) {
+      if (a.id == activeId) selected = a;
     }
-    
-    // If no default address found, set the first one as default
-    if (_currentAddress == null && _detailedAddresses.isNotEmpty) {
-      _currentAddress = _convertDetailedToAddressModel(_detailedAddresses.first);
+    selected ??= defaultAddress;
+    if (selected != null) {
+      _currentAddress = _convertDetailedToAddressModel(selected);
       _selectedAddress = _currentAddress;
     }
   }
 
-  // Helper method to save addresses locally (placeholder for future local storage)
   Future<void> _saveAddressesLocally() async {
-    // TODO: Implement local storage using SharedPreferences or Hive
-    // For now, this is just a placeholder
-    print('💾 حفظ العناوين محلياً (placeholder)');
+    final id = owner(), generation = _epoch;
+    if (id == null || id != _scope) return;
+    final rows = _detailedAddresses.map((a) => a.toJson()).toList();
+    final task = _cacheWrites.catchError((_) {}).then((_) async {
+      if (owner() != id || generation != _epoch) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (owner() == id && generation == _epoch)
+        await prefs.setString('address_book_319_$id', jsonEncode(rows));
+    });
+    _cacheWrites = task;
+    try {
+      await task;
+    } catch (_) {}
   }
 
   // Add missing getCurrentLocationAddress method
   Future<void> getCurrentLocationAddress() async {
     print('📍 بدء الحصول على الموقع الحالي...');
-    
+
     _isLoadingLocation = true;
     _locationError = null;
     _notifyIfNotDisposed();
@@ -673,18 +506,20 @@ class EnhancedAddressService extends ChangeNotifier {
     try {
       // 1. التحقق من إذن الموقع
       LocationPermission permission = await Geolocator.checkPermission();
-      
+
       if (permission == LocationPermission.denied) {
         print('⚠️ طلب إذن الموقع...');
         permission = await Geolocator.requestPermission();
-        
+
         if (permission == LocationPermission.denied) {
           throw Exception('تم رفض إذن الوصول إلى الموقع');
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('تم رفض إذن الموقع بشكل دائم. يرجى تفعيله من الإعدادات');
+        throw Exception(
+          'تم رفض إذن الموقع بشكل دائم. يرجى تفعيله من الإعدادات',
+        );
       }
 
       // 2. الحصول على الموقع الحالي
@@ -695,8 +530,10 @@ class EnhancedAddressService extends ChangeNotifier {
           distanceFilter: 10,
         ),
       );
-      
-      print('✅ تم الحصول على الموقع: ${position.latitude}, ${position.longitude}');
+
+      print(
+        '✅ تم الحصول على الموقع: ${position.latitude}, ${position.longitude}',
+      );
 
       // 3. تحويل GPS إلى عنوان
       print('🗺️ تحويل الإحداثيات إلى عنوان...');
@@ -722,30 +559,31 @@ class EnhancedAddressService extends ChangeNotifier {
 
       // بناء العنوان الكامل
       List<String> addressParts = [];
-      
+
       if (place.country != null && place.country!.isNotEmpty) {
         addressParts.add(place.country!);
       }
-      
-      if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty) {
+
+      if (place.administrativeArea != null &&
+          place.administrativeArea!.isNotEmpty) {
         addressParts.add(place.administrativeArea!);
       }
-      
-      if (place.subAdministrativeArea != null && place.subAdministrativeArea!.isNotEmpty) {
+
+      if (place.subAdministrativeArea != null &&
+          place.subAdministrativeArea!.isNotEmpty) {
         addressParts.add(place.subAdministrativeArea!);
       }
-      
+
       if (place.locality != null && place.locality!.isNotEmpty) {
         addressParts.add(place.locality!);
       }
-      
+
       if (place.subLocality != null && place.subLocality!.isNotEmpty) {
         addressParts.add(place.subLocality!);
       }
 
-      String fullAddress = addressParts.isNotEmpty 
-          ? addressParts.join('، ') 
-          : 'الموقع الحالي';
+      String fullAddress =
+          addressParts.isNotEmpty ? addressParts.join('، ') : 'الموقع الحالي';
 
       // إنشاء DetailedAddress
       _currentLocationAddress = DetailedAddress(
@@ -772,7 +610,6 @@ class EnhancedAddressService extends ChangeNotifier {
 
       print('✅ تم الحصول على العنوان: $fullAddress');
       _locationError = null;
-      
     } on PermissionDeniedException catch (e) {
       _locationError = 'تم رفض إذن الوصول إلى الموقع. يرجى تفعيله من الإعدادات';
       print('❌ خطأ إذن: $e');

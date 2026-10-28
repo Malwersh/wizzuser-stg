@@ -12,9 +12,12 @@ import '../config/api_config.dart';
 
 class BusinessService {
   static BusinessModel parseBusiness(dynamic value) {
-    final data=Map<String,dynamic>.from(value as Map);
-    final business=BusinessModel.fromJson(data);
-    StorefrontPricing.instance.seedBusiness(business.id,business.metadata ?? data);
+    final data = Map<String, dynamic>.from(value as Map);
+    final business = BusinessModel.fromJson(data);
+    StorefrontPricing.instance.seedBusiness(
+      business.id,
+      business.metadata ?? data,
+    );
     return business;
   }
 
@@ -30,10 +33,7 @@ class BusinessService {
   static Future<BusinessModel?> getBusinessDetails(String businessId) async {
     try {
       final url = Uri.parse('$_baseUrl/business/$businessId');
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.get(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -41,7 +41,7 @@ class BusinessService {
           return parseBusiness(data['business']);
         }
       }
-      
+
       debugPrint('فشل في جلب تفاصيل المتجر: ${response.statusCode}');
       return null;
     } catch (e) {
@@ -51,13 +51,12 @@ class BusinessService {
   }
 
   /// جلب فئات متجر معين
-  static Future<List<CategoryModel>> getBusinessCategories(String businessId) async {
+  static Future<List<CategoryModel>> getBusinessCategories(
+    String businessId,
+  ) async {
     try {
       final url = Uri.parse('$_baseUrl/business/$businessId/categories');
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.get(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -68,7 +67,7 @@ class BusinessService {
               .toList();
         }
       }
-      
+
       debugPrint('فشل في جلب فئات المتجر: ${response.statusCode}');
       return [];
     } catch (e) {
@@ -79,17 +78,16 @@ class BusinessService {
 
   /// جلب منتجات فئة معينة
   static Future<List<ProductModel>> getCategoryProducts(
-    String businessId, 
+    String businessId,
     String categoryId, {
     int page = 1,
     int limit = 20,
   }) async {
     try {
-      final url = Uri.parse('$_baseUrl/category/$categoryId/products?page=$page&limit=$limit');
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
+      final url = Uri.parse(
+        '$_baseUrl/category/$categoryId/products?page=$page&limit=$limit',
       );
+      final response = await http.get(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -100,7 +98,7 @@ class BusinessService {
               .toList();
         }
       }
-      
+
       debugPrint('فشل في جلب منتجات الفئة: ${response.statusCode}');
       return [];
     } catch (e) {
@@ -116,11 +114,10 @@ class BusinessService {
     int limit = 50,
   }) async {
     try {
-      final url = Uri.parse('$_baseUrl/business/$businessId/products?page=$page&limit=$limit');
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
+      final url = Uri.parse(
+        '$_baseUrl/business/$businessId/products?page=$page&limit=$limit',
       );
+      final response = await http.get(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -131,7 +128,7 @@ class BusinessService {
               .toList();
         }
       }
-      
+
       debugPrint('فشل في جلب منتجات المتجر: ${response.statusCode}');
       return [];
     } catch (e) {
@@ -141,13 +138,13 @@ class BusinessService {
   }
 
   /// جلب تفاصيل منتج واحد
-  static Future<ProductModel?> getProductDetails(String businessId, String productId) async {
+  static Future<ProductModel?> getProductDetails(
+    String businessId,
+    String productId,
+  ) async {
     try {
       final url = Uri.parse('$_baseUrl/product/$productId');
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.get(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -155,7 +152,7 @@ class BusinessService {
           return ProductModel.fromJson(data['product']);
         }
       }
-      
+
       debugPrint('فشل في جلب تفاصيل المنتج: ${response.statusCode}');
       return null;
     } catch (e) {
@@ -165,28 +162,26 @@ class BusinessService {
   }
 
   /// جلب فئات ومنتجات المطعم معاً - الطريقة الصحيحة
-  static Future<Map<String, List<ProductModel>>> getBusinessCategoriesAndProducts(String businessId) async {
+  static Future<Map<String, List<ProductModel>>>
+  getBusinessCategoriesAndProducts(String businessId) async {
     try {
       debugPrint('🔍 جاري جلب منتجات المطعم: $businessId');
 
       // نجلب الفئات أيضاً لربط categoryId بالاسم الحقيقي عند غياب categoryName.
       final categoriesFuture = getBusinessCategories(businessId);
-      
+
       // جلب جميع منتجات المطعم من المسار الجديد
       final url = Uri.parse('$_baseUrl/business/$businessId/products');
       debugPrint('📡 استدعاء API: $url');
-      
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+
+      final response = await http.get(url, headers: await _getHeaders());
 
       debugPrint('📊 Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         debugPrint('📦 Response Data: ${data.keys.toList()}');
-        
+
         if (data['success'] == true && data['products'] != null) {
           final List<dynamic> productsJson = data['products'];
           debugPrint('✅ تم جلب ${productsJson.length} منتج من API');
@@ -194,19 +189,19 @@ class BusinessService {
           final categories = await categoriesFuture;
           final categoryNameById = <String, String>{
             for (final category in categories)
-              if (category.categoryId.trim().isNotEmpty && category.categoryName.trim().isNotEmpty)
+              if (category.categoryId.trim().isNotEmpty &&
+                  category.categoryName.trim().isNotEmpty)
                 category.categoryId.trim(): category.categoryName.trim(),
           };
-          
-          final products = productsJson
-              .map((json) => ProductModel.fromJson(json))
-              .toList();
+
+          final products =
+              productsJson.map((json) => ProductModel.fromJson(json)).toList();
 
           // تجميع المنتجات حسب الفئات مباشرة من categoryName
           final Map<String, List<ProductModel>> result = {};
           int productsWithCategory = 0;
           int productsWithoutCategory = 0;
-          
+
           for (final product in products) {
             String categoryName;
 
@@ -214,10 +209,12 @@ class BusinessService {
             final rawCategoryId = product.categoryId.trim();
 
             // 1) اسم الفئة القادم من المنتج (إن كان صالحاً)
-            if (rawCategoryName.isNotEmpty && !_looksLikeOpaqueId(rawCategoryName)) {
+            if (rawCategoryName.isNotEmpty &&
+                !_looksLikeOpaqueId(rawCategoryName)) {
               categoryName = rawCategoryName;
               productsWithCategory++;
-            } else if (rawCategoryId.isNotEmpty && categoryNameById.containsKey(rawCategoryId)) {
+            } else if (rawCategoryId.isNotEmpty &&
+                categoryNameById.containsKey(rawCategoryId)) {
               // 2) fallback: اسم الفئة الحقيقي عبر categoryId
               categoryName = categoryNameById[rawCategoryId]!;
               productsWithCategory++;
@@ -225,9 +222,11 @@ class BusinessService {
               // 4) إذا كان المعرّف UUID/opaque أو مفقوداً، نستخدم اسم آمن للعرض.
               categoryName = 'منتجات أخرى';
               productsWithoutCategory++;
-              debugPrint('⚠️ منتج بدون اسم فئة قابل للعرض: ${product.name} (categoryId=$rawCategoryId, categoryName=$rawCategoryName)');
+              debugPrint(
+                '⚠️ منتج بدون اسم فئة قابل للعرض: ${product.name} (categoryId=$rawCategoryId, categoryName=$rawCategoryName)',
+              );
             }
-            
+
             if (!result.containsKey(categoryName)) {
               result[categoryName] = [];
             }
@@ -237,14 +236,16 @@ class BusinessService {
           debugPrint('✅ تم تجميع المنتجات: ${result.length} فئة');
           debugPrint('📊 منتجات مع فئات: $productsWithCategory');
           debugPrint('⚠️ منتجات بدون فئة: $productsWithoutCategory');
-          
+
           for (final entry in result.entries) {
             debugPrint('   📂 ${entry.key}: ${entry.value.length} منتج');
           }
 
           return result;
         } else {
-          debugPrint('⚠️ Response success=${data["success"]}, has products=${data["products"] != null}');
+          debugPrint(
+            '⚠️ Response success=${data["success"]}, has products=${data["products"] != null}',
+          );
         }
       }
 
@@ -264,10 +265,7 @@ class BusinessService {
   static Future<CategoryModel?> getCategoryDetails(String categoryId) async {
     try {
       final url = Uri.parse('$_baseUrl/category/$categoryId');
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.get(url, headers: await _getHeaders());
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -275,7 +273,7 @@ class BusinessService {
           return CategoryModel.fromJson(data['category']);
         }
       }
-      
+
       return null;
     } catch (e) {
       debugPrint('خطأ في جلب تفاصيل الفئة: $e');
@@ -286,7 +284,7 @@ class BusinessService {
   /// إعداد headers للطلبات
   static Future<Map<String, String>> _getHeaders() async {
     final token = SessionService.instance.accessToken;
-    
+
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -330,24 +328,20 @@ class BusinessService {
         'page': page.toString(), // Use page as-is (0-based pagination)
         'limit': limit.toString(),
       };
-      
+
       if (category != null) queryParams['category'] = category;
       if (newOnly) queryParams['new'] = 'true';
-      
+
       // Build endpoint with query parameters
-      final endpoint = '/businesses?${queryParams.entries
-          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
-          .join('&')}';
-      
+      final endpoint =
+          '/businesses?${queryParams.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&')}';
+
       final url = Uri.parse('$_baseUrl$endpoint');
-      
+
       debugPrint('🔗 API URL: $url');
       debugPrint('📡 Headers: ${await _getHeaders()}');
 
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.get(url, headers: await _getHeaders());
 
       debugPrint('📡 Response Status: ${response.statusCode}');
       debugPrint('📡 Response Headers: ${response.headers}');
@@ -357,12 +351,13 @@ class BusinessService {
         final data = json.decode(response.body);
         debugPrint('📊 Success: ${data['success']}');
         debugPrint('📊 Businesses Count: ${data['businesses']?.length ?? 0}');
-        
+
         if (data['success'] == true && data['businesses'] != null) {
-          final businesses = (data['businesses'] as List)
-              .map((business) => parseBusiness(business))
-              .toList();
-          
+          final businesses =
+              (data['businesses'] as List)
+                  .map((business) => parseBusiness(business))
+                  .toList();
+
           // فحص أول business
           if (businesses.isNotEmpty) {
             final first = businesses.first;
@@ -371,11 +366,11 @@ class BusinessService {
             debugPrint('🖼️ URL Length: ${first.businessPhotoUrl.length}');
             debugPrint('🖼️ URL isEmpty: ${first.businessPhotoUrl.isEmpty}');
           }
-          
+
           return businesses;
         }
       }
-      
+
       debugPrint('فشل في جلب قائمة المتاجر: ${response.statusCode}');
       return [];
     } catch (e) {
@@ -397,23 +392,19 @@ class BusinessService {
         'page': page.toString(), // Use page as-is (0-based pagination)
         'limit': limit.toString(),
       };
-      
+
       if (category != null) queryParams['category'] = category;
       if (newOnly) queryParams['new'] = 'true';
-      
+
       // Build endpoint with query parameters
-      final endpoint = '/businesses?${queryParams.entries
-          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
-          .join('&')}';
-      
+      final endpoint =
+          '/businesses?${queryParams.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&')}';
+
       final url = Uri.parse('$_baseUrl$endpoint');
-      
+
       debugPrint('🔗 API URL: $url');
 
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      );
+      final response = await http.get(url, headers: await _getHeaders());
 
       debugPrint('📡 Response Status: ${response.statusCode}');
 
@@ -423,12 +414,13 @@ class BusinessService {
         debugPrint('📊 Businesses Count: ${data['businesses']?.length ?? 0}');
         debugPrint('📊 Has More: ${data['hasMore']}');
         debugPrint('📊 Total: ${data['total']}');
-        
+
         if (data['success'] == true && data['businesses'] != null) {
-          final businesses = (data['businesses'] as List)
-              .map((business) => parseBusiness(business))
-              .toList();
-          
+          final businesses =
+              (data['businesses'] as List)
+                  .map((business) => parseBusiness(business))
+                  .toList();
+
           return BusinessListResponse(
             businesses: businesses,
             hasMore: data['hasMore'] ?? false,
@@ -438,7 +430,7 @@ class BusinessService {
           );
         }
       }
-      
+
       debugPrint('فشل في جلب قائمة المتاجر: ${response.statusCode}');
       return BusinessListResponse(
         businesses: [],
@@ -467,49 +459,25 @@ class BusinessService {
     int limit = 6,
   }) async {
     try {
-      // جلب جميع المطاعم
-      final allBusinessesResponse = await getAllBusinessesWithPagination(
-        page: 0,
-        limit: 100, // جلب عدد كبير للحصول على خيارات أكثر للفلترة
+      final uri = Uri.parse(
+        '$_baseUrl${ApiConfig.getNearbyBusinessesEndpoint}',
+      ).replace(
+        queryParameters: {
+          'latitude': userLatitude.toString(),
+          'longitude': userLongitude.toString(),
+          'radius_km': maxDistanceKm.toString(),
+          'limit': limit.toString(),
+        },
       );
-
-      if (allBusinessesResponse.businesses.isEmpty) {
-        return [];
-      }
-
-      // حساب المسافة لكل مطعم وفلترة المطاعم القريبة
-      final nearbyBusinesses = <BusinessModel>[];
-      
-      for (final business in allBusinessesResponse.businesses) {
-        if (business.latitude != null && business.longitude != null) {
-          final distance = business.calculateDistanceFrom(userLatitude, userLongitude);
-          
-          if (distance != null && distance <= maxDistanceKm) {
-            // إنشاء نسخة جديدة مع المسافة المحسوبة
-            final businessWithDistance = business.copyWithCalculatedDistance(
-              userLatitude, 
-              userLongitude
-            );
-            nearbyBusinesses.add(businessWithDistance);
-          }
-        }
-      }
-
-      // ترتيب حسب المسافة (الأقرب أولاً)
-      nearbyBusinesses.sort((a, b) {
-        final distanceA = a.calculateDistanceFrom(userLatitude, userLongitude);
-        final distanceB = b.calculateDistanceFrom(userLatitude, userLongitude);
-        
-        if (distanceA == null && distanceB == null) return 0;
-        if (distanceA == null) return 1;
-        if (distanceB == null) return -1;
-        
-        return distanceA.compareTo(distanceB);
-      });
-
-      // إرجاع العدد المطلوب فقط
-      return nearbyBusinesses.take(limit).toList();
-      
+      final response = await http
+          .get(uri, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return [];
+      final payload = jsonDecode(response.body);
+      if (payload['success'] != true) return [];
+      return (payload['data']['businesses'] as List)
+          .map(parseBusiness)
+          .toList();
     } catch (e) {
       debugPrint('خطأ في جلب المطاعم القريبة: $e');
       return [];

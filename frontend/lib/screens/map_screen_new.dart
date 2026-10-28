@@ -108,6 +108,17 @@ class _MapScreenNewState extends State<MapScreenNew> {
   }
 
   @override
+  void didUpdateWidget(covariant MapScreenNew oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.businesses != widget.businesses) {
+      _allBusinesses = widget.businesses ?? [];
+      _filteredBusinesses = _allBusinesses;
+      _cachedProducts.clear();
+      _initializeMap();
+    }
+  }
+
+  @override
   void dispose() {
     _pollingUpdatesSubscription?.cancel();
     _productsRefreshTimer?.cancel();

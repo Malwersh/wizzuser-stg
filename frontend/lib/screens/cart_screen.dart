@@ -1,3 +1,5 @@
+import '../services/session_service.dart';
+import '../services/point_invoice_321.dart';
 import '../services/checkout_invoice_store.dart';
 import '../widgets/basket_invoice.dart';
 import 'dart:async';
@@ -65,11 +67,13 @@ class _CartScreenState extends State<CartScreen> {
           branch,
           items,
         );
+        final pointRequest=PointInvoice321.basketRequest(branch,items,storeName:_resolveStoreName()??'المطعم');
+        final pointPrepared=pointRequest==null?null:PointInvoice321.instance.peek(pointRequest);
         final prepared =
             invoiceRequest == null
                 ? null
                 : CheckoutInvoiceStore.instance.peek(invoiceRequest);
-        if (scope != null && prepared == null) {
+        if (scope != null && prepared == null && pointPrepared==null) {
           final preview = await _pricing.load(branch, items);
           if (!mounted) return;
           if (branch != _branch(state) ||
@@ -93,6 +97,18 @@ class _CartScreenState extends State<CartScreen> {
                     'الحد الأدنى للأصناف ${basketMoney(minimum)}. أضف ${basketMoney(minimum - state.cartTotal)} للمتابعة.',
           );
           return;
+        }
+        // Join the same request already started while editing the basket.
+        // Never open checkout with an unchanged basket's known failed invoice.
+        if(pointRequest!=null&&SessionService.instance.isLoggedIn){
+          final ready=PointInvoice321.instance.peek(pointRequest);
+          await PointInvoice321.instance.ensure(pointRequest,retry:true,refresh:ready!=null&&DateTime.parse(ready['expiresAt']).difference(DateTime.now())<const Duration(seconds:30));
+          if(!mounted)return;
+          final latest=PointInvoice321.basketRequest(_branch(state),state.cartItems,storeName:_resolveStoreName()??'المطعم');
+          if(branch!=_branch(state)||fingerprint!=jsonEncode(state.cartItems)||latest==null||PointInvoice321.instance.key(latest)!=PointInvoice321.instance.key(pointRequest))continue;
+          if(PointInvoice321.instance.peek(latest)==null){
+            setState(()=>_continueError='تعذر تجهيز إجمالي الطلب. تحقق من الاتصال ثم أعد المحاولة.');return;
+          }
         }
         await Navigator.push(
           context,

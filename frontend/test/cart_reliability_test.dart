@@ -52,7 +52,7 @@ void main() {
     final state=AppStateProvider();state.cart.addItem(line());
     await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
     expect(find.text('رسوم التوصيل'),findsOneWidget);
-    expect(find.text('اختر عنوان التوصيل'),findsOneWidget);
+    expect(find.text('يُحسب بعد إكمال عنوان التوصيل'),findsOneWidget);
     expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
     await t.pump(const Duration(milliseconds:300));await t.pump();expect(calls,0);
     expect(find.text('1500 د.ع'),findsNothing);
@@ -65,7 +65,7 @@ void main() {
     final state=AppStateProvider();state.cart.addItem(line());
     await pricing.load('b1',state.cartItems);
     await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
-    expect(find.text('اختر عنوان التوصيل'),findsOneWidget);expect(find.textContaining('1,500'),findsNothing);expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
+    expect(find.text('يُحسب بعد إكمال عنوان التوصيل'),findsOneWidget);expect(find.textContaining('1,500'),findsNothing);expect(find.text('جارٍ حساب الرسوم…'),findsNothing);
     await t.pumpAndSettle();expect(calls,1);
     await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
@@ -75,7 +75,7 @@ void main() {
     final state=AppStateProvider();state.cart.addItem(line());
     await t.pumpWidget(ChangeNotifierProvider.value(value:state,child:MaterialApp(home:CartScreen(pricing:pricing))));
     final add=find.byTooltip('زيادة كمية كباب يلعب النفس');for(var i=0;i<6;i++){await t.tap(add);await t.pump(const Duration(milliseconds:20));}
-    expect(calls,0);await t.pump(const Duration(milliseconds:300));await t.pumpAndSettle();expect(calls,0);expect(state.cart.itemCount,7);expect(find.text('اختر عنوان التوصيل'),findsOneWidget);
+    expect(calls,0);await t.pump(const Duration(milliseconds:300));await t.pumpAndSettle();expect(calls,0);expect(state.cart.itemCount,7);expect(find.text('يُحسب بعد إكمال عنوان التوصيل'),findsOneWidget);
     await t.pumpWidget(const SizedBox());pricing.dispose();state.dispose();
   });
   test('equivalent option sets share identity regardless of insertion order; notes remain distinct', () {

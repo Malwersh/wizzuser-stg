@@ -103,7 +103,7 @@ class _StorefrontValueState extends State<StorefrontValue> {
       }
     }
 
-    String text = key == null ? 'اختر عنوان التوصيل' : 'جارٍ الحساب…';
+    String text = key == null ? 'يُحدد بعد إكمال عنوان التوصيل' : 'جارٍ الحساب…';
     if (widget.field == StorefrontField.preparation &&
         widget.initialPreparationMinutes != null)
       text = 'نحو ${widget.initialPreparationMinutes} دقيقة';
