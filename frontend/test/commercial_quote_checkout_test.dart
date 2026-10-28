@@ -1,3 +1,4 @@
+import 'package:foodapp_user/models/customer_order_policy.dart';
 import 'package:foodapp_user/services/order_service.dart';
 import 'package:foodapp_user/models/address_model.dart';
 import 'package:foodapp_user/models/order_model.dart';
@@ -35,6 +36,56 @@ void main() {
   String? orderRejection;
   late DeliveryQuoteCheckout checkout;
   late void Function(Map<String, dynamic>) mutatePreview;
+  test(
+    'approved server policy pin is persisted with the exact order attempt',
+    () async {
+      final policy = CustomerOrderPolicy.current;
+      mutatePreview =
+          (p) =>
+              p['customerPolicy'] = {
+                ...policy.document,
+                'digest': policy.digest,
+              };
+      await checkout.load('b1', 'a1');
+      await checkout.confirm(content(), approveCommercial: (_) async => true);
+      final order = posts.last;
+      expect(order['customerPolicyAcknowledgement'], policy.pin);
+    },
+  );
+  test('invalid server policy document blocks order submission', () async {
+    final policy = CustomerOrderPolicy.current;
+    mutatePreview =
+        (p) => p['customerPolicy'] = {...policy.document, 'digest': '0' * 64};
+    await checkout.load('b1', 'a1');
+    await expectLater(
+      checkout.confirm(content(), approveCommercial: (_) async => true),
+      throwsFormatException,
+    );
+    expect(posts.where((p) => p['action'] != 'preview_commercial'), isEmpty);
+  });
+  test(
+    'prepared invoice retains Arabic policy without a second preview or encoding failure',
+    () async {
+      final policy = CustomerOrderPolicy.current;
+      mutatePreview =
+          (p) =>
+              p['customerPolicy'] = {
+                ...policy.document,
+                'digest': policy.digest,
+              };
+      final invoice = await checkout.previewInvoice(content());
+      await checkout.confirm(
+        content(),
+        initialCommercialPreview: invoice,
+        approveCommercial: (_) async => true,
+      );
+      expect(
+        posts.where((p) => p['action'] == 'preview_commercial'),
+        hasLength(1),
+      );
+      expect(posts.last['customerPolicyAcknowledgement'], policy.pin);
+    },
+  );
   setUp(() async {
     saved = {};
     posts = [];
@@ -116,6 +167,7 @@ void main() {
           return http.Response(
             jsonEncode({'success': true, 'commercial': proposal}),
             200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
           );
         }
         expect(saved.isNotEmpty, true);
