@@ -7,6 +7,18 @@ import 'dart:convert';
 import 'cart_item.dart';
 import '../services/session_service.dart';
 
+enum GuestCheckoutCartResult { restored, conflict, accountChanged }
+
+/// Only a live anonymous basket may produce this one-use continuation.
+class GuestCheckoutCartSnapshot {
+  final List<Map<String, dynamic>> _items;
+  final String? storeName;
+  bool _consumed = false;
+  GuestCheckoutCartSnapshot._(this._items, this.storeName);
+  int get itemCount =>
+      _items.fold(0, (sum, row) => sum + (row['quantity'] as int));
+}
+
 class CartModel extends ChangeNotifier {
   final List<CartItem> _items = [];
   bool _isLoaded = false;
@@ -85,7 +97,9 @@ class CartModel extends ChangeNotifier {
           }
         } catch (_) {}
 
-        debugPrint('تم تحميل ${_items.length} عنصر من السلة للمستخدم: $cartKey');
+        debugPrint(
+          'تم تحميل ${_items.length} عنصر من السلة للمستخدم: $cartKey',
+        );
       } else {
         debugPrint('لا توجد سلة محفوظة للمستخدم: $cartKey');
       }
@@ -125,9 +139,11 @@ class CartModel extends ChangeNotifier {
   }
 
   void setStoreName(String? name) {
-    final trimmed=name?.trim();
-    if(trimmed==null||trimmed.isEmpty||_storeName==trimmed)return;
-    _storeName=trimmed;notifyListeners();saveToStorage();
+    final trimmed = name?.trim();
+    if (trimmed == null || trimmed.isEmpty || _storeName == trimmed) return;
+    _storeName = trimmed;
+    notifyListeners();
+    saveToStorage();
   }
 
   Future<void> clearStorage() {
@@ -226,11 +242,63 @@ class CartModel extends ChangeNotifier {
     clearStorage(); // مسح من التخزين أيضاً
   }
 
+  GuestCheckoutCartSnapshot captureGuestCheckout() {
+    final session = SessionService.instance;
+    if (session.isLoggedIn ||
+        (!session.isGuest && session.currentUserId != null)) {
+      throw StateError('GUEST_CHECKOUT_ONLY');
+    }
+    final rows =
+        (jsonDecode(jsonEncode(_items.map((e) => e.toJson()).toList())) as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+    return GuestCheckoutCartSnapshot._(rows, _storeName);
+  }
+
+  Future<GuestCheckoutCartResult> restoreGuestCheckout(
+    GuestCheckoutCartSnapshot snapshot,
+    String expectedUserId, {
+    bool replaceSavedBasket = false,
+  }) async {
+    bool sameAccount() =>
+        SessionService.instance.isLoggedIn &&
+        !SessionService.instance.isGuest &&
+        SessionService.instance.currentUserId == expectedUserId &&
+        expectedUserId.isNotEmpty;
+    await _storageQueue;
+    if (!sameAccount() || snapshot._consumed)
+      return GuestCheckoutCartResult.accountChanged;
+    final current = jsonEncode(_items.map((e) => e.toJson()).toList());
+    if (_items.isNotEmpty &&
+        current != jsonEncode(snapshot._items) &&
+        !replaceSavedBasket) {
+      return GuestCheckoutCartResult.conflict;
+    }
+    _revision++; // A delayed previous account load cannot overwrite this basket.
+    _items
+      ..clear()
+      ..addAll(
+        snapshot._items.map(
+          (e) => CartItem.fromFullJson(
+            Map<String, dynamic>.from(jsonDecode(jsonEncode(e)) as Map),
+          ),
+        ),
+      );
+    _storeName = snapshot.storeName;
+    _isLoaded = true;
+    notifyListeners();
+    await saveToStorage();
+    if (!sameAccount()) return GuestCheckoutCartResult.accountChanged;
+    snapshot._consumed = true;
+    return GuestCheckoutCartResult.restored;
+  }
+
   /// مسح السلة عند تغيير الجلسة (بدلاً من الحذف، نحمل السلة الصحيحة)
   Future<void> clearOnSessionChange() async {
     // Invalidate any previous account load before switching baskets.
     _revision++;
     _items.clear();
+    _storeName = null;
 
     // إعادة تحميل السلة المناسبة للمستخدم الجديد
     // هذا سيحمل السلة الفارغة للمستخدم الجديد أو سلته المحفوظة

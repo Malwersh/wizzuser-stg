@@ -11,7 +11,8 @@ import 'address_gate_screen.dart';
 import 'home_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
-  const EmailLoginScreen({super.key});
+  final bool returnToCaller;
+  const EmailLoginScreen({super.key, this.returnToCaller = false});
 
   @override
   State<EmailLoginScreen> createState() => _EmailLoginScreenState();
@@ -49,6 +50,10 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
 
       if (result['success'] == true) {
         if (mounted) {
+          if (widget.returnToCaller) {
+            Navigator.pop(context, true);
+            return;
+          }
           // ✅ التحديث: التحقق من وجود عنوان
           final addressManager = DeliveryAddressManager.instance;
           final hasAddress = await addressManager.hasActiveAddress();
@@ -198,7 +203,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                 const SizedBox(height: 16),
 
                 // زر الدخول كضيف
-                _buildGuestButton(),
+                if (!widget.returnToCaller) _buildGuestButton(),
               ],
             ),
           ),

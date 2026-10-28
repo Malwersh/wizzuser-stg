@@ -5,6 +5,7 @@ import 'package:foodapp_user/services/customer_phone_auth_service.dart';
 
 class FakePhoneAuth extends CustomerPhoneAuthService {
   int sends = 0, verifies = 0;
+  bool success = false;
   @override
   Future<void> send(String phone) async {
     sends++;
@@ -17,11 +18,54 @@ class FakePhoneAuth extends CustomerPhoneAuthService {
     bool accepted = false,
   }) async {
     verifies++;
-    return false;
+    return success;
   }
 }
 
 void main() {
+  testWidgets('checkout OTP returns to its caller without navigating home', (
+    tester,
+  ) async {
+    final api = FakePhoneAuth()..success = true;
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder:
+              (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () async {
+                    result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (_) => CustomerPhoneAuthScreen(
+                              service: api,
+                              returnToCaller: true,
+                            ),
+                      ),
+                    );
+                  },
+                  child: const Text('checkout'),
+                ),
+              ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('checkout'));
+    await tester.pumpAndSettle();
+    expect(find.text('التصفح كضيف'), findsNothing);
+    await tester.enterText(find.byType(TextField).first, '07831367435');
+    await tester.tap(find.text('إرسال رمز التحقق'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), '123456');
+    await tester.tap(find.text('تأكيد ومتابعة'));
+    await tester.pumpAndSettle();
+    expect(result, true);
+    expect(find.text('checkout'), findsOneWidget);
+    expect(api.verifies, 1);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
     'new number asks for name and consent in the existing OTP session',
     (tester) async {

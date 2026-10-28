@@ -1,3 +1,7 @@
+import 'customer_phone_auth_screen.dart';
+import '../models/cart_model.dart';
+import '../models/browsing_location.dart';
+import '../widgets/checkout_sign_in_panel.dart';
 import '../services/point_invoice_321.dart';
 import '../services/browsing_location_service.dart';
 import '../services/iraqi_delivery_details.dart';
@@ -48,6 +52,152 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
+  bool _identityTransition = false;
+  String? _checkoutOwnerId = SessionService.instance.currentUserId;
+  bool get _hasCheckoutAccount =>
+      SessionService.instance.isLoggedIn &&
+      !SessionService.instance.isGuest &&
+      SessionService.instance.currentUserId?.isNotEmpty == true &&
+      SessionService.instance.accessToken?.isNotEmpty == true;
+  bool get _checkoutIdentityReady =>
+      !_identityTransition &&
+      _hasCheckoutAccount &&
+      _checkoutOwnerId == SessionService.instance.currentUserId;
+
+  Future<void> _verifyCheckoutIdentity() async {
+    if (_identityTransition || _hasCheckoutAccount) return;
+    final appState = context.read<AppStateProvider>();
+    final snapshot = appState.cart.captureGuestCheckout();
+    final selectedPoint = BrowsingLocationService.instance.selection;
+    setState(() => _identityTransition = true);
+    try {
+      final done = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CustomerPhoneAuthScreen(returnToCaller: true),
+        ),
+      );
+      if (!mounted) return;
+      if (done != true || !_hasCheckoutAccount) {
+        if (_hasCheckoutAccount) Navigator.pop(context);
+        return;
+      }
+      final account = SessionService.instance.currentUserId!;
+      await appState.waitForCheckoutCartIdentity();
+      if (!mounted) return;
+      var restored = await appState.cart.restoreGuestCheckout(
+        snapshot,
+        account,
+      );
+      if (!mounted) return;
+      if (restored == GuestCheckoutCartResult.conflict) {
+        final replace = await showModalBottomSheet<bool>(
+          context: context,
+          showDragHandle: true,
+          backgroundColor: Colors.white,
+          builder:
+              (context) => Directionality(
+                textDirection: TextDirection.rtl,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'لديك سلة محفوظة لحسابك',
+                        style: TextStyle(
+                          fontSize: 20,
+                          color: AppColors.secondaryDark,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'هل تريد متابعة سلة ${snapshot.storeName ?? widget.storeName ?? 'هذا الطلب'} بدل السلة المحفوظة؟',
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.secondaryDark,
+                        ),
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('متابعة بسلة الطلب الحالية'),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.secondaryDark,
+                        ),
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('الرجوع إلى السلة المحفوظة'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        );
+        if (!mounted) return;
+        if (replace != true) {
+          Navigator.pop(context);
+          return;
+        }
+        restored = await appState.cart.restoreGuestCheckout(
+          snapshot,
+          account,
+          replaceSavedBasket: true,
+        );
+      }
+      if (!mounted) return;
+      if (restored != GuestCheckoutCartResult.restored ||
+          account != SessionService.instance.currentUserId) {
+        Navigator.pop(context);
+        return;
+      }
+      if (selectedPoint != null) {
+        // Retain the chosen public pin, never an old account's saved-address identity.
+        await BrowsingLocationService.instance.select(
+          BrowsingLocation(
+            regionId: selectedPoint.regionId,
+            regionName: selectedPoint.regionName,
+            source: 'region',
+            latitude: selectedPoint.latitude,
+            longitude: selectedPoint.longitude,
+            addressText: selectedPoint.regionName,
+          ),
+        );
+      }
+      if (!mounted || account != SessionService.instance.currentUserId) return;
+      _checkoutOwnerId = account;
+      _selectedAddress = null;
+      _editingDeliveryDetails = true;
+      _isLoggedInWithEmail = false;
+      _isLoggedInWithPhone = false;
+      _guestNameController.clear();
+      _guestPhoneController.clear();
+      _guestEmailController.clear();
+      _guestName = '';
+      _guestPhone = '';
+      _guestEmail = '';
+      await _quotedCheckout.restore();
+      await _initializeUserData();
+    } catch (_) {
+      if (mounted)
+        _showMessage(
+          'تعذر استعادة المتابعة. سلتك محفوظة؛ ارجع إليها وحاول مجددًا.',
+          isError: true,
+        );
+    } finally {
+      if (mounted) {
+        setState(() => _identityTransition = false);
+        if (_checkoutIdentityReady) {
+          unawaited(_loadUserAddress());
+          unawaited(_loadStoreDiscounts());
+        }
+      }
+    }
+  }
+
   final OrderService _orderService = OrderService();
   late final DeliveryQuoteCheckout _quotedCheckout;
   StreamSubscription<DeliveryAddress?>? _activeAddressUpdates;
@@ -70,6 +220,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _pricingSelectionKey;
   Timer? _pointInvoiceDebounce;
   Map<String, dynamic>? _pointInvoiceRequest() {
+    if (!_checkoutIdentityReady) return null;
     final state = context.read<AppStateProvider>(),
         selection = BrowsingLocationService.instance.selection;
     final selected = _selectedAddress;
@@ -134,6 +285,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Map<String, dynamic>? _invoiceRequest() {
+    if (!_checkoutIdentityReady) return null;
     if (!mounted || _selectedAddress == null || _editingDeliveryDetails)
       return null;
     final state = context.read<AppStateProvider>();
@@ -291,6 +443,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _loadQuote({bool renew = false}) async {
+    if (!_checkoutIdentityReady) return;
     if (!_quotesEnabled ||
         !mounted ||
         _selectedAddress == null ||
@@ -333,6 +486,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     String address, {
     bool prepareInvoice = false,
   }) async {
+    if (!_checkoutIdentityReady) return;
     await SessionService.instance.getToken();
     if (!mounted) return;
     final request = _invoiceRequest();
@@ -496,7 +650,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _quotedCheckout.invalidate();
           unawaited(_loadUserAddress());
         });
-    if (_quotesEnabled) {
+    if (_quotesEnabled && _checkoutIdentityReady) {
       _quotedCheckout.restore().then((_) {
         if (mounted) _loadQuote();
       });
@@ -505,7 +659,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _cartListener = context.read<AppStateProvider>();
       _cartListener!.addListener(_pendingCartChanged);
-      _initializeUserData().then((_) => _autoApplyOffer());
+      if (_checkoutIdentityReady) {
+        _initializeUserData().then((_) => _autoApplyOffer());
+      }
       _loadStoreDiscounts();
       _clearLegacyPendingPromo();
     });
@@ -520,6 +676,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _autoApplyOffer() async {
+    if (!_checkoutIdentityReady) return;
     if (!mounted ||
         _isValidatingDiscount ||
         _applyingPending ||
@@ -661,6 +818,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _loadStoreDiscounts() async {
+    if (!_checkoutIdentityReady) return;
     final appState = Provider.of<AppStateProvider>(context, listen: false);
     final storeId =
         widget.storeId ??
@@ -1103,6 +1261,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _loadUserAddress() async {
+    if (!_checkoutIdentityReady) return;
     final browsing = BrowsingLocationService.instance.selection;
     if (browsing != null) {
       var address = BrowsingLocationService.instance.confirmedAddress;
@@ -1310,6 +1469,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           progress: _buildLoadingWidget(),
           child: Consumer<AppStateProvider>(
             builder: (context, appState, child) {
+              if (_identityTransition)
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.secondaryDark,
+                  ),
+                );
+              if (!_hasCheckoutAccount)
+                return CheckoutSignInPanel(
+                  storeName:
+                      widget.storeName ?? appState.cartStoreName ?? 'طلبك',
+                  itemCount: appState.cartItems.fold(
+                    0,
+                    (sum, item) => sum + (item['quantity'] as num).toInt(),
+                  ),
+                  areaName:
+                      BrowsingLocationService.instance.selection?.regionName,
+                  onSignIn: _verifyCheckoutIdentity,
+                );
+              if (_checkoutOwnerId != SessionService.instance.currentUserId)
+                return Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text(
+                      'تغير الحساب — الرجوع إلى السلة',
+                      style: TextStyle(color: AppColors.secondaryDark),
+                    ),
+                  ),
+                );
               if (appState.cartItems.isEmpty) {
                 return const Center(child: Text('السلة فارغة'));
               }
@@ -3179,6 +3366,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _confirmOrder(AppStateProvider appState) async {
+    if (!_checkoutIdentityReady) {
+      await _verifyCheckoutIdentity();
+      return;
+    }
     if (_isLoading || _preparingReview) return;
     setState(() => _preparingReview = true);
     try {
@@ -3286,6 +3477,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _createOrderWithAddress(AppStateProvider appState) async {
+    if (!_checkoutIdentityReady) return;
     // التحقق من معلومات المستخدم
     if (_isGuestUser) {
       // التحقق من معلومات الضيف
@@ -3621,6 +3813,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _resumeQuotedOrder() async {
+    if (!_checkoutIdentityReady) return;
     setState(() {
       _isLoading = true;
     });

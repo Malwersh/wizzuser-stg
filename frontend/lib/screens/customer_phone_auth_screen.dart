@@ -16,10 +16,12 @@ import '../services/account_deletion_service.dart';
 
 class CustomerPhoneAuthScreen extends StatefulWidget {
   final bool registration;
+  final bool returnToCaller;
   final CustomerPhoneAuthService? service;
   const CustomerPhoneAuthScreen({
     super.key,
     this.registration = false,
+    this.returnToCaller = false,
     this.service,
   });
   @override
@@ -98,6 +100,10 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
 
   Future<void> _finish({bool guest = false}) async {
     if (!mounted) return;
+    if (widget.returnToCaller && !guest) {
+      Navigator.pop(context, true);
+      return;
+    }
     final addresses = DeliveryAddressManager.instance;
     var hasAddress = await addresses.hasActiveAddress();
     if (guest) {
@@ -338,46 +344,62 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
             const SizedBox(height: 20),
             FutureBuilder<bool>(
               future: _savedDeletionReceipt,
-              builder: (context, snapshot) => snapshot.data == true
-                  ? TextButton(
-                      onPressed: busy ? null : () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const DeleteAccountScreen()),
-                      ),
-                      child: const Text('متابعة طلب حذف الحساب'),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            TextButton(
-              onPressed:
-                  busy
-                      ? null
-                      : () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const EmailLoginScreen(),
-                        ),
-                      ),
-              child: const Text('لدي حساب قديم بالبريد — ربط رقم الهاتف'),
+              builder:
+                  (context, snapshot) =>
+                      snapshot.data == true
+                          ? TextButton(
+                            onPressed:
+                                busy
+                                    ? null
+                                    : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder:
+                                            (_) => const DeleteAccountScreen(),
+                                      ),
+                                    ),
+                            child: const Text('متابعة طلب حذف الحساب'),
+                          )
+                          : const SizedBox.shrink(),
             ),
             TextButton(
               onPressed:
                   busy
                       ? null
                       : () async {
-                        setState(() => busy = true);
-                        try {
-                          final ok =
-                              await context
-                                  .read<AppStateProvider>()
-                                  .loginAsGuest();
-                          if (ok) await _finish(guest: true);
-                        } finally {
-                          if (mounted) setState(() => busy = false);
-                        }
+                        final done = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (_) => EmailLoginScreen(
+                                  returnToCaller: widget.returnToCaller,
+                                ),
+                          ),
+                        );
+                        if (done == true && mounted && widget.returnToCaller)
+                          await _finish();
                       },
-              child: const Text('تصفح كضيف'),
+              child: const Text('لدي حساب قديم بالبريد — ربط رقم الهاتف'),
             ),
+            if (!widget.returnToCaller)
+              TextButton(
+                onPressed:
+                    busy
+                        ? null
+                        : () async {
+                          setState(() => busy = true);
+                          try {
+                            final ok =
+                                await context
+                                    .read<AppStateProvider>()
+                                    .loginAsGuest();
+                            if (ok) await _finish(guest: true);
+                          } finally {
+                            if (mounted) setState(() => busy = false);
+                          }
+                        },
+                child: const Text('تصفح كضيف'),
+              ),
           ],
         ),
       ),
