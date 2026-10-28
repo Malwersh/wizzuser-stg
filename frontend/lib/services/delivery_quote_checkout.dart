@@ -636,6 +636,8 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'DELIVERY_POLICY_AUTHORITY_REVOKED' ||
                 'DELIVERY_POLICY_HISTORY_MISMATCH' =>
                   'تعذر اعتماد سعر التوصيل الآن. لم يُرسل الطلب؛ أعد المحاولة لاحقًا.',
+                'INSUFFICIENT_STOCK' || 'GOODS_UNAVAILABLE' =>
+                  'الكمية المطلوبة غير متوفرة الآن. خفّض الكمية أو حدّث السلة قبل المتابعة.',
                 'CART_PRICE_CHANGED' =>
                   'تغيّرت أسعار بعض الأصناف. ارجع إلى المطعم وحدّث السلة قبل المتابعة.',
                 'UNSUPPORTED_DISCOUNT_ITEMS' ||
@@ -773,6 +775,8 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'INVALID_QUOTE_ORDER',
                 'QUOTE_NOT_ENABLED',
                 'CART_PRICE_CHANGED',
+                'INSUFFICIENT_STOCK',
+                'GOODS_UNAVAILABLE',
                 'CASH_TOTAL_DENOMINATION_UNSUPPORTED',
                 'DISCOUNT_PREVIEW_CHANGED',
                 'DISCOUNT_UNAVAILABLE',

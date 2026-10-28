@@ -32,6 +32,7 @@ void main() {
   late bool failOrder;
   late bool activeConflict;
   String? previewError;
+  String? orderRejection;
   late DeliveryQuoteCheckout checkout;
   late void Function(Map<String, dynamic>) mutatePreview;
   setUp(() async {
@@ -42,6 +43,7 @@ void main() {
     failOrder = false;
     activeConflict = false;
     previewError = null;
+    orderRejection = null;
     mutatePreview = (_) {};
     checkout = DeliveryQuoteCheckout(
       account: () => owner,
@@ -118,6 +120,11 @@ void main() {
         }
         expect(saved.isNotEmpty, true);
         if (failOrder) throw Exception('lost response');
+        if (orderRejection != null)
+          return http.Response(
+            jsonEncode({'success': false, 'code': orderRejection}),
+            409,
+          );
         return http.Response(
           jsonEncode({
             'success': true,
@@ -301,6 +308,53 @@ void main() {
     },
     skip: !enabled,
   );
+  for (final code in ['INSUFFICIENT_STOCK', 'GOODS_UNAVAILABLE']) {
+    test(
+      'stock rejection explains unavailable quantity without creating an order: $code',
+      () async {
+        previewError = code;
+        var approvals = 0;
+        await expectLater(
+          checkout.confirm(
+            content(),
+            approveCommercial: (_) async {
+              approvals++;
+              return true;
+            },
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('الكمية المطلوبة غير متوفرة'),
+            ),
+          ),
+        );
+        expect(approvals, 0);
+        expect(posts, hasLength(1));
+        expect(saved, isEmpty);
+        expect(checkout.pending, false);
+      },
+      skip: !enabled,
+    );
+  }
+  for (final code in ['INSUFFICIENT_STOCK', 'GOODS_UNAVAILABLE']) {
+    test(
+      'definitive stock failure releases the pending confirmation without resending: $code',
+      () async {
+        orderRejection = code;
+        final r = await checkout.confirm(
+          content(),
+          approveCommercial: (_) async => true,
+        );
+        expect(r.statusCode, 409);
+        expect(posts, hasLength(2));
+        expect(saved, isEmpty);
+        expect(checkout.pending, false);
+      },
+      skip: !enabled,
+    );
+  }
   test(
     'cancel commercial amount sends no order and persists no attempt',
     () async {

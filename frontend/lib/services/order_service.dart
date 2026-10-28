@@ -419,6 +419,11 @@ class OrderService extends ChangeNotifier {
                   : responseData['code'] ==
                       'CASH_TOTAL_DENOMINATION_UNSUPPORTED'
                   ? 'تعذر تأكيد الدفع النقدي لأن الإجمالي ليس من مضاعفات 250 د.ع. يجب تصحيح أسعار المنتجات أو الرسوم ثم مراجعة الإجمالي.'
+                  : [
+                    'INSUFFICIENT_STOCK',
+                    'GOODS_UNAVAILABLE',
+                  ].contains(responseData['code'])
+                  ? _offerMessage(responseData['code'])
                   : responseData['code'] == 'OFFER_NO_SAVINGS'
                   ? _offerMessage(responseData['code'])
                   : responseData['code'] == 'UNSUPPORTED_DISCOUNT_ITEMS'
@@ -767,6 +772,8 @@ class OrderService extends ChangeNotifier {
   String _offerMessage(dynamic code) =>
       {
         'UNSUPPORTED_DISCOUNT_ITEMS': unsupportedDiscountItemsMessage,
+        'INSUFFICIENT_STOCK':
+            'الكمية المطلوبة لم تعد متوفرة. خفّض الكمية أو حدّث السلة قبل المتابعة.',
         'GOODS_UNAVAILABLE':
             'أحد منتجات السلة غير متاح للطلب حالياً. حدّث السلة أو تواصل مع المتجر.',
         'GOODS_PRICING_UNSUPPORTED':

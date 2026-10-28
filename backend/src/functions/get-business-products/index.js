@@ -14,7 +14,7 @@ const LEGACY_CATEGORY_IDS = Object.freeze({
   'fb-beverages-004': '4cccf116-24fe-46f0-a10f-e7d0ebc44cf1',
 });
 const categoryReference = id => LEGACY_CATEGORY_IDS[id] || id;
-const CATEGORIES_TABLE = 'WhizzMerchants_Categories'; // 🔥 إضافة جدول الفئات
+const CATEGORIES_TABLE = process.env.CATEGORIES_TABLE || 'WhizzMerchants_Categories'; // 🔥 إضافة جدول الفئات
 const handler = async (event) => {
     const headers = {
         'Content-Type': 'application/json',
@@ -190,7 +190,8 @@ const handler = async (event) => {
             const globalProduct = globalProductsMap.get(product.globalProductId) || {};
             const category = categoriesMap.get(categoryReference(product.categoryId)) || {};
             const live=liveProducts.get(product.productId);
-            const liveAvailable=!publishedVersion||(live?.businessId===businessId&&live.isAvailable===true&&!live.isDeleted&&live.deletedAt==null);
+            const stock=publishedVersion?live?.stock:product.stock;
+            const liveAvailable=(!publishedVersion||(live?.businessId===businessId&&live.isAvailable===true&&!live.isDeleted&&live.deletedAt==null))&&(stock===undefined||(Number.isSafeInteger(stock)&&stock>0));
             const categoryVisible=(!category.businessId||category.businessId===businessId)&&category.isActive!==false&&category.is_active!==false;
             
             return {
