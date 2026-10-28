@@ -11,6 +11,16 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Environment name
 
+  EnablePointInvoice321:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Authenticated read-only point invoice; requires explicit routing permission approval.
+  PointInvoiceMapboxSecretArn:
+    Type: String
+    Default: ''
+    Description: Existing server-side routing secret ARN; never a client key.
+
   EnableCommercialPricing:
     Type: String
     Default: 'false'
@@ -65,6 +75,10 @@ Globals:
         SES_FROM_EMAIL: noreply@foodapp.com
 
 Conditions:
+  IsPointInvoice321: !And
+    - !Condition IsCommercialStaging
+    - !Equals [!Ref EnablePointInvoice321, 'true']
+    - !Not [!Equals [!Ref PointInvoiceMapboxSecretArn, '']]
   IsQuoteStaging: !And
     - !Equals [!Ref Environment, staging]
     - !Equals [!Ref 'AWS::AccountId', '699561669180']
@@ -2626,6 +2640,9 @@ Resources:
     Properties:
       TableName: !Sub "WizzUser_addresses_${Environment}"
       BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: checkoutExpiresAt
+        Enabled: true
       AttributeDefinitions:
         - AttributeName: addressId
           AttributeType: S
@@ -3521,23 +3538,44 @@ Resources:
   GetUserAddressesFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/get-user-addresses/
-      Handler: index.handler
+      MemorySize: 512
+      CodeUri: src/
+      Handler: functions/get-user-addresses/index.handler
       FunctionName: !Sub "WizzUser-GetUserAddresses-${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
 
   CreateAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/create-address/index.handler
       FunctionName: !Sub "WizzUser-CreateAddress-${Environment}"
+      Environment:
+        Variables:
+          REGIONS_TABLE: WizzCentral_Regions
+          REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
+          REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
+          REGION_CONSUMERS_VERSION: "313"
       Policies:
         - Statement:
           - Effect: Allow
             Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Regions"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem, dynamodb:UpdateItem]
             Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
@@ -3545,23 +3583,44 @@ Resources:
   GetAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/functions/get-address/
-      Handler: index.handler
+      MemorySize: 512
+      CodeUri: src/
+      Handler: functions/get-address/index.handler
       FunctionName: !Sub "WizzUser-GetAddress-${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
 
   UpdateAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/update-address/index.handler
       FunctionName: !Sub "WizzUser-UpdateAddress-${Environment}"
+      Environment:
+        Variables:
+          REGIONS_TABLE: WizzCentral_Regions
+          REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
+          REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
+          REGION_CONSUMERS_VERSION: "313"
       Policies:
         - Statement:
           - Effect: Allow
             Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Regions"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem, dynamodb:UpdateItem]
             Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
@@ -3569,13 +3628,14 @@ Resources:
   DeleteAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/delete-address/index.handler
       FunctionName: !Sub "WizzUser-DeleteAddress-${Environment}"
       Policies:
         - Statement:
           - Effect: Allow
-            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem, dynamodb:UpdateItem]
             Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
@@ -3583,13 +3643,29 @@ Resources:
   SetDefaultAddressFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/set-default-address/index.handler
       FunctionName: !Sub "WizzUser-SetDefaultAddress-${Environment}"
+      Environment:
+        Variables:
+          REGIONS_TABLE: WizzCentral_Regions
+          REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
+          REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
+          REGION_CONSUMERS_VERSION: "313"
       Policies:
         - Statement:
           - Effect: Allow
             Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Regions"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem, dynamodb:UpdateItem]
             Resource: !GetAtt UsersTable.Arn
         - DynamoDBCrudPolicy:
             TableName: !Ref AddressesTable
@@ -3604,9 +3680,20 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
+          REGION_CONSUMERS_VERSION: "313"
           REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
           REGIONS_TABLE: WizzCentral_Regions
+          REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:Scan]
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Regions"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
         - Statement:
           - Effect: Allow
             Action:
@@ -3617,6 +3704,7 @@ Resources:
               - !Sub "arn:aws:dynamodb:*:*:table/WizzCentral_RegionIndex_${Environment}/index/*"
               - arn:aws:dynamodb:*:*:table/WizzCentral_Regions
               - arn:aws:dynamodb:*:*:table/WizzCentral_Regions/index/*
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
       Events:
         FindRegionApi:
           Type: Api
@@ -3634,9 +3722,22 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
+          REGIONS_TABLE: WizzCentral_Regions
+          REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
+          REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
+          REGION_CONSUMERS_VERSION: "313"
           REGION_LISTINGS_TABLE: WhizzMerchants_RegionListings
           BUSINESSES_TABLE: WhizzMerchants_Businesses
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Regions"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
         - Statement:
           - Effect: Allow
             Action:
@@ -3666,8 +3767,21 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
+          REGIONS_TABLE: WizzCentral_Regions
+          REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
+          REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
+          REGION_CONSUMERS_VERSION: "313"
           BUSINESSES_TABLE: WhizzMerchants_Businesses
       Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_Regions"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+          - Effect: Allow
+            Action: [dynamodb:Query]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
         - Statement:
           - Effect: Allow
             Action:
@@ -3809,11 +3923,14 @@ Resources:
   CreateOrderFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/create-order/index.handler
       FunctionName: !Sub "WizzUser-CreateOrder-${Environment}"
       Environment:
         Variables:
+          POINT_INVOICE_ENABLED: !If [IsPointInvoice321, 'true', 'false']
+          MAPBOX_SECRET_ARN: !Ref PointInvoiceMapboxSecretArn
           BUSINESSES_TABLE: WhizzMerchants_Businesses
           # Enable only with Quote API, quoted checkout, customer deletion and scoped IAM.
           DELIVERY_QUOTE_MODE: 'OFF'
@@ -3826,6 +3943,25 @@ Resources:
           CENTRAL_NOTIFICATIONS_BASE_URL: !Ref CentralNotificationsBaseUrl
           CENTRAL_NOTIFICATIONS_INTERNAL_KEY: !Ref CentralNotificationsInternalKey
       Policies:
+        - !If
+          - IsPointInvoice321
+          - Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Ref PointInvoiceMapboxSecretArn
+              - Effect: Allow
+                Action: [dynamodb:GetItem]
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionsDerived_${Environment}"
+              - Effect: Allow
+                Action: [dynamodb:GetItem]
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Environment}-AccountDeletion"
+                Condition:
+                  ForAllValues:StringLike:
+                    dynamodb:LeadingKeys: ["BUSINESS_LIFECYCLE#MERCHANT#*", "ACCOUNT_LIFECYCLE#MERCHANT#*"]
+              - Effect: Allow
+                Action: [dynamodb:Query]
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WizzCentral_RegionIndex_${Environment}/index/h3-index"
+          - !Ref AWS::NoValue
         - !If
           - IsCommercialStaging
           - Statement:

@@ -14,7 +14,7 @@ void main() {
     await expectLater(broken.resolvePoint(lat: 31, lng: 44, throwOnFailure: true), throwsA(isA<RegionResolutionException>()));
   });
   test('resolved region remains serviceable', () async {
-    final service = RegionResolverService(client: MockClient((_) async => http.Response('{"success":true,"data":{"region_id":"region-1"}}', 200)));
+    final service = RegionResolverService(client: MockClient((_) async => http.Response('{"success":true,"data":{"region_id":"region-1","effective":{"isActive":true,"service":{"delivery":true}}}}', 200)));
     final result = await service.resolvePoint(lat: 31, lng: 44, throwOnFailure: true);
     expect(result!.region.id, 'region-1');
     expect(result.effective.hasDelivery, isTrue);

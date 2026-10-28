@@ -1,0 +1,78 @@
+{
+  "status": "READ_PERMISSIONS_APPLIED_VERIFIED_HUMAN_INVOICE_RETRY_PENDING",
+  "publishedAt": "2026-10-27T20:22:11.996638+00:00",
+  "function": "WizzUser-CreateOrder-staging",
+  "policyName": "PointInvoiceEligibilityRead322",
+  "policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ReadDerivedRegionEligibility",
+        "Effect": "Allow",
+        "Action": [
+          "dynamodb:GetItem"
+        ],
+        "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging"
+      },
+      {
+        "Sid": "ReadMerchantLifecycleEligibility",
+        "Effect": "Allow",
+        "Action": [
+          "dynamodb:GetItem"
+        ],
+        "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion",
+        "Condition": {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": [
+              "BUSINESS_LIFECYCLE#MERCHANT#*",
+              "ACCOUNT_LIFECYCLE#MERCHANT#*"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "userExplicitlyApproved": true,
+  "checks": [
+    {
+      "table": "WizzCentral_RegionsDerived_staging",
+      "key": "region_test",
+      "action": "dynamodb:GetItem",
+      "decision": "allowed"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "BUSINESS_LIFECYCLE#MERCHANT#business_test",
+      "action": "dynamodb:GetItem",
+      "decision": "allowed"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "ACCOUNT_LIFECYCLE#MERCHANT#owner_test",
+      "action": "dynamodb:GetItem",
+      "decision": "allowed"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "ACCOUNT_LIFECYCLE#CUSTOMER#customer_test",
+      "action": "dynamodb:GetItem",
+      "newPolicyDecision": "implicitDeny"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "ACCOUNT_LIFECYCLE#MERCHANT#owner_test",
+      "action": "dynamodb:UpdateItem",
+      "newPolicyDecision": "implicitDeny"
+    },
+    {
+      "table": "WizzCentral_RegionsDerived_staging",
+      "key": "region_test",
+      "action": "dynamodb:PutItem",
+      "newPolicyDecision": "implicitDeny"
+    }
+  ],
+  "codeHashUnchanged": "qUgVj28VOdSri7QToBoH3b+GxkpmNezE8U4zER0GUcE=",
+  "environmentAndExistingPoliciesPreserved": true,
+  "customerAddressOrderWalletWritesPerformed": false,
+  "mobileUpdateRequired": false
+}

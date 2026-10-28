@@ -32,6 +32,8 @@ class RestaurantFetchingService {
       final queryParams = <String, String>{
         'page': page.toString(),
         'limit': limit.toString(),
+        'latitude': deliveryAddress.latitude.toString(),
+        'longitude': deliveryAddress.longitude.toString(),
       };
 
       // Use region_id if available (preferred method)

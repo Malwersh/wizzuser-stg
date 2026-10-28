@@ -299,8 +299,8 @@ function sendOrderToMerchant(order) {
 /**
  * Lambda handler for creating a new order
  */
-exports.handler = async (event) => {
-    let dynamoDb=baseDynamoDb;
+async function handleOrder321(event, pointDb=null) {
+    let dynamoDb=pointDb??baseDynamoDb;
     console.log('Create order request received', {requestId:event.requestContext?.requestId});
     console.log('TABLE_NAME:', TABLE_NAME);
     console.log('Environment variables:', {
@@ -439,7 +439,7 @@ exports.handler = async (event) => {
 
         // CRITICAL BUSINESS RULE: Check for active orders
         // Don't allow creating a new order if user has an active (incomplete) order
-        if (body.userId && body.userId !== null && body.userId !== 'guest') {
+        if (body.action !== 'preview_commercial' && body.userId && body.userId !== null && body.userId !== 'guest') {
             console.log('🔍 Checking for active orders for user:', body.userId);
             
             try {
@@ -1258,3 +1258,14 @@ async function sendMerchantNotification(order) {
         throw error;
     }
 }
+
+// No HTTP field or Lambda context can supply a database override. Only this
+// module's point-preview composition invokes the private handler with one.
+exports.handler=async event=>{
+ let body;
+ if(event.httpMethod==='POST'&&!event.isBase64Encoded&&typeof event.body==='string'&&Buffer.byteLength(event.body)<=64000){try{body=JSON.parse(event.body);}catch(_){}}
+ if(body?.action==='preview_commercial')return handleOrder321(event,require('./point-invoice-321').readOnlyInvoiceDb323(baseDynamoDb));
+ if(body?.action!=='preview_commercial_point')return handleOrder321(event);
+ try{return await require('./point-invoice-321').prepare321({event,body,base:baseDynamoDb,run:handleOrder321,runtime:require('./point-invoice-runtime-321')});}
+ catch(e){console.warn('POINT_INVOICE_UNAVAILABLE',{code:e.code||e.name});return{statusCode:e.statusCode||503,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'},body:JSON.stringify({success:false,code:e.code||'POINT_INVOICE_UNAVAILABLE'})};}
+};

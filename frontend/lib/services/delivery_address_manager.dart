@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
+import 'address_book_api_319.dart';
+import 'session_service.dart';
+import '../models/address_model.dart';
 
 import '../models/delivery_address.dart';
 import '../models/location_mismatch_info.dart';
-import '../config.dart';
+import 'region_resolver_service.dart';
 
 /// Service to manage the active delivery address - the single source of truth
 /// خدمة إدارة عنوان التوصيل الفعّال - المصدر الوحيد للحقيقة
@@ -17,9 +19,10 @@ class DeliveryAddressManager {
   static final DeliveryAddressManager instance = DeliveryAddressManager._();
 
   // Constants
-  static const String _cacheKey = 'delivery_address_cache';
-  static const String _lastUsedKey = 'last_used_address_id';
-  static const int _cacheExpiryDays = 7;
+  String get _scope => SessionService.instance.currentUserId ?? 'guest';
+  String get _cacheKey => 'delivery_address_319_$_scope';
+  String get _lastUsedKey => 'last_used_address_319_$_scope';
+  String? _activeOwner;
   static const double _mismatchThresholdKm = 5.0;
 
   // State
@@ -34,7 +37,8 @@ class DeliveryAddressManager {
 
   /// Get current active delivery address
   /// الحصول على عنوان التوصيل الفعّال الحالي
-  DeliveryAddress? get activeAddress => _activeAddress;
+  DeliveryAddress? get activeAddress =>
+      _activeOwner == _scope ? _activeAddress : null;
 
   /// Check if manager is initialized
   /// التحقق من تهيئة المدير
@@ -51,76 +55,27 @@ class DeliveryAddressManager {
     String? userId,
     bool isRegisteredUser = false,
   }) async {
-    debugPrint('🚀 تهيئة عنوان التوصيل...');
-    debugPrint('   نوع المستخدم: ${isRegisteredUser ? "مسجل" : "ضيف"}');
-
+    final scope = _scope;
+    if (_activeOwner != scope) {
+      _activeAddress = null;
+      _activeOwner = scope;
+    }
     try {
-      // 🆕 الطبقة 0: إذا تم تعيين عنوان نشط مسبقاً (مثلاً العنوان الافتراضي من شاشة البداية)
-      // لا نعيد التهيئة ولا نسمح لـ GPS بأن يطغى عليه
-      if (_activeAddress != null) {
-        debugPrint('✅ يوجد عنوان نشط بالفعل - تخطي إعادة التهيئة: ${_activeAddress!.displayName}');
-        debugPrint('   regionId: ${_activeAddress!.regionId ?? "غير محددة"}');
-        _isInitialized = true;
-        // إعادة البث لضمان وصول العنوان للمستمعين الجدد (مثل الشاشة الرئيسية)
-        _addressController.add(_activeAddress);
-        return _activeAddress;
+      var address = _activeAddress;
+      if (address == null && isRegisteredUser && userId == scope) {
+        address = await _initializeForRegisteredUser(userId!);
+      } else if (address == null && !isRegisteredUser) {
+        address = await _loadFromCache();
       }
-
-      // 🆕 الطبقة 1: محاولة GPS أولاً (للجميع)
-      debugPrint('📍 الطبقة 1: محاولة الحصول على موقع GPS...');
-      _activeAddress = await _getGPSAddress();
-
-      if (_activeAddress != null) {
-        debugPrint('✅ تم الحصول على الموقع من GPS');
-        debugPrint(
-          '   الإحداثيات: ${_activeAddress!.latitude}, ${_activeAddress!.longitude}',
-        );
-        debugPrint('   المنطقة: ${_activeAddress!.regionId ?? "غير محددة"}');
-
-        // حفظ في Cache للضيوف
-        if (!isRegisteredUser) {
-          await _saveToCache(_activeAddress!);
-        }
-
-        _addressController.add(_activeAddress);
-        _isInitialized = true;
-        _startLocationMismatchDetection();
-        return _activeAddress;
-      }
-
-      debugPrint('⚠️ فشل الحصول على GPS - الانتقال للطبقة 2');
-
-      // 🆕 الطبقة 2: استخدام العناوين المحفوظة (للمسجلين فقط)
-      if (isRegisteredUser && userId != null) {
-        debugPrint('📋 الطبقة 2: جلب العناوين المحفوظة...');
-        _activeAddress = await _initializeForRegisteredUser(userId);
-
-        if (_activeAddress != null) {
-          debugPrint(
-            '✅ تم استخدام عنوان محفوظ: ${_activeAddress!.displayName}',
-          );
-          _addressController.add(_activeAddress);
-          _isInitialized = true;
-          _startLocationMismatchDetection();
-          return _activeAddress;
-        }
-      } else {
-        // للضيوف: محاولة Cache
-        debugPrint('💾 الطبقة 2: محاولة Cache للضيف...');
-        _activeAddress = await _loadFromCache();
-
-        if (_activeAddress != null && !_activeAddress!.isExpired) {
-          debugPrint('✅ تم استخدام عنوان من Cache');
-          _addressController.add(_activeAddress);
-          _isInitialized = true;
-          return _activeAddress;
-        }
-      }
-
-      debugPrint('⚠️ لم يتم تحديد عنوان توصيل - سيتم جلب جميع المطاعم');
-      return null;
-    } catch (e) {
-      debugPrint('❌ خطأ في تهيئة عنوان التوصيل: $e');
+      if (address == null || address.isExpired) return null;
+      address = await _validatedAddress(address);
+      if (_scope != scope) return null;
+      _activeAddress = address;
+      _isInitialized = true;
+      _addressController.add(address);
+      _startLocationMismatchDetection();
+      return address;
+    } catch (_) {
       return null;
     }
   }
@@ -128,86 +83,25 @@ class DeliveryAddressManager {
   /// Initialize for registered user (Saved addresses only - no GPS here)
   /// تهيئة لمستخدم مسجل (العناوين المحفوظة فقط - GPS تم في الطبقة 1)
   Future<DeliveryAddress?> _initializeForRegisteredUser(String userId) async {
-    debugPrint('   📋 جلب العناوين المحفوظة للمستخدم...');
-
-    try {
-      // Try to load last used address
-      final prefs = await SharedPreferences.getInstance();
-      final lastUsedAddressId = prefs.getString(_lastUsedKey);
-
-      if (lastUsedAddressId != null) {
-        debugPrint('   📍 محاولة جلب آخر عنوان مستخدم: $lastUsedAddressId');
-        final address = await _fetchAddressFromAPI(lastUsedAddressId);
-        if (address != null) {
-          return address;
-        }
-      }
-
-      // Load default address
-      debugPrint('   🏠 جلب العنوان الافتراضي...');
-      final defaultAddress = await _fetchDefaultAddress(userId);
-      if (defaultAddress != null) {
-        return defaultAddress;
-      }
-
-      debugPrint('   ⚠️ لا توجد عناوين محفوظة');
-      return null;
-    } catch (e) {
-      debugPrint('   ❌ خطأ في جلب العناوين: $e');
-      return null;
+    final scope = _scope;
+    final prefs = await SharedPreferences.getInstance();
+    if (_scope != scope || userId != scope) return null;
+    final last = prefs.getString(_lastUsedKey);
+    final rows = await _savedBook(userId);
+    if (_scope != scope) return null;
+    for (final row in rows) {
+      if (row.id == last) return DeliveryAddress.fromSavedAddress(row);
     }
+    for (final row in rows) {
+      if (row.isDefault) return DeliveryAddress.fromSavedAddress(row);
+    }
+    return null;
   }
 
   // 🗑️ تم حذف _initializeForGuestUser - GPS الآن في الطبقة 1 للجميع
 
   /// Get GPS address
   /// الحصول على عنوان من GPS
-  Future<DeliveryAddress?> _getGPSAddress() async {
-    try {
-      // Check GPS permission
-      final permission = await _checkGPSPermission();
-      if (!permission) {
-        debugPrint('   ❌ لا يوجد إذن GPS');
-        return null;
-      }
-
-      // Get current position
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      debugPrint(
-        '   📍 الإحداثيات: ${position.latitude}, ${position.longitude}',
-      );
-
-      // Get region info from backend API
-      final regionInfo = await _findRegionByCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      // Create address
-      final address = DeliveryAddress(
-        formattedAddress: regionInfo['formattedAddress'] ?? 'الموقع الحالي',
-        latitude: position.latitude,
-        longitude: position.longitude,
-        regionId: regionInfo['region_id'],
-        regionNameAr: regionInfo['region_name_ar'],
-        regionNameEn: regionInfo['region_name_en'],
-        neighborhood: regionInfo['neighborhood'],
-        city: regionInfo['city'] ?? 'غير محدد',
-        source: AddressSource.gps,
-        timestamp: DateTime.now(),
-        expiryTimestamp: DateTime.now().add(Duration(days: _cacheExpiryDays)),
-      );
-
-      return address;
-    } catch (e) {
-      debugPrint('   ❌ خطأ في الحصول على GPS: $e');
-      return null;
-    }
-  }
-
   /// Check GPS permission
   /// التحقق من إذن GPS
   Future<bool> _checkGPSPermission() async {
@@ -240,72 +134,54 @@ class DeliveryAddressManager {
     double latitude,
     double longitude,
   ) async {
-    try {
-      final url = Uri.parse(
-        '${ApiConfig.baseUrl}/api/regions/find-by-coordinates'
-        '?latitude=$latitude&longitude=$longitude',
-      );
+    final result = await RegionResolverService().resolvePoint(
+      lat: latitude,
+      lng: longitude,
+      throwOnFailure: true,
+    );
+    if (result == null || !result.effective.isDeliveryAvailable)
+      throw Exception('الخدمة غير متاحة في هذا الموقع.');
+    return {
+      'region_id': result.region.id,
+      'region_name_ar': result.region.nameAr,
+      'region_name_en': result.region.name,
+      'city': result.region.nameAr,
+    };
+  }
 
-      final response = await http.get(url).timeout(Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          return data['data'] as Map<String, dynamic>;
-        }
-      }
-
-      // Fallback if API fails
-      return {'city': 'غير محدد', 'formattedAddress': 'الموقع الحالي'};
-    } catch (e) {
-      debugPrint('   ⚠️ خطأ في API إيجاد المنطقة: $e');
-      return {'city': 'غير محدد', 'formattedAddress': 'الموقع الحالي'};
-    }
+  Future<DeliveryAddress> _validatedAddress(DeliveryAddress address) async {
+    final r = await _findRegionByCoordinates(
+      address.latitude,
+      address.longitude,
+    );
+    return address.copyWith(
+      regionId: r['region_id'],
+      regionNameAr: r['region_name_ar'],
+      regionNameEn: r['region_name_en'],
+    );
   }
 
   /// Fetch address from API by ID
   /// جلب عنوان من API بواسطة المعرّف
-  Future<DeliveryAddress?> _fetchAddressFromAPI(String addressId) async {
-    try {
-      final url = Uri.parse('${ApiConfig.baseUrl}/api/addresses/$addressId');
-      final response = await http.get(url).timeout(Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          return DeliveryAddress.fromJson(data['data']);
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('   ⚠️ خطأ في جلب العنوان: $e');
-      return null;
-    }
-  }
-
-  /// Fetch default address for user
-  /// جلب العنوان الافتراضي للمستخدم
-  Future<DeliveryAddress?> _fetchDefaultAddress(String userId) async {
-    try {
-      final url = Uri.parse(
-        '${ApiConfig.baseUrl}/api/addresses?userId=$userId&default=true',
-      );
-      final response = await http.get(url).timeout(Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['addresses'] != null) {
-          final addresses = data['addresses'] as List;
-          if (addresses.isNotEmpty) {
-            return DeliveryAddress.fromJson(addresses[0]);
-          }
-        }
-      }
-      return null;
-    } catch (e) {
-      debugPrint('   ⚠️ خطأ في جلب العنوان الافتراضي: $e');
-      return null;
-    }
+  Future<List<DetailedAddress>> _savedBook(String userId) async {
+    final session = SessionService.instance;
+    if (session.currentUserId != userId || !session.isLoggedIn) return [];
+    final token = await session.getToken();
+    if (token == null || session.currentUserId != userId) return [];
+    final response = await AddressBookApi319.instance.request(
+      method: 'GET',
+      owner: userId,
+      token: token,
+    );
+    if (session.currentUserId != userId || response['success'] != true)
+      return [];
+    dynamic data = response['data'];
+    if (data is Map && data['data'] is Map) data = data['data'];
+    if (data is! Map || data['addresses'] is! List) return [];
+    return (data['addresses'] as List)
+        .map((a) => DetailedAddress.fromJson(Map<String, dynamic>.from(a)))
+        .where((a) => a.userId == userId)
+        .toList();
   }
 
   /// Set delivery address
@@ -317,6 +193,10 @@ class DeliveryAddressManager {
     debugPrint('   🗺️ Region ID الجديد: ${address.regionId}');
     debugPrint('   🗺️ Region ID القديم: ${_activeAddress?.regionId}');
 
+    final scope = _scope;
+    address = await _validatedAddress(address);
+    if (_scope != scope) throw StateError('Session changed');
+    _activeOwner = scope;
     final oldAddress = _activeAddress;
     _activeAddress = address;
 
@@ -328,8 +208,10 @@ class DeliveryAddressManager {
 
     // Save last used address ID if registered
     if (address.isRegisteredAddress && address.addressId != null) {
+      final key = _lastUsedKey;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_lastUsedKey, address.addressId!);
+      if (_scope != scope) return;
+      await prefs.setString(key, address.addressId!);
       debugPrint('   💾 تم حفظ addressId للمستخدم المسجل');
     }
 
@@ -377,7 +259,7 @@ class DeliveryAddressManager {
   /// Get active address
   /// الحصول على العنوان النشط
   Future<DeliveryAddress?> getActiveAddress() async {
-    return _activeAddress;
+    return activeAddress;
   }
 
   /// Check if has active address
@@ -385,15 +267,17 @@ class DeliveryAddressManager {
   ///
   /// يُستخدم في splash_screen و login_screen لتحديد المسار المناسب
   Future<bool> hasActiveAddress() async {
-    return _activeAddress != null;
+    return activeAddress != null;
   }
 
   /// Load from cache
   /// التحميل من الذاكرة المؤقتة
   Future<DeliveryAddress?> _loadFromCache() async {
     try {
+      final scope = _scope, key = _cacheKey;
       final prefs = await SharedPreferences.getInstance();
-      final cachedJson = prefs.getString(_cacheKey);
+      if (_scope != scope) return null;
+      final cachedJson = prefs.getString(key);
 
       if (cachedJson != null) {
         final data = jsonDecode(cachedJson) as Map<String, dynamic>;
@@ -410,9 +294,11 @@ class DeliveryAddressManager {
   /// الحفظ في الذاكرة المؤقتة
   Future<void> _saveToCache(DeliveryAddress address) async {
     try {
+      final scope = _scope, key = _cacheKey;
       final prefs = await SharedPreferences.getInstance();
+      if (_scope != scope) return;
       final json = jsonEncode(address.toJson());
-      await prefs.setString(_cacheKey, json);
+      await prefs.setString(key, json);
       debugPrint('   💾 تم حفظ العنوان في الذاكرة المؤقتة');
     } catch (e) {
       debugPrint('   ⚠️ خطأ في حفظ الذاكرة المؤقتة: $e');
@@ -421,11 +307,19 @@ class DeliveryAddressManager {
 
   /// Clear cache
   /// مسح الذاكرة المؤقتة
+  void clearActiveSelection() {
+    _activeAddress = null;
+    _mismatchCheckTimer?.cancel();
+    _isInitialized = true;
+    if (!_addressController.isClosed) _addressController.add(null);
+  }
+
   Future<void> clearCache() async {
     try {
+      final cache = _cacheKey, last = _lastUsedKey;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
-      await prefs.remove(_lastUsedKey);
+      await prefs.remove(cache);
+      await prefs.remove(last);
       debugPrint('   🗑️ تم مسح الذاكرة المؤقتة');
     } catch (e) {
       debugPrint('   ⚠️ خطأ في مسح الذاكرة المؤقتة: $e');
@@ -448,7 +342,7 @@ class DeliveryAddressManager {
   /// Check for location mismatch
   /// التحقق من عدم تطابق الموقع
   Future<LocationMismatchInfo?> _checkLocationMismatch() async {
-    if (_activeAddress == null) return null;
+    if (activeAddress == null) return null;
 
     try {
       // Get current GPS location

@@ -21,12 +21,14 @@ int? parseDriverTipIqd(String text) {
 class DriverTipSelector extends StatelessWidget {
   final int amountIqd;
   final bool enabled;
+  final bool showHeading;
   final ValueChanged<int> onChanged;
   const DriverTipSelector({
     super.key,
     required this.amountIqd,
     required this.onChanged,
     this.enabled = true,
+    this.showHeading = true,
   });
 
   Future<void> _custom(BuildContext context) async {
@@ -83,12 +85,16 @@ class DriverTipSelector extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'إكرامية السائق (اختياري)',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+        if (showHeading)
+          const Text(
+            'إكرامية السائق (اختياري)',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
         const SizedBox(height: 8),
-        const Text('تصل الإكرامية بالكامل إلى السائق.'),
+        const Text(
+          'تصل الإكرامية بالكامل إلى السائق.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF53627B)),
+        ),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,

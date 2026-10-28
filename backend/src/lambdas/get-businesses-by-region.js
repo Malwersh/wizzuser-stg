@@ -14,9 +14,10 @@
  * 6. Return results with listingVersion
  */
 
-const {DynamoDBClient}=require('@aws-sdk/client-dynamodb');
-const {DynamoDBDocumentClient,ScanCommand,BatchGetCommand}=require('@aws-sdk/lib-dynamodb');
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand, BatchGetCommand } = require('@aws-sdk/lib-dynamodb');
+
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 // Table names
 const REGION_LISTINGS_TABLE = process.env.REGION_LISTINGS_TABLE || 'WhizzMerchants_RegionListings';
@@ -27,12 +28,13 @@ const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Busines
  */
 exports.handler = async (event) => {
   console.log('🍽️ Get Businesses By Region');
-
+  console.log('Event:', JSON.stringify(event, null, 2));
 
   try {
     // Extract parameters
     const {
-      region_id,
+      region_id: requestedRegionId,
+      latitude, longitude,
       page = '0',
       limit = '20',
       category,
@@ -40,31 +42,31 @@ exports.handler = async (event) => {
       sort = 'default',
     } = event.queryStringParameters || {};
 
+    let region_id=requestedRegionId;
     // Validate region_id
     if (!region_id) {
       return errorResponse(400, 'MISSING_REGION_ID', 'region_id is required');
     }
 
-    const pageNum = parseInt(page);
-    const limitNum = Math.min(parseInt(limit), 50); // Max 50 per page
+    const pageNum = Number(page), limitNum = Math.min(Number(limit),50);
+    if(!Number.isInteger(pageNum)||pageNum<0||!Number.isInteger(limitNum)||limitNum<1)return errorResponse(400,'INVALID_PAGINATION','اختر صفحة وعدد نتائج صالحين.'); // Max 50 per page
 
     console.log(`🗺️ Region: ${region_id}`);
     console.log(`📄 Page: ${pageNum}, Limit: ${limitNum}`);
+
+    const regionApi=require('../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
+    if(latitude!==undefined||longitude!==undefined)region_id=(await regionApi.resolve(Number(latitude),Number(longitude))).regionId;
+    const regionPath=await regionApi.ancestry(region_id);
 
     // Step 1: Scan WhizzMerchants_Businesses with filter on regionId
     // Note: This is not optimal - TODO: Add GSI on regionId for better performance
     console.log('⚡ Scanning businesses table with regionId filter...');
     
-    const scanResult = await dynamodb.send(new ScanCommand({
-        TableName: BUSINESSES_TABLE,
-        FilterExpression: 'regionId = :rid AND isActive = :active',
-        ExpressionAttributeValues: {
-          ':rid': region_id,
-          ':active': true,
-        },
-      }));
-
-    let businesses = scanResult.Items || [];
+    const box=require('../utils/customer-regions-313').bounds(regionPath[3].base.geometry);
+    const businesses=[];let cursor;
+    do {const result=await dynamodb.send(new ScanCommand({TableName:BUSINESSES_TABLE,FilterExpression:'isActive = :active AND ((latitude BETWEEN :s AND :n AND longitude BETWEEN :w AND :e) OR (#addr.latitude BETWEEN :s AND :n AND #addr.longitude BETWEEN :w AND :e))',ExpressionAttributeNames:{'#addr':'address'},ExpressionAttributeValues:{':active':true,':s':box.south,':n':box.north,':w':box.west,':e':box.east},...(cursor?{ExclusiveStartKey:cursor}:{})}));businesses.push(...result.Items||[]);cursor=result.LastEvaluatedKey;}while(cursor);
+    const selectedShape=regionPath[3].base.geometry;
+    for(let i=businesses.length-1;i>=0;i--){const b=businesses[i],lat=b.latitude??b.address?.latitude,lng=b.longitude??b.address?.longitude;if(typeof lat!=='number'||typeof lng!=='number'||!require('../utils/customer-regions-313').contains(selectedShape,lat,lng))businesses.splice(i,1);else businesses[i]={...b,regionId:region_id};}
     console.log(`📊 Found ${businesses.length} businesses in region ${region_id}`);
 
     if (businesses.length === 0) {
@@ -103,7 +105,7 @@ exports.handler = async (event) => {
 
     // Step 3: Sort businesses
     if (sort === 'rating') {
-      filteredBusinesses.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      filteredBusinesses.sort((a, b) => (b.customerRating ?? b.rating ?? 0) - (a.customerRating ?? a.rating ?? 0));
     } else if (sort === 'delivery_time') {
       filteredBusinesses.sort((a, b) => (a.deliveryTime || 999) - (b.deliveryTime || 999));
     }
@@ -132,6 +134,7 @@ exports.handler = async (event) => {
       },
     });
   } catch (error) {
+    if(error.status)return errorResponse(error.status,error.code,error.status===404?'الخدمة غير متاحة في هذه المنطقة حاليًا.':'تعذر التحقق من المنطقة.');
     console.error('❌ Error:', error);
     return errorResponse(500, 'INTERNAL_ERROR', 'Internal server error', {
       message: error.message,

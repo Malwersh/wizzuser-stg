@@ -646,19 +646,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
         // إعادة تحميل فورية
         _loadAddresses();
         
-        // إضافة تأخير قصير لضمان انتهاء العملية على الخادم
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _loadAddresses();
-          }
-        });
-        
-        // إضافة تحديث إضافي لضمان الاستجابة
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            _loadAddresses();
-          }
-        });
+
       }
     });
   }

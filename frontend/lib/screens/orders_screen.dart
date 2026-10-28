@@ -1043,7 +1043,14 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ],
                     ),
                     // Cancel button for active orders that can be cancelled
-                    if (isActive && order.canBeCancelled) ...[
+                    if (isActive && order.cancellationStatus == 'REQUESTED') ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        'طلب الإلغاء قيد المراجعة؛ يظل الطلب نشطًا حتى تأكيد إلغائه.',
+                        style: TextStyle(color: AppColors.secondary, fontSize: 13),
+                      ),
+                    ],
+                    if (isActive && order.canBeCancelled && order.cancellationStatus != 'REQUESTED') ...[
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
@@ -1692,20 +1699,18 @@ class _OrdersScreenState extends State<OrdersScreen>
       }
 
       if (success) {
-        // Refresh orders after cancellation
+        final pending = _orderService.lastCancellationPending;
+        final message = _orderService.lastCancellationMessage;
+        // The server may have recorded a request without cancelling the order.
         await _loadOrders();
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 8),
-                  Text('تم إلغاء الطلب بنجاح'),
-                ],
-              ),
-              backgroundColor: Colors.green,
+            SnackBar(
+              content: Text(pending
+                  ? (message ?? 'طلب الإلغاء قيد المراجعة؛ يظل الطلب نشطًا حتى تأكيد إلغائه.')
+                  : 'تم إلغاء الطلب بنجاح'),
+              backgroundColor: pending ? AppColors.secondary : Colors.green,
               duration: Duration(seconds: 3),
             ),
           );

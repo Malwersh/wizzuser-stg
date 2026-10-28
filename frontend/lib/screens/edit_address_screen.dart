@@ -1,3 +1,4 @@
+import '../services/iraqi_delivery_details.dart';
 // lib/screens/edit_address_screen.dart
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
   
   // 🔥 النظام الجديد: حقلان فقط
   final _detailedAddressController = TextEditingController(); // العنوان الكامل من Google (للقراءة فقط)
+  final _neighborhoodController = TextEditingController();
   final _landmarkController = TextEditingController(); // الوصف الإجباري (قابل للتعديل)
 
   String _selectedType = AddressType.home;
@@ -46,7 +48,8 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
   void _initializeFields() {
     _nameController.text = widget.address.name;
     _detailedAddressController.text = widget.address.detailedAddress ?? widget.address.fullAddress;
-    _landmarkController.text = widget.address.landmark;
+    _neighborhoodController.text = widget.address.neighborhood=='-'?'':widget.address.neighborhood;
+    _landmarkController.text = IraqiDeliveryDetails.meaningful(widget.address.landmark)?widget.address.landmark:'';
     _selectedType = widget.address.addressType;
     _isDefault = widget.address.isDefault;
   }
@@ -79,6 +82,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
   void dispose() {
     _nameController.dispose();
     _detailedAddressController.dispose();
+    _neighborhoodController.dispose();
     _landmarkController.dispose();
     super.dispose();
   }
@@ -134,17 +138,17 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
                     children: [
                       Checkbox(
                         value: _isDefault,
-                        onChanged: (value) {
+                        onChanged: widget.address.isDefault ? null : (value) {
                           setState(() {
                             _isDefault = value ?? false;
                           });
                         },
                         activeColor: AppColors.primary,
                       ),
-                      const Text(
-                        'جعل هذا العنوان افتراضي',
-                        style: TextStyle(fontSize: 16),
-                      ),
+                      Expanded(child: Text(
+                        widget.address.isDefault ? 'عنوانك الافتراضي — يمكنك تعيين عنوان آخر من عناوينك' : 'جعل هذا العنوان افتراضي',
+                        style: const TextStyle(fontSize: 14),
+                      )),
                     ],
                   ),
                 ],
@@ -161,7 +165,13 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
                     icon: Icons.location_on,
                     isRequired: true,
                     maxLines: 3,
-                    readOnly: true,
+                    readOnly: false,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _neighborhoodController,
+                    label: 'اسم الحي أو المحلة *',
+                    hint: 'اكتب اسم الحي',icon: Icons.location_city,isRequired: true,
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
@@ -435,6 +445,9 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
 
 
   Future<void> _saveChanges() async {
+    if(!IraqiDeliveryDetails.meaningful(_neighborhoodController.text)||!IraqiDeliveryDetails.meaningful(_landmarkController.text)){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('أكمل اسم الحي وأقرب نقطة دالة.')));return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -455,7 +468,7 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
         name: name,
         province: _newLatitude != null ? "-" : widget.address.province,
         district: widget.address.district,
-        neighborhood: widget.address.neighborhood,
+        neighborhood: _neighborhoodController.text.trim(),
         landmark: _landmarkController.text.trim(),
         detailedAddress: _detailedAddressController.text.trim(),
         latitude: _newLatitude ?? widget.address.latitude,

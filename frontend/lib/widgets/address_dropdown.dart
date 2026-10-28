@@ -237,8 +237,8 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
     // إذا لم يكن هناك GPS coordinates، نفترض أنه صحيح
     if (address.latitude == null || address.longitude == null) {
-      print('⚠️ No GPS coordinates for address, skipping region check');
-      return true;
+      _serviceWarningMessage = 'حدد نقطة العنوان على الخريطة للتحقق من التوصيل.';
+      return false;
     }
 
     try {
@@ -274,9 +274,8 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
     } catch (e) {
       print('❌ Error checking region availability: $e');
-      // في حالة الخطأ، نسمح بالمرور لتجنب blocking المستخدم
-      _serviceWarningMessage = null;
-      return true;
+      _serviceWarningMessage = 'تعذر التحقق من تغطية العنوان. أعد المحاولة.';
+      return false;
     }
   }
 
