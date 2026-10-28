@@ -6,6 +6,7 @@ const lib_dynamodb_1 = require("@aws-sdk/lib-dynamodb");
 const client = new client_dynamodb_1.DynamoDBClient({});
 const docClient = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE || 'WhizzMerchants_Products';
+const PLATFORM_TABLE = process.env.MERCHANT_PLATFORM_TABLE || 'staging-MerchantPlatform';
 const GLOBAL_PRODUCTS_TABLE = 'WhizzMerchants_GlobalProducts';
 const LEGACY_CATEGORY_IDS = Object.freeze({
   'fb-main-courses-002': '4d3e103e-a8e7-4361-88ca-11219ed884b5',
@@ -31,8 +32,6 @@ const handler = async (event) => {
             };
         }
         const businessId = event.pathParameters?.businessId;
-        const page = parseInt(event.queryStringParameters?.page || '1');
-        const limit = parseInt(event.queryStringParameters?.limit || '50');
         if (!businessId) {
             return {
                 statusCode: 400,
@@ -45,18 +44,30 @@ const handler = async (event) => {
         }
         console.log(`Fetching products for business: ${businessId}`);
         
-        // Step 1: Query Products table by businessId using GSI
-        const queryCommand = new lib_dynamodb_1.QueryCommand({
+        // Prefer the immutable published menu. Branches not migrated yet keep the
+        // legacy live-table behavior until their first explicit publish.
+        const activeMenu=(await docClient.send(new lib_dynamodb_1.GetCommand({
+            TableName:PLATFORM_TABLE,Key:{pk:`BRANCH#${businessId}`,sk:'MENU_VERSION#ACTIVE'},ConsistentRead:true
+        }))).Item;
+        const publishedVersion=activeMenu?.publishedVersion;
+        const queryInput = publishedVersion ? {
+            TableName:PLATFORM_TABLE,
+            KeyConditionExpression:'pk = :pk AND begins_with(sk, :prefix)',
+            ExpressionAttributeValues:{':pk':`BRANCH#${businessId}`,':prefix':`MENU_VERSION#${publishedVersion}#PRODUCT#`},
+            ConsistentRead:true,
+        } : {
             TableName: PRODUCTS_TABLE,
             IndexName: 'BusinessIdIndex',
             KeyConditionExpression: 'businessId = :businessId',
-            ExpressionAttributeValues: {
-                ':businessId': businessId,
-            },
-        });
-        const productsResult = await docClient.send(queryCommand);
+            ExpressionAttributeValues: { ':businessId': businessId },
+        };
+        const productItems=[];let productCursor;
+        do {
+            const productsResult=await docClient.send(new lib_dynamodb_1.QueryCommand({...queryInput,ExclusiveStartKey:productCursor}));
+            productItems.push(...(productsResult.Items||[]).map(row=>publishedVersion?row.product:row));productCursor=productsResult.LastEvaluatedKey;
+        } while(productCursor);
         
-        if (!productsResult.Items || productsResult.Items.length === 0) {
+        if (productItems.length === 0) {
             console.log(`No products found for business: ${businessId}`);
             return {
                 statusCode: 200,
@@ -70,11 +81,26 @@ const handler = async (event) => {
             };
         }
         
-        console.log(`Found ${productsResult.Items.length} products, fetching global product details...`);
-        
+        console.log(`Found ${productItems.length} products, fetching global product details...`);
+
+        // Published prices/content remain immutable; current availability can only restrict them.
+        const liveProducts = new Map();
+        if (publishedVersion) {
+            const keys = [...new Set(productItems.map(p=>p.productId))].map(productId=>({productId}));
+            for(let offset=0;offset<keys.length;offset+=100){
+                let request={[PRODUCTS_TABLE]:{Keys:keys.slice(offset,offset+100),ConsistentRead:true}};
+                for(let attempt=0;attempt<3;attempt++){
+                    const result=await docClient.send(new lib_dynamodb_1.BatchGetCommand({RequestItems:request}));
+                    for(const row of result.Responses?.[PRODUCTS_TABLE]||[])liveProducts.set(row.productId,row);
+                    request=result.UnprocessedKeys||{};
+                    if(!Object.keys(request).length)break;
+                    if(attempt===2)throw Error('MENU_AVAILABILITY_UNAVAILABLE');
+                }
+            }
+        }
         // Step 2: Extract unique globalProductIds (remove duplicates)
-        const uniqueGlobalProductIds = [...new Set(
-            productsResult.Items
+        const uniqueGlobalProductIds = publishedVersion ? [] : [...new Set(
+            productItems
                 .filter(p => p.globalProductId)
                 .map(p => p.globalProductId)
         )];
@@ -116,7 +142,7 @@ const handler = async (event) => {
         
         // Step 4: Extract unique categoryIds and fetch category names
         const uniqueCategoryIds = [...new Set(
-            productsResult.Items
+            productItems
                 .filter(p => p.categoryId)
                 .map(p => p.categoryId)
         )];
@@ -126,7 +152,9 @@ const handler = async (event) => {
         // Step 5: Batch get Categories (handle up to 100 items)
         let categoriesMap = new Map();
         
-        if (uniqueCategoryIds.length > 0) {
+        if (publishedVersion) {
+            productItems.forEach(product=>{if(product.publishedCategory)categoriesMap.set(product.categoryId,product.publishedCategory);});
+        } else if (uniqueCategoryIds.length > 0) {
             const categoryKeys = [...new Set(uniqueCategoryIds.map(categoryReference))].map(id => ({ categoryId: id }));
             
             // Split into chunks of 100 for BatchGetItem limit
@@ -158,9 +186,12 @@ const handler = async (event) => {
         
         // Step 6: Merge data from all tables (Products + GlobalProducts + Categories)
         // Priority: Use data from Products table first, fallback to GlobalProducts if null/missing
-        const products = productsResult.Items.map(product => {
+        const products = productItems.map(product => {
             const globalProduct = globalProductsMap.get(product.globalProductId) || {};
             const category = categoriesMap.get(categoryReference(product.categoryId)) || {};
+            const live=liveProducts.get(product.productId);
+            const liveAvailable=!publishedVersion||(live?.businessId===businessId&&live.isAvailable===true&&!live.isDeleted&&live.deletedAt==null);
+            const categoryVisible=(!category.businessId||category.businessId===businessId)&&category.isActive!==false&&category.is_active!==false;
             
             return {
                 productId: product.productId,
@@ -172,7 +203,7 @@ const handler = async (event) => {
                 description: product.description || globalProduct.description || '',
                 price: product.price,
                 imageUrl: product.imageUrl || globalProduct.imageUrl || '',
-                is_available: (product.isAvailable !== undefined ? product.isAvailable : true) && !(Array.isArray(product.optionGroups) && product.optionGroups.some(g=>g.required===true && (!Array.isArray(g.options)||!g.options.some(o=>o.isAvailable===true)))),
+                is_available: liveAvailable && categoryVisible && (product.isAvailable !== undefined ? product.isAvailable : true) && !(Array.isArray(product.optionGroups) && product.optionGroups.some(g=>g.required===true && (!Array.isArray(g.options)||!g.options.some(o=>o.isAvailable===true)))),
                 is_featured: product.isFeatured !== undefined ? product.isFeatured : (globalProduct.isFeatured === true),
                 addons: product.optionGroups ?? product.addons ?? [],
                 variations: product.variations || [],
@@ -189,7 +220,9 @@ const handler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 products,
-                count: products.length
+                count: products.length,
+                menuVersion: activeMenu?.menuVersion,
+                publishedVersion
             }),
         };
     }
