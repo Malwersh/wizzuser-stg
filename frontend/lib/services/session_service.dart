@@ -1,3 +1,4 @@
+import 'push_notifications_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -707,6 +708,8 @@ class SessionService extends ChangeNotifier {
 
       // Step 1: Disconnect WebSocket safely
       await _disconnectWebSocket();
+
+      await PushNotificationsService.unregisterSignedOutDevice();
 
       // Step 2: Revoke tokens from Cognito (server-side logout)
       await _revokeServerSideTokens();

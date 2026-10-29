@@ -38,6 +38,7 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   Timer? _heartbeatTimer;
+  bool _authReconnectPending = false;
   Timer? _reconnectTimer;
   Timer? _connectionTimeoutTimer;
   StreamSubscription<SessionState>? _sessionSubscription;
@@ -826,6 +827,20 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
         case 'GUEST_ORDERS_UPDATE':
           debugPrint('WebSocket: 🎭 معالجة تحديث طلبات الضيف');
           _handleGuestOrdersUpdate(data);
+          break;
+        case 'auth_error':
+          if (_authReconnectPending) break;
+          _authReconnectPending = true;
+          final orderIds = _orderStreams.keys.toList();
+          unawaited(() async {
+            try {
+              await disconnect();
+              await Future<void>.delayed(const Duration(seconds: 2));
+              if (SessionService.instance.isLoggedIn && orderIds.isNotEmpty) {
+                await connectForOrder(orderIds.first);
+              }
+            } finally { _authReconnectPending = false; }
+          }());
           break;
         case 'error':
           debugPrint('WebSocket: خطأ من الخادم: ${data['message']}');

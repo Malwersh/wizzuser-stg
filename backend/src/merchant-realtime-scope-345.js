@@ -66,7 +66,9 @@ function guards(scope,includeConnection=true){return [
 function connectionCondition(scope){return {ConditionExpression:'#ms.#sub=:subject AND #ms.#branch=:branch AND #ms.#expires>:now',ExpressionAttributeNames:{'#ms':'merchantScope345','#sub':'subjectId','#branch':'businessId','#expires':'expiresAt'},ExpressionAttributeValues:{':subject':scope.subjectId,':branch':scope.businessId,':now':Math.floor(Date.now()/1000)}};}
 function scopedClient(raw){return {send:async command=>{
  const scope=context.getStore(),name=command.constructor.name;if(!scope||!['PutCommand','UpdateCommand','DeleteCommand','TransactWriteCommand','BatchWriteCommand'].includes(name))return raw.send(command);
- const items=name==='TransactWriteCommand'?structuredClone(command.input.TransactItems):name==='BatchWriteCommand'?Object.entries(command.input.RequestItems).flatMap(([TableName,requests])=>requests.map(r=>r.PutRequest?{Put:{TableName,Item:structuredClone(r.PutRequest.Item)}}:{Delete:{TableName,Key:structuredClone(r.DeleteRequest.Key)}})):[{[name.slice(0,-7)]:structuredClone(command.input)}];let connectionWrite=false;
+ let items=name==='TransactWriteCommand'?structuredClone(command.input.TransactItems):name==='BatchWriteCommand'?Object.entries(command.input.RequestItems).flatMap(([TableName,requests])=>requests.map(r=>r.PutRequest?{Put:{TableName,Item:structuredClone(r.PutRequest.Item)}}:{Delete:{TableName,Key:structuredClone(r.DeleteRequest.Key)}})):[{[name.slice(0,-7)]:structuredClone(command.input)}];let connectionWrite=false;
+ // Replace only legacy guards for this same identity/branch with canonical guards.
+ items=items.filter(i=>{const c=i.ConditionCheck;if(!c)return true;return !((c.TableName===D&&guards(scope,false).some(g=>g.ConditionCheck.TableName===D&&g.ConditionCheck.Key.pk===c.Key.pk))||(c.TableName===B&&c.Key.businessId===scope.businessId)||(c.TableName===C()&&c.Key.connectionId===scope.connectionId));});
  for(const item of items){const op=item.Put||item.Update||item.Delete;if(!op)fail('INVALID_REALTIME_WRITE');delete op.ReturnValues;if(![C(),S()].includes(op.TableName))fail('INVALID_REALTIME_WRITE');const value=item.Put?.Item||op.Key;
   if(op.TableName===C()){
    if(connectionWrite||value.connectionId!==scope.connectionId)fail('CONNECTION_SCOPE_REQUIRED');connectionWrite=true;
@@ -76,6 +78,6 @@ function scopedClient(raw){return {send:async command=>{
   }else if(item.Put){if(value.connectionId!==scope.connectionId)fail('CONNECTION_SCOPE_REQUIRED');const branch=branchIds(value);if(branch&&branch!==scope.businessId)fail('BRANCH_SCOPE_CONFLICT');item.Put.Item.ttl=Math.min(value.ttl||scope.expiresAt,scope.expiresAt);if(typeof value.expiresAt==='number')item.Put.Item.expiresAt=Math.min(value.expiresAt,scope.expiresAt*1000);}
   else if(typeof value.subscriptionId!=='string'||!value.subscriptionId.startsWith(scope.connectionId+'_'))fail('SUBSCRIPTION_SCOPE_REQUIRED');
  }
- return raw.send(new TransactWriteCommand({TransactItems:[...guards(scope,scope.mode!=='connect'&&!connectionWrite),...items]}));
+ return raw.send(new TransactWriteCommand({TransactItems:[...guards(scope,!connectionWrite),...items]}));
 }};}
 module.exports={guardConnect,guardDefault,scopedClient,currentScope:()=>context.getStore(),verifyToken,branchIds};

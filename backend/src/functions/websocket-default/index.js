@@ -1488,3 +1488,5 @@ case 'driverOnline':
   }
 };
 exports.handler = require('../../merchant-realtime-scope-345').guardDefault(exports.handler);
+
+exports.handler=require('../../realtime-identity-scope-346').guardDefault(exports.handler);

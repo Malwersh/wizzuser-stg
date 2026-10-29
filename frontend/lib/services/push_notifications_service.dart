@@ -190,6 +190,21 @@ class PushNotificationsService {
     return null;
   }
 
+  static Future<void> unregisterSignedOutDevice() async {
+    final token = _lastKnownFcmToken;
+    final jwt = await _getJwt();
+    _lastKnownFcmToken = null;
+    try {
+      if (token != null && jwt != null) {
+        await http.post(Uri.parse('${ApiConfig.centralPushApiBaseUrl}/push/tokens/unregister'),
+          headers: {'Authorization': 'Bearer $jwt', 'Content-Type': 'application/json'},
+          body: jsonEncode({'token': token, 'app': 'user'}))
+          .timeout(const Duration(seconds: 10));
+      }
+    } catch (_) { debugPrint('Device unregistration unavailable'); }
+    try { await FirebaseMessaging.instance.deleteToken(); } catch (_) {}
+  }
+
   static Future<void> _registerToken(String token) async {
     await NotificationInboxService.bindCurrentAccount();
     final jwt = await _getJwt();

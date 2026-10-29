@@ -22,7 +22,7 @@ class UniversalWebSocketManager {
         this.dynamoClient = new DynamoDBClient({
             region: process.env.AWS_REGION || 'us-east-1'
         });
-        this.dynamoDB = DynamoDBDocumentClient.from(this.dynamoClient);
+        this.dynamoDB = require('./realtime-identity-scope-346').scopedClient(require('./merchant-realtime-scope-345').scopedClient(DynamoDBDocumentClient.from(this.dynamoClient)));
         this.connectionsTable =
             process.env.WEBSOCKET_CONNECTIONS_TABLE ||
             process.env.WIZZUSER_CONNECTIONS_TABLE ||
@@ -182,7 +182,7 @@ class UniversalWebSocketManager {
     async handleConnect(connectionId, event) {
         try {
             // 🔍 DEBUG: سجل كل شيء من event
-            console.log(`🔍 [DEBUG] Full event object:`, JSON.stringify(event, null, 2));
+            console.log('WebSocket connect received', {connectionId});
             
             const queryParams = event.queryStringParameters || {};
             const headers = event.headers || {};
@@ -447,7 +447,7 @@ class UniversalWebSocketManager {
 
 
             // البحث عن اتصالات موجودة لنفس المستخدم
-            if (!require('./merchant-realtime-scope-345').currentScope()) await this.disconnectExistingConnections(finalUserId, finalEntityType, connectionId);
+            if (!require('./merchant-realtime-scope-345').currentScope() && !require('./realtime-identity-scope-346').currentScope()) await this.disconnectExistingConnections(finalUserId, finalEntityType, connectionId);
 
             // إنشاء سجل الاتصال الجديد
             const connectionData = await this.createConnectionRecord(
@@ -480,7 +480,7 @@ class UniversalWebSocketManager {
             await this.cleanupOldSubscriptions(connectionId);
             
             // إنشاء الاشتراكات الافتراضية (Default Subscriptions)
-            await this.createDefaultSubscriptions(
+            if (require('./realtime-identity-scope-346').currentScope()?.role !== 'GUEST') await this.createDefaultSubscriptions(
                 connectionId,
                 finalUserId,
                 connectionData.role || connectionData.userType || finalEntityType,
