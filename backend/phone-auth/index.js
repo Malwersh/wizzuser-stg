@@ -9,7 +9,8 @@ const {attributes,eligible,belongs,publicProfile}=require('./profile-policy');
 const {lifecycleFence}=require('./lifecycle-fence');
 const db=DynamoDBDocumentClient.from(new DynamoDBClient({})),c=new CognitoIdentityProviderClient({}),secrets=new SecretsManagerClient({});
 const table=process.env.OTP_TABLE,pool=process.env.USER_POOL_ID,usersTable=process.env.USERS_TABLE;
-const validEnrollment=body=>typeof body.name==='string' && body.name.trim().length>=2 && body.name.trim().length<=80 && !/[\u0000-\u001f]/.test(body.name) && body.termsAccepted===true && body.privacyAccepted===true;
+const legalDocuments=require('./customer-legal-contract-344');
+const validEnrollment=body=>typeof body.name==='string' && body.name.trim().length>=2 && body.name.trim().length<=80 && !/[\u0000-\u001f]/.test(body.name) && body.termsAccepted===true && body.privacyAccepted===true && body.usageAccepted===true;
 const now=()=>Math.floor(Date.now()/1000);const reply=(statusCode,body)=>({statusCode,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify(body)});
 async function config(){const r=await secrets.send(new GetSecretValueCommand({SecretId:process.env.OTP_SECRET_ARN}));const v=JSON.parse(r.SecretString);if(!v.apiKey||!v.hmacKey)throw Error('Configuration');return v;}
 async function findUser(phone){const r=await c.send(new ListUsersCommand({UserPoolId:pool,Filter:`phone_number = "${phone}"`,Limit:2}));if(r.PaginationToken||r.Users.length>1)throw Error('RecoveryRequired');return r.Users[0];}
@@ -56,8 +57,14 @@ async function verify(phone,body,key){
   if(!eligible(user))throw Error('RecoveryRequired');
   try{profile=await profileFor(user,phone);}catch(e){if(e.message!=='RecoveryRequired'||p?.username!==user.Username||p?.sub!==attributes(user).sub)throw e;}
  }else if(!validEnrollment(body)){return reply(200,{needsName:true});}
+ let legalConsent=null;
+ if(!profile){
+  if(!validEnrollment(body))return reply(200,{needsName:true});
+  if(!body.legalAcceptance)throw Object.assign(Error('LEGAL_ACCEPTANCE_REQUIRED'),{statusCode:409});
+  legalConsent=await legalDocuments.consent(db,GetCommand,process.env.LEGAL_SETTINGS_TABLE,body.legalAcceptance);
+ }
  // Consume current OTP atomically before any account creation or authentication.
- await db.send(new TransactWriteCommand({TransactItems:[{ConditionCheck:{TableName:table,Key:{id:`ACTIVE#${phone}`},ConditionExpression:'sessionId = :id',ExpressionAttributeValues:{':id':r.id}}},{Update:{TableName:table,Key:{id:r.id},UpdateExpression:'SET used = :yes ADD attempts :one',ConditionExpression:'used = :no AND attempts < :max AND expiresAt > :now',ExpressionAttributeValues:{':yes':true,':no':false,':max':5,':now':time,':one':1}}}]}));
+ await db.send(new TransactWriteCommand({TransactItems:[...(legalConsent?[legalConsent.condition]:[]),{ConditionCheck:{TableName:table,Key:{id:`ACTIVE#${phone}`},ConditionExpression:'sessionId = :id',ExpressionAttributeValues:{':id':r.id}}},{Update:{TableName:table,Key:{id:r.id},UpdateExpression:'SET used = :yes ADD attempts :one',ConditionExpression:'used = :no AND attempts < :max AND expiresAt > :now',ExpressionAttributeValues:{':yes':true,':no':false,':max':5,':now':time,':one':1}}}]}));
  if(!user){user=await provision(phone,body);if(!user)return reply(400,{message:'الاسم والموافقة على الشروط مطلوبان'});}
  const a=attributes(user),timestamp=new Date().toISOString();
  const fence=lifecycleFence(process.env.DELETION_TABLE,a.sub);
@@ -65,7 +72,7 @@ async function verify(phone,body,key){
  if(lifecycle.Item)throw Error('AccountClosing');
  if(!profile){
   const {Item:p}=await db.send(new GetCommand({TableName:table,Key:{id:`PROVISION#${phone}`},ConsistentRead:true}));if(p?.username!==user.Username||p?.sub!==a.sub)throw Error('RecoveryRequired');
-  profile={userId:a.sub,cognitoSub:a.sub,cognitoUsername:user.Username,name:p.name,phone,phoneVerified:true,registrationMethod:'phone-otp',isActive:true,termsAccepted:true,privacyAccepted:true,preferredLanguage:'ar',createdAt:p.createdAt||timestamp,updatedAt:timestamp};
+  profile={userId:a.sub,cognitoSub:a.sub,cognitoUsername:user.Username,name:p.name,phone,phoneVerified:true,registrationMethod:'phone-otp',isActive:true,termsAccepted:true,privacyAccepted:true,usageAccepted:true,legalAcceptance:{schemaVersion:1,subjectId:a.sub,acceptedAt:timestamp,...legalDocuments.pin(legalConsent.bundle),documentSnapshot:legalConsent.bundle},preferredLanguage:'ar',createdAt:p.createdAt||timestamp,updatedAt:timestamp};
   await db.send(new TransactWriteCommand({TransactItems:[fence,{Put:{TableName:usersTable,Item:profile,ConditionExpression:'attribute_not_exists(userId)'}}]}));
  }
  if(profile.isActive===false)throw Error('RecoveryRequired');
@@ -82,4 +89,4 @@ async function verify(phone,body,key){
  if(!auth.AuthenticationResult?.AccessToken||!auth.AuthenticationResult?.RefreshToken)throw Error('AuthenticationFailed');
  const result=auth.AuthenticationResult;return reply(200,{user:publicProfile(profile),accessToken:result.AccessToken,idToken:result.IdToken,refreshToken:result.RefreshToken});
 }
-exports.handler=async e=>{try{if(process.env.ENVIRONMENT!=='staging')throw Error('Environment');const body=JSON.parse(e.body||'{}'),phone=normalizeIraqiPhone(body.phone),key=await config();if(e.path.endsWith('/send'))return await send(phone,e,key);if(e.path.endsWith('/verify'))return await verify(phone,body,key);return reply(404,{message:'غير موجود'});}catch(x){if(x.message==='AccountClosing')return reply(409,{code:'ACCOUNT_CLOSING',message:'هذا الحساب قيد الحذف ولا يمكن تسجيل الدخول إليه'});if(x.message==='RecoveryRequired')return reply(409,{code:'PHONE_LINK_REQUIRED',message:'هذا الحساب يحتاج ربط الهاتف بأمان. سجّل الدخول بالبريد ثم وثّق رقمك'});if(['TransactionCanceledException','ConditionalCheckFailedException','TooManyRequestsException'].includes(x.name))return reply(429,{message:'انتظر قليلًا قبل إعادة المحاولة'});if(x instanceof SyntaxError||x.message?.includes('Only Iraqi')||x instanceof TypeError)return reply(400,{message:'أدخل رقم هاتف عراقي صحيح'});console.error('Customer phone auth failed',{name:x.name,kind:x.message==='AuthenticationFailed'?'authentication':'service'});return reply(503,{message:'تعذر إكمال العملية؛ اطلب رمزًا جديدًا وحاول مرة أخرى'});}};
+exports.handler=async e=>{try{if(process.env.ENVIRONMENT!=='staging')throw Error('Environment');if(e.httpMethod==='GET'&&e.path==='/legal')return reply(200,{bundle:await legalDocuments.published(db,GetCommand,process.env.LEGAL_SETTINGS_TABLE,e.queryStringParameters?.audience??'CUSTOMER')});const body=JSON.parse(e.body||'{}'),phone=normalizeIraqiPhone(body.phone),key=await config();if(e.path.endsWith('/send'))return await send(phone,e,key);if(e.path.endsWith('/verify'))return await verify(phone,body,key);return reply(404,{message:'غير موجود'});}catch(x){if(['LEGAL_VERSION_CHANGED','LEGAL_ACCEPTANCE_REQUIRED'].includes(x.message))return reply(409,{code:x.message,message:'تحدّثت السياسات؛ راجع النص المنشور ووافق عليه قبل إكمال التسجيل'});if(x.message==='LEGAL_DOCUMENTS_UNAVAILABLE')return reply(503,{code:x.message,message:'تعذر تحميل السياسات المنشورة. أعد المحاولة لاحقًا'});if(x.message==='AccountClosing')return reply(409,{code:'ACCOUNT_CLOSING',message:'هذا الحساب قيد الحذف ولا يمكن تسجيل الدخول إليه'});if(x.message==='RecoveryRequired')return reply(409,{code:'PHONE_LINK_REQUIRED',message:'هذا الحساب يحتاج ربط الهاتف بأمان. سجّل الدخول بالبريد ثم وثّق رقمك'});if(['TransactionCanceledException','ConditionalCheckFailedException','TooManyRequestsException'].includes(x.name))return reply(429,{message:'انتظر قليلًا قبل إعادة المحاولة'});if(x instanceof SyntaxError||x.message?.includes('Only Iraqi')||x instanceof TypeError)return reply(400,{message:'أدخل رقم هاتف عراقي صحيح'});console.error('Customer phone auth failed',{name:x.name,kind:x.message==='AuthenticationFailed'?'authentication':'service'});return reply(503,{message:'تعذر إكمال العملية؛ اطلب رمزًا جديدًا وحاول مرة أخرى'});}};

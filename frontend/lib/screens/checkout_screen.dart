@@ -1,4 +1,3 @@
-import 'customer_order_policy_screen.dart';
 import 'customer_phone_auth_screen.dart';
 import '../models/cart_model.dart';
 import '../models/browsing_location.dart';
@@ -1594,27 +1593,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               const SizedBox(height: 20),
                               _checkoutGroupLabel('مراجعة المبلغ'),
                               if (_quotesEnabled) _buildQuoteStatus(appState),
-                              TextButton.icon(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.secondaryDark,
-                                ),
-                                onPressed:
-                                    () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder:
-                                            (_) =>
-                                                const CustomerOrderPolicyScreen(),
-                                      ),
-                                    ),
-                                icon: const Icon(
-                                  Icons.policy_outlined,
-                                  size: 20,
-                                ),
-                                label: const Text(
-                                  'سياسة الطلب والإلغاء والإرجاع',
-                                ),
-                              ),
                               _buildPriceSummary(appState),
                               const SizedBox(height: 24),
                             ],

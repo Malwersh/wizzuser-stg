@@ -1,3 +1,4 @@
+import 'customer_legal_screen.dart';
 import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -421,6 +422,19 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             icon: Icons.public,
             title: 'الدولة والمنطقة',
             onTap: () => _navigateToCountrySettings(),
+          ),
+
+          _buildDivider(),
+          _buildMenuItem(
+            icon: Icons.policy_outlined,
+            title: 'السياسات والشروط',
+            onTap:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CustomerLegalScreen(),
+                  ),
+                ),
           ),
 
           if (isLoggedIn) ...[

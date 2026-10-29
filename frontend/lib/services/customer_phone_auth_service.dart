@@ -1,3 +1,4 @@
+import '../models/customer_legal_bundle.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'session_service.dart';
@@ -11,12 +12,16 @@ class CustomerPhoneAuthException implements Exception {
 }
 
 class CustomerPhoneAuthService {
+  final http.Client _client;
+  CustomerPhoneAuthService({http.Client? client})
+    : _client = client ?? http.Client();
   static const baseUrl = String.fromEnvironment(
     'PHONE_AUTH_API_URL',
     defaultValue:
         'https://f44z33oz55.execute-api.us-east-1.amazonaws.com/staging',
   );
   String? _sessionId, _phone;
+  CustomerLegalBundle? enrollmentPolicy;
   static String normalizePhone(String input) {
     var p = input
         .trim()
@@ -44,7 +49,7 @@ class CustomerPhoneAuthService {
   ) async {
     if (baseUrl.isEmpty)
       throw const CustomerPhoneAuthException('خدمة الدخول غير مهيأة');
-    final response = await http
+    final response = await _client
         .post(
           Uri.parse('$baseUrl/auth/phone/$path'),
           headers: {'Content-Type': 'application/json'},
@@ -87,6 +92,9 @@ class CustomerPhoneAuthService {
       'name': name,
       'termsAccepted': accepted,
       'privacyAccepted': accepted,
+      'usageAccepted': accepted,
+      if (accepted && enrollmentPolicy != null)
+        'legalAcceptance': enrollmentPolicy!.pin,
     });
     if (r['needsName'] == true) return false;
     await SessionService.instance.saveUserSession(

@@ -55,6 +55,7 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: staging
+          LEGAL_SETTINGS_TABLE: staging-PlatformStaff
           USER_POOL_ID: us-east-1_TpyyrVkEE
           CLIENT_ID: 4a9e8o3em311eq2rgckp0pd2s9
           USERS_TABLE: WizzUser_users_staging
@@ -63,6 +64,13 @@ Resources:
           OTP_TABLE: !Ref Sessions
           OTP_SECRET_ARN: arn:aws:secretsmanager:us-east-1:699561669180:secret:wizz/staging/otpiq-SB1iGZ
       Policies:
+        - Statement:
+            Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+            Condition:
+              ForAllValues:StringEquals:
+                dynamodb:LeadingKeys: ["OPERATIONAL_SETTINGS#CUSTOMER_LEGAL", "OPERATIONAL_SETTINGS#DRIVER_LEGAL", "OPERATIONAL_SETTINGS#MERCHANT_LEGAL"]
         - DynamoDBCrudPolicy: {TableName: !Ref Sessions}
         - Statement:
             Effect: Allow
@@ -87,6 +95,9 @@ Resources:
               - arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging/index/*
               - arn:aws:dynamodb:us-east-1:699561669180:table/staging-Wallets
       Events:
+        LegalDocuments:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /legal, Method: GET}
         Send:
           Type: Api
           Properties: {RestApiId: !Ref Api, Path: /auth/phone/send, Method: POST}

@@ -1,4 +1,3 @@
-import '../models/customer_order_policy.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -8,19 +7,6 @@ import '../config/api_config.dart';
 import 'scoped_checkout_attempt.dart';
 import 'offer_checkout_failures.dart';
 
-bool sameCommercialReview(Map a, Map b) =>
-    (a['customerPolicy'] as Map?)?['digest'] ==
-        (b['customerPolicy'] as Map?)?['digest'] &&
-    [
-      'goodsGross',
-      'discount',
-      'serviceFee',
-      'deliveryFee',
-      'driverTip',
-      'customerTotal',
-    ].every(
-      (k) => (a[k] as Map?)?['minorAmount'] == (b[k] as Map?)?['minorAmount'],
-    );
 void validateCommercialCheckoutAmounts(Map proposal, int quotedFeeMinor) {
   final agreement = proposal['schemaVersion'] == 3;
   final funded = agreement || proposal['schemaVersion'] == 2;
@@ -575,6 +561,18 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
             saved['deliveryFee'] = quote!.fee;
           }
 
+          bool sameAmounts(Map a, Map b) => [
+            'goodsGross',
+            'discount',
+            'serviceFee',
+            'deliveryFee',
+            'driverTip',
+            'customerTotal',
+          ].every(
+            (k) =>
+                (a[k] as Map?)?['minorAmount'] ==
+                (b[k] as Map?)?['minorAmount'],
+          );
           for (var round = 0; round < 3; round++) {
             final usePrepared =
                 round == 0 &&
@@ -589,9 +587,6 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                         'commercial': reusablePreview,
                       }),
                       200,
-                      headers: {
-                        'content-type': 'application/json; charset=utf-8',
-                      },
                     )
                     : await client
                         .post(
@@ -628,7 +623,6 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
             }
             if (data is Map &&
                 [
-                  'CUSTOMER_POLICY_CHANGED',
                   'QUOTE_EXPIRED',
                   'COMMERCIAL_QUOTE_EXPIRED',
                 ].contains(data['code']) &&
@@ -700,14 +694,10 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
               );
             }
             validateCommercialCheckoutAmounts(proposal, quote!.feeMinor);
-            final customerPolicy =
-                proposal['customerPolicy'] == null
-                    ? null
-                    : CustomerOrderPolicy.parse(proposal['customerPolicy']);
             final currentProposal = Map<String, dynamic>.from(proposal);
             final accepted =
                 approvedProposal != null &&
-                        sameCommercialReview(approvedProposal, currentProposal)
+                        sameAmounts(approvedProposal, currentProposal)
                     ? true
                     : await approveCommercial(currentProposal);
             _check(owner, generation);
@@ -723,10 +713,6 @@ class DeliveryQuoteCheckout extends ChangeNotifier {
                 'تعذر مراجعة إجمالي الطلب؛ تحقق من الاتصال وأعد المحاولة',
               );
             }
-            if (customerPolicy != null)
-              saved['customerPolicyAcknowledgement'] = customerPolicy.pin;
-            else
-              saved.remove('customerPolicyAcknowledgement');
             saved['commercialConsent'] = {
               'digest': proposal['digest'],
               'customerTotalMinor': proposal['customerTotal']['minorAmount'],

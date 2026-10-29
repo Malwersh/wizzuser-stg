@@ -1,3 +1,4 @@
+import 'customer_legal_344_test.dart' show ReadyLegal;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:foodapp_user/screens/customer_phone_auth_screen.dart';
@@ -73,7 +74,12 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = FakePhoneAuth();
       await tester.pumpWidget(
-        MaterialApp(home: CustomerPhoneAuthScreen(service: api)),
+        MaterialApp(
+          home: CustomerPhoneAuthScreen(
+            service: api,
+            legalService: ReadyLegal(),
+          ),
+        ),
       );
       await tester.enterText(find.byType(TextField).first, '07831367435');
       await tester.tap(find.text('إرسال رمز التحقق'));

@@ -9,8 +9,9 @@ import '../services/guest_cache_service.dart';
 import 'email_login_screen.dart';
 import 'home_screen.dart';
 import 'address_gate_screen.dart';
-import 'terms_conditions_screen.dart';
-import 'privacy_policy_screen.dart';
+import 'customer_legal_screen.dart';
+import '../models/customer_legal_bundle.dart';
+import '../services/customer_legal_service.dart';
 import 'delete_account_screen.dart';
 import '../services/account_deletion_service.dart';
 
@@ -18,11 +19,13 @@ class CustomerPhoneAuthScreen extends StatefulWidget {
   final bool registration;
   final bool returnToCaller;
   final CustomerPhoneAuthService? service;
+  final CustomerLegalService? legalService;
   const CustomerPhoneAuthScreen({
     super.key,
     this.registration = false,
     this.returnToCaller = false,
     this.service,
+    this.legalService,
   });
   @override
   State<CustomerPhoneAuthScreen> createState() =>
@@ -38,13 +41,43 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
   int remaining = 0;
   String? error;
   Timer? timer;
+  CustomerLegalBundle? _legalBundle;
+  bool _legalBusy = false;
+  String? _legalError;
   late final Future<bool> _savedDeletionReceipt;
   @override
   void initState() {
     super.initState();
     api = widget.service ?? CustomerPhoneAuthService();
     needsName = widget.registration;
+    if (needsName) unawaited(_loadLegal());
     _savedDeletionReceipt = AccountDeletionService.hasSavedReceipt();
+  }
+
+  Future<void> _loadLegal() async {
+    if (_legalBusy) return;
+    setState(() {
+      _legalBusy = true;
+      _legalError = null;
+      accepted = false;
+      _legalBundle = null;
+      api.enrollmentPolicy = null;
+    });
+    try {
+      final bundle = await (widget.legalService ??
+              CustomerLegalService.instance)
+          .load(refresh: true);
+      if (mounted) setState(() => _legalBundle = bundle);
+    } catch (_) {
+      if (mounted)
+        setState(
+          () =>
+              _legalError =
+                  'تعذر تحميل السياسات المنشورة. أعد المحاولة قبل إكمال التسجيل.',
+        );
+    } finally {
+      if (mounted) setState(() => _legalBusy = false);
+    }
   }
 
   @override
@@ -132,6 +165,11 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
       setState(() => error = 'أدخل اسمك ووافق على الشروط وسياسة الخصوصية');
       return;
     }
+    if (needsName && _legalBundle == null) {
+      setState(() => error = 'حمّل السياسات المنشورة وراجعها قبل الموافقة.');
+      return;
+    }
+    api.enrollmentPolicy = needsName ? _legalBundle : null;
     FocusScope.of(context).unfocus();
     setState(() {
       busy = true;
@@ -146,10 +184,21 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
       if (!mounted) return;
       if (!done) {
         setState(() => needsName = true);
+        unawaited(_loadLegal());
         return;
       }
       await _finish();
     } catch (e) {
+      if (mounted &&
+          e is CustomerPhoneAuthException &&
+          [
+            'LEGAL_VERSION_CHANGED',
+            'LEGAL_ACCEPTANCE_REQUIRED',
+          ].contains(e.code)) {
+        setState(() => needsName = true);
+        unawaited(_loadLegal());
+      }
+
       if (mounted) {
         setState(
           () =>
@@ -251,37 +300,72 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
                   ),
                 ),
               ),
+              if (_legalBusy)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: LinearProgressIndicator(
+                    color: AppColors.secondaryDark,
+                  ),
+                ),
+              if (_legalError != null)
+                Column(
+                  children: [
+                    Text(
+                      _legalError!,
+                      style: const TextStyle(color: AppColors.secondaryDark),
+                    ),
+                    TextButton(
+                      onPressed: _loadLegal,
+                      child: const Text(
+                        'إعادة تحميل السياسات',
+                        style: TextStyle(color: AppColors.secondaryDark),
+                      ),
+                    ),
+                  ],
+                ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: accepted,
+                activeColor: AppColors.secondaryDark,
                 onChanged:
-                    busy ? null : (v) => setState(() => accepted = v ?? false),
-                title: const Text('أوافق على الشروط وسياسة الخصوصية'),
-              ),
-              Wrap(
-                children: [
-                  TextButton(
-                    onPressed:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const TermsConditionsScreen(),
-                          ),
-                        ),
-                    child: const Text('الشروط والأحكام'),
+                    busy || _legalBundle == null
+                        ? null
+                        : (v) => setState(() => accepted = v ?? false),
+                title: const Text(
+                  'أوافق على سياسة الاستخدام والشروط والأحكام، وأقر باطلاعي على سياسة الخصوصية وسياسة الإلغاء والإرجاع.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.6,
+                    color: AppColors.secondaryDark,
                   ),
-                  TextButton(
-                    onPressed:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const PrivacyPolicyScreen(),
-                          ),
-                        ),
-                    child: const Text('سياسة الخصوصية'),
-                  ),
-                ],
+                ),
               ),
+              if (_legalBundle != null)
+                Wrap(
+                  children: [
+                    for (final doc in _legalBundle!.documents)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.secondaryDark,
+                        ),
+                        onPressed:
+                            () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (_) => CustomerLegalScreen(
+                                      documentId: doc['id'],
+                                      bundle: _legalBundle,
+                                    ),
+                              ),
+                            ),
+                        child: Text(
+                          doc['title'],
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                  ],
+                ),
             ],
             if (error != null)
               Padding(
