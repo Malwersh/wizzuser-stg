@@ -168,4 +168,51 @@ void main() {
       api.dispose();
     },
   );
+  test(
+    'server and stock failures never masquerade as an internet failure',
+    () async {
+      for (final sample in [
+        [503, 'COMMERCIAL_SOURCE_UNAVAILABLE'],
+        [409, 'INSUFFICIENT_STOCK'],
+        [401, 'AUTH_REQUIRED'],
+      ]) {
+        final api = PointInvoice321(
+          owner: () => 'owner',
+          token: () async => 't',
+          now: () => now,
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({'success': false, 'code': sample[1]}),
+              sample[0] as int,
+            ),
+          ),
+        );
+        await api.ensure(request());
+        expect(api.peek(request()), isNull);
+        expect(api.error(request()), isNot(contains('الإنترنت')));
+        if (sample[1] == 'INSUFFICIENT_STOCK')
+          expect(api.error(request()), contains('الكمية'));
+        if (sample[0] == 401)
+          expect(api.error(request()), contains('تسجيل الدخول'));
+        api.dispose();
+      }
+    },
+  );
+  test(
+    'an actual client connection failure has a distinct retry message',
+    () async {
+      final api = PointInvoice321(
+        owner: () => 'owner',
+        token: () async => 't',
+        now: () => now,
+        client: MockClient(
+          (_) async => throw http.ClientException('synthetic network loss'),
+        ),
+      );
+      await api.ensure(request());
+      expect(api.peek(request()), isNull);
+      expect(api.error(request()), contains('الإنترنت'));
+      api.dispose();
+    },
+  );
 }

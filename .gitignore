@@ -29,3 +29,6 @@ backend/src/functions/delivery-quotes/runtime.js
 # Python deployment-script caches
 __pycache__/
 *.pyc
+
+# Private local Lambda capture and diagnostic artifacts
+/backend/.tmp/

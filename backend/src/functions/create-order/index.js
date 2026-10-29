@@ -1268,5 +1268,5 @@ exports.handler=async event=>{
  if(body?.action==='preview_commercial')return handleOrder321(event,require('./point-invoice-321').readOnlyInvoiceDb323(baseDynamoDb));
  if(body?.action!=='preview_commercial_point')return handleOrder321(event);
  try{return await require('./point-invoice-321').prepare321({event,body,base:baseDynamoDb,run:handleOrder321,runtime:require('./point-invoice-runtime-321')});}
- catch(e){console.warn('POINT_INVOICE_UNAVAILABLE',{code:e.code||e.name});return{statusCode:e.statusCode||503,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'},body:JSON.stringify({success:false,code:e.code||'POINT_INVOICE_UNAVAILABLE'})};}
+ catch(e){console.warn('POINT_INVOICE_UNAVAILABLE',{code:e.code||e.name,reason:typeof e.message==='string'&&/^[A-Z0-9_]{3,100}$/.test(e.message)?e.message:'UNCLASSIFIED',frames:String(e.stack||'').match(/\/var\/task\/[A-Za-z0-9_./-]+:\d+:\d+/g)?.slice(0,4)||[]});return{statusCode:e.statusCode||503,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'},body:JSON.stringify({success:false,code:e.code||'POINT_INVOICE_UNAVAILABLE'})};}
 };

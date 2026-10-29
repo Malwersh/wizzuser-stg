@@ -37,7 +37,18 @@ function pointView321(base,{address,userId}){
   return base.send(c);
  }}};
 }
+// Recreate commands using the host client's SDK. Independently bundled SDK
+// middleware stacks are not interchangeable even when command names match.
+function pointRuntimeDb348(base,commands=require('@aws-sdk/lib-dynamodb')){
+ return {async send(command){
+  const name=command?.constructor?.name?.replace(/\d+$/,''),input=command?.input;
+  if(!['GetCommand','QueryCommand','ScanCommand','BatchGetCommand','TransactWriteCommand'].includes(name)||typeof commands[name]!=='function')fail('POINT_PREVIEW_WRITE_FORBIDDEN');
+  if(name==='TransactWriteCommand'&&(!Array.isArray(input?.TransactItems)||input.TransactItems.length===0||input.TransactItems.some(o=>Object.keys(o).length!==1||!o.ConditionCheck)))fail('POINT_PREVIEW_WRITE_FORBIDDEN');
+  return base.send(command instanceof commands[name]?command:new commands[name](input));
+ }};
+}
 async function prepare321({event,body,base,run,env=process.env,runtime}){
+ base=pointRuntimeDb348(base);
  if(event.resource!=='/orders/commercial-preview'||body.action!=='preview_commercial_point'||body.commercialConsent!==undefined||body.quoteId!==undefined||body.deliveryAddress!==undefined)fail('INVALID_POINT_INVOICE');
  if(env.POINT_INVOICE_ENABLED!=='true'||env.ENVIRONMENT!=='staging'||env.USERS_TABLE!=='WizzUser_users_staging'||env.AWS_REGION!=='us-east-1')fail('POINT_INVOICE_NOT_CONFIGURED');
  const p=body.pricingPoint;
@@ -74,4 +85,4 @@ function readOnlyInvoiceDb323(base){return{async send(c){
  if(name==='TransactWriteCommand'&&Array.isArray(c.input.TransactItems)&&c.input.TransactItems.length>0&&c.input.TransactItems.every(o=>Object.keys(o).length===1&&o.ConditionCheck))return base.send(c);
  fail('INVOICE_PREVIEW_WRITE_FORBIDDEN');
 }};}
-module.exports={pointView321,prepare321,readOnlyInvoiceDb323};
+module.exports={pointRuntimeDb348,pointView321,prepare321,readOnlyInvoiceDb323};

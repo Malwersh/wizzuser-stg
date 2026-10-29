@@ -72,3 +72,17 @@ test('full real point invoice prices an active customer basket without written a
  const response=await prepare321({event:{httpMethod:'POST',resource:'/orders/commercial-preview',headers:{Authorization:'Bearer '+f.token}},body:{...body,action:'preview_commercial_point',pricingPoint:{latitude:31.93,longitude:44.46}},base:f.adapterDb,run:f.runReadOnlyTest,runtime,env:{...f.env,POINT_INVOICE_ENABLED:'true',ENVIRONMENT:'staging'}});
  assert.equal(response.statusCode,200,response.body);const p=JSON.parse(response.body).pointInvoice;assert.equal(p.customerTotal.minorAmount,7000000);assert.equal(p.serviceFee.minorAmount,500000);assert.equal(p.quoteId,undefined);assert.equal(f.saved.size,savedBefore);assert.equal(f.orders.size,1);assert.equal(f.commercialRecords.size,recordsBefore);assert(f.transactions.slice(txBefore).every(t=>t.TransactItems.every(o=>o.ConditionCheck)));
 });
+
+test('bundled SDK commands are normalized to the host SDK before profile reads and read-only transactions',async()=>{
+ const {pointRuntimeDb348}=require('../src/functions/create-order/point-invoice-321');
+ const HostGet=class GetCommand{constructor(input){this.input=input;}},HostTx=class TransactWriteCommand{constructor(input){this.input=input;}};
+ const ForeignGet=class GetCommand{constructor(input){this.input=input;this.middlewareStack={foreign:true};}},ForeignTx=class TransactWriteCommand{constructor(input){this.input=input;}};
+ const calls=[],base={send:async c=>{assert(c instanceof HostGet||c instanceof HostTx);calls.push(c);return{Item:{verified:true}};}};
+ const db=pointRuntimeDb348(base,{GetCommand:HostGet,TransactWriteCommand:HostTx});
+ assert.equal((await db.send(new ForeignGet({TableName:'profiles',Key:{userId:'owner'},ConsistentRead:true}))).Item.verified,true);
+ await db.send(new ForeignTx({TransactItems:[{ConditionCheck:{TableName:'profiles',Key:{userId:'owner'}}}]}));
+ assert.equal(calls.length,2);assert.equal(calls[0].input.ConsistentRead,true);
+ await assert.rejects(db.send(new ForeignTx({TransactItems:[{Put:{TableName:'WizzOrders'}}]})),/WRITE_FORBIDDEN/);
+ await assert.rejects(db.send(new PutCommand({TableName:'WizzOrders'})),/WRITE_FORBIDDEN/);
+ assert.equal(calls.length,2);
+});

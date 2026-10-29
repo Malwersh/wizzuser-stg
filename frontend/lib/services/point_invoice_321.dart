@@ -10,6 +10,35 @@ import 'checkout_invoice_store.dart' show invoiceRequest;
 import 'pending_offer.dart';
 import 'delivery_quote_checkout.dart';
 
+class PointInvoiceFailure implements Exception {
+  const PointInvoiceFailure(this.status, this.code);
+  final int status;
+  final String code;
+  String get message {
+    if (status == 401 ||
+        code == 'AUTH_REQUIRED' ||
+        code == 'ACCOUNT_UNAVAILABLE') {
+      return 'تعذر التحقق من جلسة الدخول. أعد تسجيل الدخول ثم تابع طلبك.';
+    }
+    return switch (code) {
+      'INSUFFICIENT_STOCK' || 'GOODS_UNAVAILABLE' =>
+        'الكمية المطلوبة غير متوفرة الآن. حدّث السلة أو خفّض الكمية ثم أعد المحاولة.',
+      'CART_PRICE_CHANGED' =>
+        'تغيّر سعر أحد الأصناف. حدّث السلة من المطعم ثم تابع.',
+      'MINIMUM_ORDER_NOT_MET' =>
+        'قيمة الأصناف أقل من الحد الأدنى للمطعم. أضف أصنافًا للمتابعة.',
+      'DISCOUNT_UNAVAILABLE' ||
+      'OFFER_NOT_ELIGIBLE' ||
+      'BENEFIT_EXPIRED' ||
+      'BENEFIT_PAUSED' =>
+        'العرض المختار غير متاح الآن. أزله أو اختر عرضًا آخر ثم تابع.',
+      'QUOTE_EXPIRED' || 'COMMERCIAL_QUOTE_EXPIRED' =>
+        'انتهت صلاحية حساب الإجمالي. أعد المحاولة لتحديثه.',
+      _ => 'تعذر تجهيز إجمالي الطلب من الخدمة حاليًا. أعد المحاولة بعد قليل.',
+    };
+  }
+}
+
 /// Display-only complete invoice by confirmed point, never a checkout consent.
 class PointInvoice321 extends ChangeNotifier {
   static final instance = PointInvoice321();
@@ -152,7 +181,8 @@ class PointInvoice321 extends ChangeNotifier {
   ) async {
     try {
       final t = await token();
-      if (t == null || owner() != id || _generation != gen) return;
+      if (owner() != id || _generation != gen) return;
+      if (t == null) throw const PointInvoiceFailure(401, 'AUTH_REQUIRED');
       final response = await client
           .post(
             Uri.parse(
@@ -174,6 +204,15 @@ class PointInvoice321 extends ChangeNotifier {
           .timeout(const Duration(seconds: 35));
       if (owner() != id || _generation != gen) return;
       final result = jsonDecode(utf8.decode(response.bodyBytes));
+      if (response.statusCode != 200 || result['success'] != true) {
+        final code = result['code'];
+        throw PointInvoiceFailure(
+          response.statusCode,
+          code is String && RegExp(r'^[A-Z0-9_]{2,80}$').hasMatch(code)
+              ? code
+              : 'POINT_INVOICE_UNAVAILABLE',
+        );
+      }
       final p = result['pointInvoice'];
       if (response.statusCode != 200 ||
           result['success'] != true ||
@@ -197,9 +236,20 @@ class PointInvoice321 extends ChangeNotifier {
       if (_cache.length >= 20) _cache.remove(_cache.keys.first);
       _cache[k] = Map<String, dynamic>.from(p);
       _errors.remove(k);
-    } catch (_) {
-      if (owner() == id && _generation == gen)
-        _errors[k] = 'تعذر تحديث الفاتورة. أعد المحاولة.';
+    } catch (failure) {
+      if (owner() == id && _generation == gen) {
+        _errors[k] =
+            failure is PointInvoiceFailure
+                ? failure.message
+                : failure is TimeoutException || failure is http.ClientException
+                ? 'تعذر الاتصال بخدمة حساب الإجمالي. تحقق من الإنترنت ثم أعد المحاولة.'
+                : 'تعذر التحقق من إجمالي الطلب حاليًا. أعد المحاولة بعد قليل.';
+        if (failure is PointInvoiceFailure) {
+          debugPrint(
+            'Point invoice rejected: status=${failure.status}, code=${failure.code}',
+          );
+        }
+      }
     }
     if (owner() == id && _generation == gen) notifyListeners();
   }

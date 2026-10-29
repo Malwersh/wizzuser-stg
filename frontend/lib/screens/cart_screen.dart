@@ -107,7 +107,7 @@ class _CartScreenState extends State<CartScreen> {
           final latest=PointInvoice321.basketRequest(_branch(state),state.cartItems,storeName:_resolveStoreName()??'المطعم');
           if(branch!=_branch(state)||fingerprint!=jsonEncode(state.cartItems)||latest==null||PointInvoice321.instance.key(latest)!=PointInvoice321.instance.key(pointRequest))continue;
           if(PointInvoice321.instance.peek(latest)==null){
-            setState(()=>_continueError='تعذر تجهيز إجمالي الطلب. تحقق من الاتصال ثم أعد المحاولة.');return;
+            setState(()=>_continueError=PointInvoice321.instance.error(latest) ?? 'تعذر تجهيز إجمالي الطلب حاليًا. أعد المحاولة.');return;
           }
         }
         await Navigator.push(
