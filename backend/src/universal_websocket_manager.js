@@ -447,7 +447,7 @@ class UniversalWebSocketManager {
 
 
             // البحث عن اتصالات موجودة لنفس المستخدم
-            await this.disconnectExistingConnections(finalUserId, finalEntityType, connectionId);
+            if (!require('./merchant-realtime-scope-345').currentScope()) await this.disconnectExistingConnections(finalUserId, finalEntityType, connectionId);
 
             // إنشاء سجل الاتصال الجديد
             const connectionData = await this.createConnectionRecord(

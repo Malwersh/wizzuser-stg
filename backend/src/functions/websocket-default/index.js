@@ -56,7 +56,7 @@ exports.handler = async (event) => {
 
     // Initialize DynamoDB client
     const dynamoClient = new DynamoDBClient({ region: 'us-east-1' });
-    const docClient = connectionScopedClient(DynamoDBDocumentClient.from(dynamoClient),{connectionId});
+    const docClient = require('../../merchant-realtime-scope-345').scopedClient(connectionScopedClient(DynamoDBDocumentClient.from(dynamoClient),{connectionId}));
     const SUBSCRIPTIONS_TABLE = requireEnv('WEBSOCKET_SUBSCRIPTIONS_TABLE');
 
     // Parse the message if it exists
@@ -1487,3 +1487,4 @@ case 'driverOnline':
     };
   }
 };
+exports.handler = require('../../merchant-realtime-scope-345').guardDefault(exports.handler);
