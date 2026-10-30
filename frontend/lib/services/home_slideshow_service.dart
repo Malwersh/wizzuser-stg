@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/home_slide.dart';
 import 'session_service.dart';
 import 'delivery_address_manager.dart';
+import 'browsing_location_service.dart';
 import 'package:uuid/uuid.dart';
 
 class HomeSlideshowFeed {
@@ -12,6 +13,12 @@ class HomeSlideshowFeed {
 }
 
 class HomeSlideshowService {
+  final http.Client? _client;
+  HomeSlideshowService({http.Client? client}) : _client = client;
+
+  String? get _regionId =>
+      BrowsingLocationService.instance.selection?.regionId ??
+      DeliveryAddressManager.instance.activeAddress?.regionId;
   static const baseUrl = String.fromEnvironment(
     'SLIDESHOW_API_URL',
     defaultValue:
@@ -19,15 +26,15 @@ class HomeSlideshowService {
   );
   static final _sessionId = const Uuid().v4();
   Future<HomeSlideshowFeed> load({String? regionId}) async {
+    final region = regionId ?? _regionId;
     final session = SessionService();
     final token = session.isLoggedIn ? await session.getToken() : null;
     if (session.isLoggedIn && token == null)
       throw StateError('Session unavailable');
-    final response = await http
-        .get(
+    final response = await (_client?.get ?? http.get)(
           Uri.parse(baseUrl).replace(
             queryParameters: {
-              if (regionId != null && regionId.isNotEmpty) 'regionId': regionId,
+              if (region != null && region.isNotEmpty) 'regionId': region,
               if (session.isLoggedIn && session.currentUserId != null)
                 'userId': session.currentUserId!,
             },
@@ -88,7 +95,7 @@ class HomeSlideshowService {
     final token = session.isLoggedIn ? await session.getToken() : null;
     if (session.isLoggedIn && token == null)
       throw StateError('Session unavailable');
-    final region = DeliveryAddressManager.instance.activeAddress?.regionId;
+    final region = _regionId;
     final uri = Uri.parse(baseUrl).replace(
       path: Uri.parse(baseUrl).path.replaceFirst('home-slideshow', route),
       queryParameters: {
@@ -103,8 +110,12 @@ class HomeSlideshowService {
       if (token != null) 'Authorization': 'Bearer $token',
     };
     final response = await (body == null
-            ? http.get(uri, headers: headers)
-            : http.post(uri, headers: headers, body: jsonEncode(body)))
+            ? (_client?.get ?? http.get)(uri, headers: headers)
+            : (_client?.post ?? http.post)(
+              uri,
+              headers: headers,
+              body: jsonEncode(body),
+            ))
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200)
       throw StateError('العرض غير متاح حالياً لهذا الحساب أو العنوان');
