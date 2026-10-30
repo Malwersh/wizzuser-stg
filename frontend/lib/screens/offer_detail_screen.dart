@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/home_slide.dart';
+import '../widgets/discovery/customer_components.dart';
 import '../services/home_slideshow_service.dart';
 import '../services/pending_offer.dart';
 import '../services/session_service.dart';
@@ -103,7 +104,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         children: [
-          Icon(icon, size: 30, color: Theme.of(context).colorScheme.primary),
+          Icon(icon, size: 30, color: discoveryInk),
           const SizedBox(height: 8),
           Text(label, textAlign: TextAlign.center),
           Text(
@@ -190,7 +191,18 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  Text(offer['description'] ?? ''),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      offer['description'] ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.6,
+                        color: discoveryInk,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     offer['type'] == 'percentage'
@@ -202,7 +214,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.w900,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: discoveryInk,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -231,7 +243,21 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                   for (final condition in offer['conditions'] as List? ?? [])
                     Text(condition.toString()),
                   if (offer['firstOrderOnly'] == true)
-                    const Text('لأول طلب فقط'),
+                    Center(
+                      child: Chip(
+                        avatar: const Icon(
+                          Icons.celebration_outlined,
+                          color: discoveryInk,
+                          size: 18,
+                        ),
+                        backgroundColor: const Color(0xFFFFF4CC),
+                        side: BorderSide.none,
+                        label: const Text(
+                          'عرض طلبك الأول',
+                          style: TextStyle(color: discoveryInk),
+                        ),
+                      ),
+                    ),
                   if (offer['perCustomerLimit'] != null)
                     Text(
                       'عدد الاستخدامات لكل عميل: ${offer['perCustomerLimit']}',
@@ -275,6 +301,14 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: discoveryGold,
+                      foregroundColor: discoveryInk,
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
                     onPressed:
                         products.isEmpty
                             ? null

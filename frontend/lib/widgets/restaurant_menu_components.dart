@@ -8,6 +8,7 @@ import '../models/store_discount.dart';
 
 class RestaurantHeroDetails extends StatelessWidget {
   final Store store;
+  final bool overImage;
   final VoidCallback onDetails;
   final String? ratingOverride;
   final String? reviewsOverride;
@@ -15,134 +16,124 @@ class RestaurantHeroDetails extends StatelessWidget {
     super.key,
     required this.store,
     required this.onDetails,
+    this.overImage = false,
     this.ratingOverride,
     this.reviewsOverride,
   });
   @override
   Widget build(BuildContext context) {
+    final ink = overImage ? Colors.white : const Color(0xFF00296B);
+    final muted = overImage ? Colors.white70 : const Color(0xFF647184);
     final rating = ratingOverride ?? store.ratingLabel;
     final reviews = reviewsOverride ?? store.reviews;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(25),
-              child: SizedBox(
-                width: 46,
-                height: 46,
-                child:
-                    store.logoUrl.isEmpty
-                        ? const ColoredBox(
-                          color: Colors.white24,
-                          child: Icon(Icons.restaurant, color: Colors.white),
-                        )
-                        : Image.network(
-                          store.logoUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (_, __, ___) => const Icon(
-                                Icons.restaurant,
-                                color: Colors.white,
-                              ),
-                        ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                store.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 27,
-                  fontWeight: FontWeight.w900,
-                  height: 1.15,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      store.name,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        height: 1.25,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (store.category?.isNotEmpty == true)
+                      Text(
+                        [
+                          store.category == 'restaurant'
+                              ? 'مطعم'
+                              : store.category!,
+                          if (store.address.isNotEmpty) store.address,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: muted),
+                      ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(
-          [
-            if (store.category?.isNotEmpty == true)
-              store.category == 'restaurant' ? 'مطعم' : store.category!,
-            if (store.address.isNotEmpty) store.address,
-          ].join('  •  '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
-        const SizedBox(height: 16),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _badge(
-                Icons.star_rounded,
-                rating,
-                int.tryParse(reviews) != null
-                    ? '$reviews تقييم • التفاصيل'
-                    : 'معلومات المطعم',
-              ),
-              const SizedBox(width: 9),
-              _badge(
-                Icons.restaurant_menu_rounded,
-                'قائمة الطعام',
-                'تعرّف على المطعم',
-              ),
-              const SizedBox(width: 9),
-              _badge(
-                Icons.info_outline_rounded,
-                'معلومات المطعم',
-                'العنوان وساعات العمل',
+              const SizedBox(width: 16),
+              Container(
+                width: 66,
+                height: 66,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE8ECF2)),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child:
+                      store.logoUrl.isEmpty
+                          ? const Icon(
+                            Icons.restaurant_rounded,
+                            color: Color(0xFF00296B),
+                          )
+                          : Image.network(
+                            store.logoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (_, __, ___) => const Icon(
+                                  Icons.restaurant_rounded,
+                                  color: Color(0xFF00296B),
+                                ),
+                          ),
+                ),
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _badge(IconData icon, String title, String subtitle) => Material(
-    color: Colors.white.withValues(alpha: .17),
-    borderRadius: BorderRadius.circular(15),
-    child: InkWell(
-      onTap: onDetails,
-      borderRadius: BorderRadius.circular(15),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(width: 9),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          const SizedBox(height: 12),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            children: [
+              Icon(Icons.star_rounded, color: ink, size: 18),
+              const SizedBox(width: 4),
+              Text(
+                rating,
+                style: TextStyle(fontWeight: FontWeight.w700, color: ink),
+              ),
+              if (int.tryParse(reviews) != null && int.parse(reviews) > 0) ...[
+                const SizedBox(width: 5),
                 Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  '($reviews تقييم)',
+                  style: TextStyle(fontSize: 12, color: muted),
                 ),
               ],
-            ),
-          ],
-        ),
+
+              TextButton(
+                onPressed: onDetails,
+                style: TextButton.styleFrom(
+                  foregroundColor: ink,
+                  minimumSize: const Size(0, 36),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('معلومات المطعم'),
+                    SizedBox(width: 5),
+                    Icon(Icons.info_outline_rounded, size: 17),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 class RestaurantSummaryCard extends StatelessWidget {
@@ -159,127 +150,110 @@ class RestaurantSummaryCard extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(top: 18, bottom: 10),
-    padding: const EdgeInsets.all(16),
+    margin: const EdgeInsets.only(top: 16, bottom: 6),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: const Color(0xffe5e5e5)),
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: const Color(0xFFE5E8ED)),
     ),
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
-              decoration: BoxDecoration(
-                color: const Color(0xff191919),
-                borderRadius: BorderRadius.circular(24),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF3F5F8),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.delivery_dining_rounded,
+                size: 23,
+                color: Color(0xFF00296B),
               ),
-              child: const Text(
-                'توصيل',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
+              const SizedBox(width: 9),
+              const Text(
+                'يصلك خلال',
+                style: TextStyle(fontSize: 14, color: Color(0xFF647184)),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextButton(
-                onPressed: onDetails,
-                child: const Text(
-                  'معلومات المطعم',
-                  style: TextStyle(
-                    color: Colors.black87,
+              const SizedBox(width: 8),
+              Expanded(
+                child: StorefrontValue(
+                  branchId: store.id,
+                  field: StorefrontField.arrival,
+                  style: const TextStyle(
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
+                    color: Color(0xFF00296B),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width =
-                constraints.maxWidth < 300
-                    ? constraints.maxWidth
-                    : (constraints.maxWidth - 12) / 2;
-            Widget fact(IconData icon, String label, StorefrontField field) =>
-                SizedBox(
-                  width: width,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Wrap(
+                spacing: 18,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          Icon(icon, size: 17, color: Colors.black54),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              label,
-                              style: const TextStyle(
-                                color: Colors.black54,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
+                      const Text(
+                        'رسوم التوصيل ',
+                        style: TextStyle(
+                          color: Color(0xFF647184),
+                          fontSize: 13,
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      StorefrontValue(
-                        branchId: store.id,
-                        field: field,
-                        initialPreparationMinutes:
-                            store.averagePreparationMinutes,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
+                      Flexible(
+                        child: StorefrontValue(
+                          branchId: store.id,
+                          field: StorefrontField.fee,
+                          style: const TextStyle(
+                            color: Color(0xFF00296B),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                );
-            return Wrap(
-              spacing: 12,
-              runSpacing: 18,
-              children: [
-                fact(
-                  Icons.delivery_dining,
-                  'الوصول المتوقع إلى عنوانك',
-                  StorefrontField.arrival,
-                ),
-                fact(
-                  Icons.route_outlined,
-                  'مسافة الطريق إلى عنوانك',
-                  StorefrontField.distance,
-                ),
-                fact(
-                  Icons.payments_outlined,
-                  'رسوم التوصيل',
-                  StorefrontField.fee,
-                ),
-                fact(
-                  Icons.restaurant_outlined,
-                  'تحضير المطعم فقط',
-                  StorefrontField.preparation,
-                ),
-              ],
-            );
-          },
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Divider(height: 1),
-        ),
-        StorefrontMinimum(branchId: store.id),
-        const SizedBox(height: 8),
-        const Text(
-          'وقت الوصول تقديري ويشمل التحضير والطريق؛ قد يتغير حسب توفر السائق.',
-          style: TextStyle(color: Colors.black54, fontSize: 11, height: 1.5),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.route_outlined,
+                        size: 16,
+                        color: Color(0xFF647184),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: StorefrontValue(
+                          branchId: store.id,
+                          field: StorefrontField.distance,
+                          style: const TextStyle(
+                            color: Color(0xFF647184),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Divider(height: 1, color: Color(0xFFEDF0F4)),
+              ),
+              StorefrontMinimum(branchId: store.id),
+            ],
+          ),
         ),
       ],
     ),

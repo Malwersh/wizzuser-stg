@@ -29,6 +29,47 @@ void main() {
       'minorAmount': fee,
     },
   };
+  final reviews = <Map<String, dynamic>>[];
+  http.Response preview(http.Request r) {
+    final body = jsonDecode(r.body) as Map;
+    Map<String, dynamic> money(int amount) => {
+      'currency': 'IQD',
+      'scale': 1000,
+      'moneySchemaVersion': 1,
+      'minorAmount': amount,
+    };
+    final tip = ((body['tip'] as num?) ?? 0).toInt() * 1000;
+    return http.Response(
+      jsonEncode({
+        'success': true,
+        'commercial': {
+          'schemaVersion': 1,
+          'quoteId': body['quoteId'],
+          'requestId': body['idempotencyKey'],
+          'digest': List.filled(64, 'a').join(),
+          'expiresAt': clock.add(const Duration(minutes: 2)).toIso8601String(),
+          'goodsGross': money(3500000),
+          'discount': money(0),
+          'serviceFee': money(0),
+          'deliveryFee': money(0),
+          'driverTip': money(tip),
+          'customerTotal': money(3500000 + tip),
+        },
+      }),
+      200,
+    );
+  }
+
+  Future<http.Response> confirm(
+    DeliveryQuoteCheckout service,
+    Map<String, dynamic>? body,
+  ) => service.confirm(
+    body,
+    approveCommercial: (proposal) async {
+      reviews.add(Map<String, dynamic>.from(proposal));
+      return true;
+    },
+  );
   http.Response success(http.Request r, [int status = 201]) {
     final body = jsonDecode(r.body);
     return http.Response(
@@ -74,6 +115,9 @@ void main() {
           200,
         );
       }
+      if (request.url.path.endsWith('/commercial-preview')) {
+        return preview(request);
+      }
       return orders(request);
     }),
   );
@@ -82,17 +126,42 @@ void main() {
     account = 'u1';
     clock = DateTime.utc(2026, 10, 15);
     requests = [];
+    reviews.clear();
     orders = (r) async => success(r);
     checkout = make();
     await checkout.restore();
   });
-  test('closed staging admission does not claim an internet failure or create an order', () async {
-    final service=DeliveryQuoteCheckout(account:()=>'u1',token:()=>'access',now:()=>clock,read:(_)async=>null,write:(_,__)async{},remove:(_)async{},client:MockClient((r)async=>http.Response(jsonEncode({'success':false,'code':'FINANCE_ROLLOUT_ADMISSION_CLOSED'}),403)));
-    await service.restore();await service.load('b1','a1');
-    expect(service.valid,false);expect(service.pending,false);
-    expect(service.error,'إتمام الطلب غير متاح حاليًا؛ يرجى المحاولة لاحقًا');
-    service.dispose();
-  });
+  test(
+    'closed staging admission does not claim an internet failure or create an order',
+    () async {
+      final service = DeliveryQuoteCheckout(
+        account: () => 'u1',
+        token: () => 'access',
+        now: () => clock,
+        read: (_) async => null,
+        write: (_, __) async {},
+        remove: (_) async {},
+        client: MockClient(
+          (r) async => http.Response(
+            jsonEncode({
+              'success': false,
+              'code': 'FINANCE_ROLLOUT_ADMISSION_CLOSED',
+            }),
+            403,
+          ),
+        ),
+      );
+      await service.restore();
+      await service.load('b1', 'a1');
+      expect(service.valid, false);
+      expect(service.pending, false);
+      expect(
+        service.error,
+        'إتمام الطلب غير متاح حاليًا؛ يرجى المحاولة لاحقًا',
+      );
+      service.dispose();
+    },
+  );
   tearDown(() => checkout.dispose());
   test(
     'scoped test uses approved confirmation and restores it after lost reply',
@@ -130,6 +199,7 @@ void main() {
               200,
             );
           }
+          if (r.url.path.endsWith('/commercial-preview')) return preview(r);
           expect(jsonDecode(r.body)['idempotencyKey'], attempt!.requestId);
           throw http.ClientException('lost');
         }),
@@ -140,7 +210,7 @@ void main() {
       expect(scoped.error, contains('خارج عينة الاختبار'));
       expect(requests, isEmpty);
       await scoped.load('b1', 'a1');
-      await expectLater(scoped.confirm(content), throwsException);
+      await expectLater(confirm(scoped, content), throwsException);
       final saved = storage.values.single;
       expect(jsonDecode(saved)['idempotencyKey'], attempt!.requestId);
       final restored = make();
@@ -150,7 +220,7 @@ void main() {
         expect(r.body, saved);
         return success(r, 200);
       };
-      await restored.confirm(null);
+      await confirm(restored, null);
       expect(storage, isEmpty);
     },
   );
@@ -283,13 +353,53 @@ void main() {
       expect(checkout.quote!.fee, 0);
     },
   );
+  test('missing total reviewer never saves or sends an order', () async {
+    await checkout.load('b1', 'a1');
+    await expectLater(checkout.confirm(content), throwsStateError);
+    expect(storage, isEmpty);
+    expect(checkout.pending, false);
+    expect(requests.where((r) => r.url.path.endsWith('/orders')), isEmpty);
+    expect(reviews, isEmpty);
+  });
+  test(
+    'declining displayed server total never persists or sends an order',
+    () async {
+      await checkout.load('b1', 'a1');
+      var shown = 0;
+      await expectLater(
+        checkout.confirm(
+          content,
+          approveCommercial: (proposal) async {
+            shown++;
+            expect(proposal['customerTotal']['minorAmount'], 3500000);
+            return false;
+          },
+        ),
+        throwsA(isA<CommercialReviewCancelled>()),
+      );
+      expect(shown, 1);
+      expect(storage, isEmpty);
+      expect(checkout.pending, false);
+      expect(
+        requests.where((r) => r.url.path.endsWith('/commercial-preview')),
+        hasLength(1),
+      );
+      expect(requests.where((r) => r.url.path.endsWith('/orders')), isEmpty);
+    },
+  );
   test('persist before send; success removes attempt and price', () async {
     await checkout.load('b1', 'a1');
     orders = (r) async {
       expect(storage.values.single, r.body);
+      final sent = jsonDecode(r.body);
+      expect(reviews, hasLength(1));
+      expect(sent['commercialConsent'], {
+        'digest': reviews.single['digest'],
+        'customerTotalMinor': reviews.single['customerTotal']['minorAmount'],
+      });
       return success(r);
     };
-    await checkout.confirm(content);
+    await confirm(checkout, content);
     expect(storage, isEmpty);
     expect(checkout.pending, false);
     expect(checkout.valid, false);
@@ -299,7 +409,10 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       orders = (_) async => throw http.ClientException('lost response');
-      await expectLater(checkout.confirm({...content, 'tip': 500}), throwsException);
+      await expectLater(
+        confirm(checkout, {...content, 'tip': 500}),
+        throwsException,
+      );
       final first = requests.last.body;
       expect(checkout.pending, true);
       clock = clock.add(const Duration(hours: 1));
@@ -311,7 +424,7 @@ void main() {
         expect(r.body, first);
         return success(r, 200);
       };
-      await restored.confirm(null);
+      await confirm(restored, null);
       expect(storage, isEmpty);
       restored.dispose();
     },
@@ -321,16 +434,13 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       clock = clock.add(const Duration(minutes: 3));
-      final response = await checkout.confirm(content);
+      final response = await confirm(checkout, content);
       expect(response.statusCode, 201);
       expect(
         requests.where((r) => r.url.path.endsWith('/delivery-quotes')).length,
         2,
       );
-      expect(
-        requests.where((r) => !r.url.path.endsWith('/delivery-quotes')).length,
-        1,
-      );
+      expect(requests.where((r) => r.url.path.endsWith('/orders')).length, 1);
       expect(storage, isEmpty);
     },
   );
@@ -344,7 +454,7 @@ void main() {
             '{"success":false,"code":"QUOTE_INVALIDATED"}',
             409,
           );
-      await checkout.confirm(content);
+      await confirm(checkout, content);
       expect(checkout.pending, false);
       expect(checkout.valid, false);
       await checkout.load('b1', 'a1');
@@ -354,16 +464,29 @@ void main() {
       );
     },
   );
-  for (final code in ['CASH_TOTAL_DENOMINATION_UNSUPPORTED', 'OFFER_NO_SAVINGS', 'OFFER_ALREADY_USED', 'OFFER_FIRST_ORDER_ONLY', 'OFFER_NOT_ELIGIBLE', 'OFFER_WRONG_REGION', 'DISCOUNT_PREVIEW_CHANGED']) {
+  for (final code in [
+    'CASH_TOTAL_DENOMINATION_UNSUPPORTED',
+    'OFFER_NO_SAVINGS',
+    'OFFER_ALREADY_USED',
+    'OFFER_FIRST_ORDER_ONLY',
+    'OFFER_NOT_ELIGIBLE',
+    'OFFER_WRONG_REGION',
+    'DISCOUNT_PREVIEW_CHANGED',
+  ]) {
     test('$code releases the attempt for a revised order', () async {
       await checkout.load('b1', 'a1');
-      orders = (_) async => http.Response(jsonEncode({'success': false, 'code': code}), 409);
-      await checkout.confirm(content);
+      orders =
+          (_) async =>
+              http.Response(jsonEncode({'success': false, 'code': code}), 409);
+      await confirm(checkout, content);
       expect(checkout.pending, false);
       expect(checkout.valid, false);
       expect(storage, isEmpty);
       await checkout.load('b1', 'a1');
-      expect(jsonDecode(requests.first.body)['requestId'], isNot(jsonDecode(requests.last.body)['requestId']));
+      expect(
+        jsonDecode(requests.first.body)['requestId'],
+        isNot(jsonDecode(requests.last.body)['requestId']),
+      );
     });
   }
   test(
@@ -371,12 +494,23 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       orders = (_) async => http.Response('{"error":"failed"}', 503);
-      await checkout.confirm(content);
+      await confirm(checkout, content);
       final saved = storage.values.single;
       await checkout.load('b1', 'a2', renew: true);
       expect(checkout.pending, true);
       expect(storage.values.single, saved);
-      expect(requests.length, 2);
+      expect(
+        requests.where((r) => r.url.path.endsWith('/delivery-quotes')),
+        hasLength(1),
+      );
+      expect(
+        requests.where((r) => r.url.path.endsWith('/commercial-preview')),
+        hasLength(1),
+      );
+      expect(
+        requests.where((r) => r.url.path.endsWith('/orders')),
+        hasLength(1),
+      );
     },
   );
   test(
@@ -384,14 +518,14 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       orders = (_) async => throw http.ClientException('reply lost');
-      await expectLater(checkout.confirm(content), throwsException);
+      await expectLater(confirm(checkout, content), throwsException);
       final pending = storage.values.single;
       orders =
           (_) async => http.Response(
             '{"success":false,"code":"FINANCE_ROLLOUT_OUT_OF_SCOPE"}',
             403,
           );
-      await checkout.confirm(null);
+      await confirm(checkout, null);
       expect(checkout.pending, true);
       expect(storage.values.single, pending);
     },
@@ -401,9 +535,9 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       orders = (_) async => throw http.ClientException('lost');
-      await expectLater(checkout.confirm(content), throwsException);
+      await expectLater(confirm(checkout, content), throwsException);
       account = 'u2';
-      await expectLater(checkout.confirm(null), throwsStateError);
+      await expectLater(confirm(checkout, null), throwsStateError);
       final other = make();
       await other.restore();
       expect(other.pending, false);
@@ -416,7 +550,7 @@ void main() {
     () async {
       await checkout.load('b1', 'a1');
       await expectLater(
-        checkout.confirm({
+        confirm(checkout, {
           ...content,
           'deliveryAddress': {'id': 'a2'},
         }),
@@ -429,14 +563,21 @@ void main() {
     },
   );
   test('failed durable write prevents sending an order', () async {
+    var writes = 0;
     final service = DeliveryQuoteCheckout(
       account: () => account,
       token: () => 'access',
       now: () => clock,
       read: (_) async => null,
-      write: (_, _) async => throw StateError('storage unavailable'),
+      write: (_, _) async {
+        writes++;
+        throw StateError('storage unavailable');
+      },
       remove: (_) async {},
       client: MockClient((request) async {
+        if (request.url.path.endsWith('/commercial-preview')) {
+          return preview(request);
+        }
         expect(request.url.path.endsWith('/delivery-quotes'), true);
         return http.Response(
           jsonEncode({'success': true, 'quote': quote()}),
@@ -446,7 +587,8 @@ void main() {
     );
     await service.restore();
     await service.load('b1', 'a1');
-    await expectLater(service.confirm(content), throwsStateError);
+    await expectLater(confirm(service, content), throwsStateError);
+    expect(writes, 1);
     expect(service.pending, false);
     service.dispose();
   });
@@ -457,7 +599,7 @@ void main() {
           '{"success":true,"order":{"id":"foreign","userId":"u2"}}',
           200,
         );
-    await expectLater(checkout.confirm(content), throwsFormatException);
+    await expectLater(confirm(checkout, content), throwsFormatException);
     expect(checkout.pending, true);
     expect(storage.length, 1);
   });
@@ -469,9 +611,9 @@ void main() {
       await second.load('b1', 'a1');
       await checkout.load('b1', 'a1');
       orders = (_) async => throw http.ClientException('lost');
-      await expectLater(checkout.confirm(content), throwsException);
+      await expectLater(confirm(checkout, content), throwsException);
       final count = requests.length;
-      await expectLater(second.confirm(content), throwsStateError);
+      await expectLater(confirm(second, content), throwsStateError);
       expect(requests.length, count);
       expect(second.pending, true);
       second.dispose();
@@ -486,7 +628,7 @@ void main() {
             '{"success":false,"activeOrder":{"orderId":"other"}}',
             409,
           );
-      await checkout.confirm(content);
+      await confirm(checkout, content);
       expect(checkout.pending, false);
       expect(storage, isEmpty);
     },
@@ -508,7 +650,18 @@ void main() {
               'userId': 'u1',
               'storeId': 'b1',
               'storeName': 'Test',
-              'items': [{'itemId':'p1','lineId':'CONFIG#server','name':'Saved meal','unitPrice':3500000,'quantity':1,'selectedOptions':{'sides':['rice']}}],
+              'items': [
+                {
+                  'itemId': 'p1',
+                  'lineId': 'CONFIG#server',
+                  'name': 'Saved meal',
+                  'unitPrice': 3500000,
+                  'quantity': 1,
+                  'selectedOptions': {
+                    'sides': ['rice'],
+                  },
+                },
+              ],
               'pricing': {
                 'goodsSubtotal': 3500000,
                 'deliveryFee': 0,
@@ -553,6 +706,10 @@ void main() {
         customerPhone: 'synthetic',
         deliveryFee: 0,
         quoteCheckout: checkout,
+        approveCommercial: (proposal) async {
+          reviews.add(Map<String, dynamic>.from(proposal));
+          return true;
+        },
       );
       expect(result['success'], true);
       final order = result['order'] as OrderModel;
@@ -561,7 +718,9 @@ void main() {
       expect(order.subtotal, 3500);
       expect(order.items.single.id, 'CONFIG#server');
       expect(order.items.single.unitPrice, 3500);
-      expect(order.items.single.selectedOptions, {'sides':['rice']});
+      expect(order.items.single.selectedOptions, {
+        'sides': ['rice'],
+      });
     },
   );
   test('invalid money currency and precision are rejected', () {

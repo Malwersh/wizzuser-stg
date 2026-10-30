@@ -1,3 +1,5 @@
+import '../models/home_layout.dart';
+import '../widgets/discovery/customer_components.dart';
 import '../utils/readable_colors.dart';
 import '../models/browsing_location.dart';
 import '../services/browsing_location_service.dart';
@@ -82,6 +84,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<HomeSlide> _homeCampaigns = [];
   bool _loadingCampaigns = false;
   static final Set<String> _shownCampaigns = {};
+  HomeLayout? _publishedHomeLayout;
+  String? _publishedLayoutScope;
+  String get _homeLayoutScope =>
+      "${SessionService.instance.currentUserId}|${BrowsingLocationService.instance.selection?.regionId ?? DeliveryAddressManager.instance.activeAddress?.regionId}";
   Future<void> _openCampaignById(String id) async {
     final scope = _campaignScope;
     try {
@@ -2720,7 +2726,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // الشريط العلوي القابل للتمرير (بدون شريط البحث)
   Widget _buildBannerSection() => Column(
     children: [
-      HomeSlideshow(onTap: _openHomeSlide),
+      HomeSlideshow(
+        onTap: _openHomeSlide,
+        onLayout: (layout) {
+          if (mounted)
+            setState(() {
+              _publishedHomeLayout = layout;
+              _publishedLayoutScope = _homeLayoutScope;
+            });
+        },
+      ),
       TextButton.icon(
         onPressed: _openPlatformBenefits,
         icon: const Icon(Icons.card_giftcard),
@@ -2816,6 +2831,63 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Widget _buildManagedSection(HomeSection section) => Consumer<FavoritesModel>(
+    builder: (context, favorites, _) {
+      var stores = switch (section.source) {
+        'new' => _getNewStores(),
+        'rating' =>
+          _getPopularStores()
+              .where((s) => (double.tryParse(s.rating) ?? 0) > 0)
+              .toList(),
+        _ => _allRealBusinesses.map((b) => _businessToStore(b)).toList(),
+      };
+      if (section.source == 'curated') {
+        final byId = {for (final store in stores) store.id: store};
+        stores =
+            section.merchantIds
+                .where(byId.containsKey)
+                .map((id) => byId[id]!)
+                .toList();
+      }
+      if (section.source == 'favorites')
+        stores = stores.where((s) => favorites.isStoreFavorite(s.id)).toList();
+      stores = stores.take(section.limit).toList();
+      if (stores.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DiscoverySectionHeading(title: section.title),
+          SizedBox(
+            height: 270,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: stores.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder:
+                  (context, index) => SizedBox(
+                    width: 228,
+                    child: EnhancedRestaurantCard(
+                      store: stores[index],
+                      isCompact: true,
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) =>
+                                      StoreDetailScreen(store: stores[index]),
+                            ),
+                          ),
+                    ),
+                  ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
   Widget _buildStoresSection() {
     developer.log('🏗️ _buildStoresSection() - بدء بناء قسم المطاعم');
     developer.log(
@@ -2837,14 +2909,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // قسم وصل حديثاً
-        _buildNewArrivalsSection(),
-
-        // قسم الأقرب إليك
-        _buildNearestStoresSection(),
-
-        // قسم الأكثر شهرة
-        _buildPopularStoresSection(),
+        if (_publishedLayoutScope == _homeLayoutScope &&
+            _publishedHomeLayout?.configured == true) ...[
+          for (final section in _publishedHomeLayout!.sections)
+            if (section.activeAt(DateTime.now())) _buildManagedSection(section),
+        ] else ...[
+          _buildNewArrivalsSection(),
+          _buildNearestStoresSection(),
+          _buildPopularStoresSection(),
+        ],
 
         // قسم جميع المطاعم
         const Padding(
@@ -3122,26 +3195,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'وصل حديثاً',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
+            const DiscoverySectionHeading(
+              title: 'جديد في ويز',
+              subtitle: 'اكتشف مطاعم انضمت حديثًا',
             ),
             SizedBox(
-              height: 200,
+              height: 270,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: newStores.length,
                 itemBuilder: (context, index) {
                   return Container(
-                    width: 160,
+                    width: 228,
                     margin: const EdgeInsets.only(left: 12),
                     child: EnhancedRestaurantCard(
                       key: ValueKey(newStores[index].id),
@@ -3191,26 +3257,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'الأقرب إليك',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
+            const DiscoverySectionHeading(
+              title: 'مطاعم في منطقتك',
+              subtitle: 'خيارات توصل إلى منطقتك',
             ),
             SizedBox(
-              height: 200,
+              height: 270,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: nearbyStores.length,
                 itemBuilder: (context, index) {
                   return Container(
-                    width: 160,
+                    width: 228,
                     margin: const EdgeInsets.only(left: 12),
                     child: EnhancedRestaurantCard(
                       key: ValueKey(nearbyStores[index].id),
@@ -3260,26 +3319,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'الأكثر شهرة',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
+            const DiscoverySectionHeading(
+              title: 'الأعلى تقييمًا',
+              subtitle: 'اختيارات حسب تقييمات الزبائن',
             ),
             SizedBox(
-              height: 200,
+              height: 270,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: popularStores.length,
                 itemBuilder: (context, index) {
                   return Container(
-                    width: 160,
+                    width: 228,
                     margin: const EdgeInsets.only(left: 12),
                     child: EnhancedRestaurantCard(
                       key: ValueKey(popularStores[index].id),
@@ -3393,11 +3445,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // ✅ ترتيب حسب التقييم
     allStores.sort(
-      (a, b) => double.parse(b.rating).compareTo(double.parse(a.rating)),
+      (a, b) => (double.tryParse(b.rating) ?? 0).compareTo(
+        double.tryParse(a.rating) ?? 0,
+      ),
     );
 
     developer.log('📤 OUTPUT: ${allStores.length} مطعم (sorted by rating)');
-    return allStores;
+    return allStores
+        .where((s) => s.ratingValue >= 1 && s.ratingValue <= 5)
+        .toList();
   }
 
   // دوال مساعدة لاستخراج معلومات المتجر من السلة

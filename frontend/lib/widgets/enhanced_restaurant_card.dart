@@ -1,3 +1,5 @@
+import 'storefront_value.dart';
+import 'discovery/customer_components.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -51,11 +53,16 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
   void initState() {
     super.initState();
     _subscriptionManager = SubscriptionManager.instance;
-    _subscriberId = _subscriptionManager.generateSubscriberId('restaurant_card_${widget.store.id}');
+    _subscriberId = _subscriptionManager.generateSubscriberId(
+      'restaurant_card_${widget.store.id}',
+    );
     _loadAvailabilityStatus();
     _setupManagedSubscription();
     // 🔥 تحسين: تحديث صامت من الكاش كل 2 ثانية (كان 5 ثوانٍ)
-    _statusRefreshTimer = Timer.periodic(const Duration(seconds: 2), (_) => _refreshFromCacheSilently());
+    _statusRefreshTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refreshFromCacheSilently(),
+    );
   }
 
   @override
@@ -64,7 +71,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     // Reload status if store ID changed
     if (oldWidget.store.id != widget.store.id) {
       _businessStatusSubscription?.cancel();
-      _subscriberId = _subscriptionManager.generateSubscriberId('restaurant_card_${widget.store.id}');
+      _subscriberId = _subscriptionManager.generateSubscriberId(
+        'restaurant_card_${widget.store.id}',
+      );
       _loadAvailabilityStatus();
       _setupManagedSubscription();
     }
@@ -74,7 +83,10 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
   void dispose() {
     _businessStatusSubscription?.cancel();
     // إلغاء الاشتراك من SubscriptionManager
-    _subscriptionManager.unsubscribeFromBusinessStatus(widget.store.id, _subscriberId);
+    _subscriptionManager.unsubscribeFromBusinessStatus(
+      widget.store.id,
+      _subscriberId,
+    );
     _statusRefreshTimer?.cancel();
     super.dispose();
   }
@@ -85,17 +97,21 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
     // Debouncing: منع التحديث إذا تم التحديث خلال آخر ثانية
     final now = DateTime.now();
-    if (!force && _lastUpdateTime != null &&
+    if (!force &&
+        _lastUpdateTime != null &&
         now.difference(_lastUpdateTime!).inMilliseconds < 1000) {
       return;
     }
 
     try {
-      final cached = await BusinessStatusCache.getCachedBusinessStatus(widget.store.id);
+      final cached = await BusinessStatusCache.getCachedBusinessStatus(
+        widget.store.id,
+      );
       if (cached == null) return;
       final newStatus = RestaurantAvailabilityStatus.fromJson(cached);
       final old = _availabilityStatus;
-      final changed = old == null ||
+      final changed =
+          old == null ||
           old.isAvailable != newStatus.isAvailable ||
           old.acceptingOrders != newStatus.acceptingOrders ||
           old.isWithinWorkingHours != newStatus.isWithinWorkingHours ||
@@ -122,38 +138,50 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       _businessStatusSubscription = _subscriptionManager
           .subscribeToRestaurantStatus(widget.store.id)
           .listen(
-        (updateData) {
-          if (mounted) {
-            debugPrint('🎯 CARD: استلم تحديث للمطعم ${widget.store.id} - source: ${updateData['source']}, isAvailable: ${updateData['isAvailable']}, acceptingOrders: ${updateData['acceptingOrders']}');
-            debugPrint('📋 CARD: بيانات كاملة: $updateData');
-            _handleBusinessStatusUpdate(updateData);
-          } else {
-            debugPrint('⚠️ Widget غير mounted - تجاهل التحديث للمطعم ${widget.store.id}');
-          }
-        },
-        onError: (error) {
-          debugPrint('❌ خطأ في الاستماع لتحديثات المطعم ${widget.store.id}: $error');
-          // إعادة المحاولة بعد فترة قصيرة
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted) {
-              debugPrint('🔄 إعادة محاولة الاشتراك للمطعم ${widget.store.id}');
-              _setupManagedSubscription();
-            }
-          });
-        },
-        onDone: () {
-          debugPrint('⚠️ تم إغلاق stream للمطعم ${widget.store.id}');
-          // إعادة الاشتراك إذا كان الـ widget ما زال mounted
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              debugPrint('🔄 إعادة الاشتراك التلقائي للمطعم ${widget.store.id}');
-              _setupManagedSubscription();
-            }
-          });
-        },
-      );
+            (updateData) {
+              if (mounted) {
+                debugPrint(
+                  '🎯 CARD: استلم تحديث للمطعم ${widget.store.id} - source: ${updateData['source']}, isAvailable: ${updateData['isAvailable']}, acceptingOrders: ${updateData['acceptingOrders']}',
+                );
+                debugPrint('📋 CARD: بيانات كاملة: $updateData');
+                _handleBusinessStatusUpdate(updateData);
+              } else {
+                debugPrint(
+                  '⚠️ Widget غير mounted - تجاهل التحديث للمطعم ${widget.store.id}',
+                );
+              }
+            },
+            onError: (error) {
+              debugPrint(
+                '❌ خطأ في الاستماع لتحديثات المطعم ${widget.store.id}: $error',
+              );
+              // إعادة المحاولة بعد فترة قصيرة
+              Future.delayed(const Duration(seconds: 3), () {
+                if (mounted) {
+                  debugPrint(
+                    '🔄 إعادة محاولة الاشتراك للمطعم ${widget.store.id}',
+                  );
+                  _setupManagedSubscription();
+                }
+              });
+            },
+            onDone: () {
+              debugPrint('⚠️ تم إغلاق stream للمطعم ${widget.store.id}');
+              // إعادة الاشتراك إذا كان الـ widget ما زال mounted
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted) {
+                  debugPrint(
+                    '🔄 إعادة الاشتراك التلقائي للمطعم ${widget.store.id}',
+                  );
+                  _setupManagedSubscription();
+                }
+              });
+            },
+          );
 
-      debugPrint('✅ تم إعداد الاستماع لتحديثات المطعم عبر SubscriptionManager: ${widget.store.id}');
+      debugPrint(
+        '✅ تم إعداد الاستماع لتحديثات المطعم عبر SubscriptionManager: ${widget.store.id}',
+      );
     } catch (e) {
       debugPrint('❌ خطأ في إعداد الاستماع لتحديثات المطعم: $e');
       // محاولة مرة أخرى بعد فترة
@@ -171,12 +199,16 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     try {
       final businessId = updateData['businessId'] as String?;
       // توحيد المفاتيح القادمة من WebSocket أو polling
-      final canAcceptOrders = (updateData['canAcceptOrders'] as bool?) ?? (updateData['acceptingOrders'] as bool?);
+      final canAcceptOrders =
+          (updateData['canAcceptOrders'] as bool?) ??
+          (updateData['acceptingOrders'] as bool?);
       final isBusy = updateData['isBusy'] as bool?;
       final status = updateData['status'] as String?;
       final statusMessage = updateData['statusMessage'] as String?;
-      final isAvailableDirect = updateData['isAvailable'] as bool?; // من polling
-      final source = updateData['source'] as String?; // 'polling' أو 'websocket'
+      final isAvailableDirect =
+          updateData['isAvailable'] as bool?; // من polling
+      final source =
+          updateData['source'] as String?; // 'polling' أو 'websocket'
 
       // معالجة تحديثات ساعات العمل الجديدة
       final workingHours = updateData['workingHours'] as Map<String, dynamic>?;
@@ -198,11 +230,15 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         debugPrint('   - dayUpdated: $dayUpdated');
         debugPrint('   - isClosedToday: $isClosedToday');
         debugPrint('   - isDayClosed: $isDayClosed');
-        debugPrint('   - Current state: ${_availabilityStatus?.isAvailable} -> $canAcceptOrders');
+        debugPrint(
+          '   - Current state: ${_availabilityStatus?.isAvailable} -> $canAcceptOrders',
+        );
 
         // تجنب مسح الكاش إذا كان التحديث من polling لأنه يحتوي على أحدث القيم بالفعل
         if (source != 'polling') {
-          await BusinessStatusCache.forceInvalidateBusinessStatus(widget.store.id);
+          await BusinessStatusCache.forceInvalidateBusinessStatus(
+            widget.store.id,
+          );
         }
 
         // تحديد ساعات العمل الجديدة أو الحالية
@@ -223,18 +259,22 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         bool newIsWithinWorkingHours = true;
 
         // 🔥 استخدام القيمة من API كأولوية (محسوبة بـ timezone المطعم)
-        final isWithinWorkingHoursFromAPI = updateData['isWithinWorkingHours'] as bool?;
+        final isWithinWorkingHoursFromAPI =
+            updateData['isWithinWorkingHours'] as bool?;
 
         if (isWithinWorkingHoursFromAPI != null) {
           // استخدام القيمة من Backend (أدق لأنها تستخدم timezone المطعم)
           newIsWithinWorkingHours = isWithinWorkingHoursFromAPI;
-          debugPrint('✅ استخدام isWithinWorkingHours من API: $newIsWithinWorkingHours');
+          debugPrint(
+            '✅ استخدام isWithinWorkingHours من API: $newIsWithinWorkingHours',
+          );
         } else if (forceStatusRecheck == true || workingHoursUpdated == true) {
           // إعادة فحص شاملة لساعات العمل (fallback فقط)
           newIsWithinWorkingHours = _checkIsWithinWorkingHours(newWorkingHours);
 
           // 🚨 إذا كان اليوم المحدث هو اليوم الحالي وتم إغلاقه، فالمطعم مغلق فوراً
-          if (dayUpdated != null && (isClosedToday == true || isDayClosed == true)) {
+          if (dayUpdated != null &&
+              (isClosedToday == true || isDayClosed == true)) {
             final now = DateTime.now();
             final currentDayName = _getDayName(now.weekday);
             if (dayUpdated.toLowerCase() == currentDayName.toLowerCase()) {
@@ -243,17 +283,23 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
             }
           }
 
-          debugPrint('⚡ إعادة فحص ساعات العمل (local): $newIsWithinWorkingHours');
+          debugPrint(
+            '⚡ إعادة فحص ساعات العمل (local): $newIsWithinWorkingHours',
+          );
         } else {
           // fallback: حساب محلي فقط إذا لم تتوفر قيمة من API
           newIsWithinWorkingHours = _checkIsWithinWorkingHours(newWorkingHours);
-          debugPrint('⚠️ حساب محلي (قد يكون غير دقيق بسبب timezone): $newIsWithinWorkingHours');
+          debugPrint(
+            '⚠️ حساب محلي (قد يكون غير دقيق بسبب timezone): $newIsWithinWorkingHours',
+          );
         }
 
         // إنشاء حالة جديدة مع ضمان التغيير
         final previousAvailable = _availabilityStatus?.isAvailable ?? true;
-        final previousWorkingHours = _availabilityStatus?.isWithinWorkingHours ?? true;
-        final newAvailable = (canAcceptOrders ?? (_availabilityStatus?.acceptingOrders ?? true));
+        final previousWorkingHours =
+            _availabilityStatus?.isWithinWorkingHours ?? true;
+        final newAvailable =
+            (canAcceptOrders ?? (_availabilityStatus?.acceptingOrders ?? true));
 
         // تحويل Map<String, dynamic> إلى Map<String, WorkingHours?>
         final Map<String, WorkingHours?> convertedWorkingHours = {};
@@ -266,7 +312,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
               convertedWorkingHours[day] = WorkingHours(
                 opening: hoursData['open']?.toString() ?? '',
                 closing: hoursData['close']?.toString() ?? '',
-                isClosed: hoursData['isClosed'] == true, // 🔥 تمرير isClosed من البيانات
+                isClosed:
+                    hoursData['isClosed'] ==
+                    true, // 🔥 تمرير isClosed من البيانات
               );
             } else {
               convertedWorkingHours[day] = null;
@@ -277,23 +325,33 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         // 🔥 FIX: استخدام isAvailableDirect من Backend مباشرة
         // isAvailableDirect يتضمن بالفعل فحص working hours بـ timezone صحيح
         // لا نحتاج لإعادة فحص working hours محلياً
-        final effectiveIsAvailable = (isAvailableDirect != null)
-            ? isAvailableDirect  // 🎯 استخدام قيمة Backend مباشرة (تتضمن all checks)
-            : (newAvailable && newIsWithinWorkingHours); // fallback للحساب المحلي
+        final effectiveIsAvailable =
+            (isAvailableDirect != null)
+                ? isAvailableDirect // 🎯 استخدام قيمة Backend مباشرة (تتضمن all checks)
+                : (newAvailable &&
+                    newIsWithinWorkingHours); // fallback للحساب المحلي
 
         debugPrint('🎯 CARD: حساب effectiveIsAvailable:');
         debugPrint('   - isAvailableDirect (from Backend): $isAvailableDirect');
-        debugPrint('   - newIsWithinWorkingHours (local calc): $newIsWithinWorkingHours');
+        debugPrint(
+          '   - newIsWithinWorkingHours (local calc): $newIsWithinWorkingHours',
+        );
         debugPrint('   - effectiveIsAvailable (final): $effectiveIsAvailable');
 
         final updatedStatus = RestaurantAvailabilityStatus(
           businessId: widget.store.id,
-          isAvailable: effectiveIsAvailable,  // يعتمد على الحساب المحلي لساعات العمل
+          isAvailable:
+              effectiveIsAvailable, // يعتمد على الحساب المحلي لساعات العمل
           acceptingOrders: newAvailable,
-          isWithinWorkingHours: newIsWithinWorkingHours, // 🔥 استخدام الحساب المحلي فقط (أدق من API)
+          isWithinWorkingHours:
+              newIsWithinWorkingHours, // 🔥 استخدام الحساب المحلي فقط (أدق من API)
           workingHours: convertedWorkingHours,
           checkedAt: DateTime.now(),
-          reasonUnavailable: _getReasonFromStatus(isBusy, canAcceptOrders, statusMessage),
+          reasonUnavailable: _getReasonFromStatus(
+            isBusy,
+            canAcceptOrders,
+            statusMessage,
+          ),
         );
 
         // التحديث الفوري مع إجبار rebuild
@@ -305,14 +363,20 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
           debugPrint('⚡ تم تحديث فوري للحالة:');
           debugPrint('   - من: $previousAvailable إلى: $newAvailable');
-          debugPrint('   - ساعات العمل من: $previousWorkingHours إلى: $newIsWithinWorkingHours');
+          debugPrint(
+            '   - ساعات العمل من: $previousWorkingHours إلى: $newIsWithinWorkingHours',
+          );
           debugPrint('   - السبب: ${updatedStatus.reasonUnavailable}');
           debugPrint('   - Widget mounted: $mounted');
 
           // 🔥 قراءة فورية من Cache بعد التحديث لضمان الدقة
-          debugPrint('✅ CARD: تم تحديث الحالة setState - isAvailable: ${updatedStatus.isAvailable}, mounted: $mounted');
+          debugPrint(
+            '✅ CARD: تم تحديث الحالة setState - isAvailable: ${updatedStatus.isAvailable}, mounted: $mounted',
+          );
           // قراءة فورية من الكاش بعد التحديث لضمان مزامنة أي تغييرات خارجية (force لتجاوز الـ debounce)
-          debugPrint('🔄 CARD: استدعاء _refreshFromCacheSilently مع force=true');
+          debugPrint(
+            '🔄 CARD: استدعاء _refreshFromCacheSilently مع force=true',
+          );
           _refreshFromCacheSilently(force: true);
 
           // إجبار rebuild إضافي بعد فترة قصيرة للتأكد
@@ -330,7 +394,11 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
   }
 
   /// تحديد سبب عدم التوفر بناءً على حالة المطعم
-  String _getReasonFromStatus(bool? isBusy, bool? canAcceptOrders, String? statusMessage) {
+  String _getReasonFromStatus(
+    bool? isBusy,
+    bool? canAcceptOrders,
+    String? statusMessage,
+  ) {
     if (isBusy == true) {
       return 'مشغول';
     }
@@ -362,14 +430,22 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       // 🔥 FIX: Get day name using simple switch statement (capitalized to match API)
       String getDayName(int weekday) {
         switch (weekday) {
-          case DateTime.monday: return 'Monday';
-          case DateTime.tuesday: return 'Tuesday';
-          case DateTime.wednesday: return 'Wednesday';
-          case DateTime.thursday: return 'Thursday';
-          case DateTime.friday: return 'Friday';
-          case DateTime.saturday: return 'Saturday';
-          case DateTime.sunday: return 'Sunday';
-          default: return 'Monday';
+          case DateTime.monday:
+            return 'Monday';
+          case DateTime.tuesday:
+            return 'Tuesday';
+          case DateTime.wednesday:
+            return 'Wednesday';
+          case DateTime.thursday:
+            return 'Thursday';
+          case DateTime.friday:
+            return 'Friday';
+          case DateTime.saturday:
+            return 'Saturday';
+          case DateTime.sunday:
+            return 'Sunday';
+          default:
+            return 'Monday';
         }
       }
 
@@ -390,9 +466,15 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
           // تحويل WorkingHours object إلى Map باستخدام regex
           try {
             final valueString = value.toString();
-            final openingMatch = RegExp(r'opening:\s*([^,\)]+)').firstMatch(valueString);
-            final closingMatch = RegExp(r'closing:\s*([^,\)]+)').firstMatch(valueString);
-            final isClosedMatch = RegExp(r'isClosed:\s*(true|false)').firstMatch(valueString);
+            final openingMatch = RegExp(
+              r'opening:\s*([^,\)]+)',
+            ).firstMatch(valueString);
+            final closingMatch = RegExp(
+              r'closing:\s*([^,\)]+)',
+            ).firstMatch(valueString);
+            final isClosedMatch = RegExp(
+              r'isClosed:\s*(true|false)',
+            ).firstMatch(valueString);
 
             normalizedWorkingHours[normalizedKey] = {
               'opening': openingMatch?.group(1)?.trim() ?? '09:00',
@@ -407,7 +489,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
       // قائمة بجميع الاحتمالات لاسم اليوم (كلها lowercase بعد التطبيع)
       final possibleDayNames = [
-        dayName.toLowerCase(),  // Convert to lowercase for normalized search
+        dayName.toLowerCase(), // Convert to lowercase for normalized search
       ];
 
       // البحث بجميع الاحتمالات (case-insensitive)
@@ -436,14 +518,21 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       }
 
       // فحص ساعات الفتح والإغلاق فقط إذا كان المطعم غير مغلق
-      final openTime = todayHours['open'] as String? ?? todayHours['opening'] as String?;
-      final closeTime = todayHours['close'] as String? ?? todayHours['closing'] as String?;
+      final openTime =
+          todayHours['open'] as String? ?? todayHours['opening'] as String?;
+      final closeTime =
+          todayHours['close'] as String? ?? todayHours['closing'] as String?;
 
       // إذا كان isClosed=false ولكن لا توجد ساعات محددة، افتراضياً مفتوح
-      if (openTime == null || closeTime == null ||
-          openTime.isEmpty || closeTime.isEmpty ||
-          openTime == 'none' || closeTime == 'none') {
-        debugPrint('⚠️ ساعات العمل غير محددة لليوم $dayName ولكن المطعم غير مغلق - افتراض مفتوح');
+      if (openTime == null ||
+          closeTime == null ||
+          openTime.isEmpty ||
+          closeTime.isEmpty ||
+          openTime == 'none' ||
+          closeTime == 'none') {
+        debugPrint(
+          '⚠️ ساعات العمل غير محددة لليوم $dayName ولكن المطعم غير مغلق - افتراض مفتوح',
+        );
         return true;
       }
 
@@ -464,10 +553,12 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       bool isOpen;
       if (closeMinutes < openMinutes) {
         // المطعم مفتوح خلال منتصف الليل (مثل: 22:00 - 02:00)
-        isOpen = currentMinutes >= openMinutes || currentMinutes <= closeMinutes;
+        isOpen =
+            currentMinutes >= openMinutes || currentMinutes <= closeMinutes;
       } else {
         // ساعات عمل عادية (مثل: 09:00 - 22:00)
-        isOpen = currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+        isOpen =
+            currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
       }
 
       debugPrint('⏰ فحص ساعات العمل للمطعم:');
@@ -522,7 +613,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
   Future<void> _loadAvailabilityStatus() async {
     try {
-      final status = await _availabilityService.checkRestaurantAvailability(widget.store.id);
+      final status = await _availabilityService.checkRestaurantAvailability(
+        widget.store.id,
+      );
       if (mounted) {
         setState(() {
           _availabilityStatus = status;
@@ -544,7 +637,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
             reasonUnavailable: '', // لا يوجد سبب لعدم التوفر
           );
         });
-        debugPrint('⚠️ فشل تحميل حالة المطعم ${widget.store.id}، استخدام حالة افتراضية متاحة: $e');
+        debugPrint(
+          '⚠️ فشل تحميل حالة المطعم ${widget.store.id}، استخدام حالة افتراضية متاحة: $e',
+        );
       }
     }
   }
@@ -558,10 +653,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         decoration: BoxDecoration(
           color: Colors.grey.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.grey.withOpacity(0.3),
-            width: 1,
-          ),
+          border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -585,11 +677,14 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       );
     }
 
-    final isWithinWorkingHours = _availabilityStatus?.isWithinWorkingHours ?? false;
+    final isWithinWorkingHours =
+        _availabilityStatus?.isWithinWorkingHours ?? false;
     final isAvailable = _availabilityStatus?.isAvailable ?? false;
     final reasonUnavailable = _availabilityStatus?.reasonUnavailable;
 
-    debugPrint('🔍 BADGE: isAvailable=$isAvailable, isWithinWorkingHours=$isWithinWorkingHours');
+    debugPrint(
+      '🔍 BADGE: isAvailable=$isAvailable, isWithinWorkingHours=$isWithinWorkingHours',
+    );
 
     // تطبيق منطق الأولويات:
     // 1. أولوية عالية: مغلق بسبب ساعات العمل
@@ -607,11 +702,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.access_time,
-              size: 10,
-              color: const Color(0xFFFF9800),
-            ),
+            Icon(Icons.access_time, size: 10, color: const Color(0xFFFF9800)),
             const SizedBox(width: 4),
             Text(
               'مغلق',
@@ -643,11 +734,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.block,
-              size: 10,
-              color: const Color(0xFFFF5722),
-            ),
+            Icon(Icons.block, size: 10, color: const Color(0xFFFF5722)),
             const SizedBox(width: 4),
             Text(
               'مشغول',
@@ -673,36 +760,39 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     required BorderRadius borderRadius,
     double? iconSize,
   }) {
-    final image = widget.store.image.isNotEmpty && widget.store.image.contains('://')
-        ? Image.network(
-            widget.store.image,
-            width: width,
-            height: height,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                color: Colors.grey[200],
-                child: Icon(Icons.restaurant, size: iconSize ?? 40, color: Colors.grey),
-              );
-            },
-          )
-        : Container(
-            color: Colors.grey[200],
-            child: Icon(Icons.restaurant, size: iconSize ?? 40, color: Colors.grey),
-          );
+    final image =
+        widget.store.image.isNotEmpty && widget.store.image.contains('://')
+            ? Image.network(
+              widget.store.image,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: Colors.grey[200],
+                  child: Icon(
+                    Icons.restaurant,
+                    size: iconSize ?? 40,
+                    color: Colors.grey,
+                  ),
+                );
+              },
+            )
+            : Container(
+              color: Colors.grey[200],
+              child: Icon(
+                Icons.restaurant,
+                size: iconSize ?? 40,
+                color: Colors.grey,
+              ),
+            );
 
-    final clipped = ClipRRect(
-      borderRadius: borderRadius,
-      child: image,
-    );
+    final clipped = ClipRRect(borderRadius: borderRadius, child: image);
 
     final heroTag = widget.heroTag;
     if (heroTag == null || heroTag.isEmpty) return clipped;
 
-    return Hero(
-      tag: heroTag,
-      child: clipped,
-    );
+    return Hero(tag: heroTag, child: clipped);
   }
 
   @override
@@ -714,206 +804,141 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
     }
   }
 
-  Widget _buildCompactCard() {
-    return Consumer<FavoritesModel>(
-      builder: (context, favModel, child) {
-        return GestureDetector(
-          onTap: widget.onTap,
-          child: Container(
-            width: 140,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
+  Widget _buildCompactCard() => Consumer<FavoritesModel>(
+    builder:
+        (context, favorites, _) => Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onTap,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Restaurant image with favorite button
                 Stack(
                   children: [
-                    Container(
-                      height: 100,
-                      decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                        color: Colors.grey[200],
-                      ),
-                      child: _buildCardImage(
-                        width: double.infinity,
-                        height: 100,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      ),
+                    _buildCardImage(
+                      width: double.infinity,
+                      height: 132,
+                      borderRadius: const BorderRadius.all(Radius.circular(16)),
                     ),
-                    // Favorite button
                     if (widget.showFavoriteButton)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: GestureDetector(
-                          onTap: () async {
-                            HapticFeedback.lightImpact();
+                      PositionedDirectional(
+                        top: 8,
+                        end: 8,
+                        child: IconButton(
+                          tooltip:
+                              favorites.isStoreFavorite(widget.store.id)
+                                  ? 'إزالة من المحفوظة'
+                                  : 'حفظ المطعم',
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: discoveryInk,
+                          ),
+                          icon: Icon(
+                            favorites.isStoreFavorite(widget.store.id)
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            size: 21,
+                          ),
+                          onPressed: () async {
                             try {
-                              await favModel.toggleStoreFavorite(
+                              await favorites.toggleStoreFavorite(
                                 widget.store.id,
                                 widget.store.name,
                                 storeImage: widget.store.image,
                                 storeCategory: widget.store.category,
                               );
-                            } catch (e) {
-                              if (context.mounted) {
+                            } catch (_) {
+                              if (context.mounted)
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('حدث خطأ في تحديث المفضلة'),
-                                    backgroundColor: Colors.red,
-                                    duration: Duration(seconds: 2),
+                                  const SnackBar(
+                                    content: Text(
+                                      'تعذر تحديث المحفوظة؛ أعد المحاولة',
+                                    ),
                                   ),
                                 );
-                              }
                             }
                           },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(15),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 3,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              favModel.isStoreFavorite(widget.store.id)
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              color: favModel.isStoreFavorite(widget.store.id)
-                                  ? Colors.red
-                                  : Colors.grey,
-                              size: 16,
-                            ),
-                          ),
                         ),
                       ),
                   ],
                 ),
-                // Restaurant details
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.store.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Colors.black, // نص أسود واضح
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.store.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: discoveryInk,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: discoveryInk,
+                            size: 16,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                widget.store.category ?? 'مطعم',
-                                style: const TextStyle(
-                                  color: Color(0xFF666666), // لون ثابت بدلاً من Colors.grey[600]
-                                  fontSize: 10,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                          const SizedBox(width: 3),
+                          Text(
+                            widget.store.ratingLabel,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: discoveryInk,
                             ),
-                            _buildStatusBadge(),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        // التقييم والوقت والمسافة على خط واحد
-                        Row(
-                          children: [
-                            Icon(Icons.star, color: Colors.amber, size: 13),
-                            const SizedBox(width: 2),
-                            Text(
-                              widget.store.ratingLabel,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: StorefrontValue(
+                              branchId: widget.store.id,
+                              field: StorefrontField.arrival,
                               style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.black,
+                                fontSize: 12,
+                                color: Color(0xFF647184),
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(Icons.access_time, color: Color(0xFF666666), size: 13),
-                            const SizedBox(width: 2),
-                            Text(
-                              widget.store.time,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF666666),
-                              ),
-                            ),
-                            if (widget.store.distance.isNotEmpty) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.location_on, color: Color(0xFF666666), size: 13),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Text(
-                                  widget.store.distance,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFF666666),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        // رسوم التوصيل
-                        if (widget.store.fee.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Text(
-                                'رسوم التوصيل: ',
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  color: Color(0xFF666666),
-                                ),
-                              ),
-                              Text(
-                                widget.store.fee,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Color(0xFF666666),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
                           ),
                         ],
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.delivery_dining,
+                            size: 17,
+                            color: discoveryInk,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: StorefrontValue(
+                              branchId: widget.store.id,
+                              field: StorefrontField.fee,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: discoveryInk,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      _buildStatusBadge(),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        );
-      },
-    );
-  }
+        ),
+  );
 
   Widget _buildFullCard() {
     return Consumer<FavoritesModel>(
@@ -955,7 +980,9 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.black, // نص أسود على الخلفية البيضاء
+                                  color:
+                                      Colors
+                                          .black, // نص أسود على الخلفية البيضاء
                                 ),
                               ),
                             ),
@@ -982,7 +1009,11 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                               ),
                             ),
                             const SizedBox(width: 16),
-                            Icon(Icons.access_time, color: Colors.grey[600], size: 16),
+                            Icon(
+                              Icons.access_time,
+                              color: Colors.grey[600],
+                              size: 16,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               widget.store.time,
@@ -990,7 +1021,11 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                             ),
                             if (widget.store.distance.isNotEmpty) ...[
                               const SizedBox(width: 16),
-                              Icon(Icons.location_on, color: Colors.grey[600], size: 16),
+                              Icon(
+                                Icons.location_on,
+                                color: Colors.grey[600],
+                                size: 16,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 widget.store.distance,
@@ -1032,9 +1067,10 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                           favModel.isStoreFavorite(widget.store.id)
                               ? Icons.favorite
                               : Icons.favorite_border,
-                          color: favModel.isStoreFavorite(widget.store.id)
-                              ? Colors.red
-                              : Colors.grey,
+                          color:
+                              favModel.isStoreFavorite(widget.store.id)
+                                  ? Colors.red
+                                  : Colors.grey,
                           size: 20,
                         ),
                       ),

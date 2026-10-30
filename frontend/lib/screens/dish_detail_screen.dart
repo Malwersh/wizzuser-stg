@@ -1,4 +1,3 @@
-import '../utils/readable_colors.dart';
 import '../utils/currency_format.dart';
 import 'dart:developer' as developer;
 // lib/screens/dish_detail_screen.dart
@@ -8,10 +7,9 @@ import 'dart:ui' as ui;
 // lib/screens/dish_detail_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/app_colors.dart';
+import '../widgets/discovery/customer_components.dart';
 import '../models/dish.dart';
 import '../models/favorites_model.dart';
 import '../models/product_model.dart';
@@ -35,7 +33,7 @@ Future<bool?> showDishDetailBottomSheet(
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: false,
+    useSafeArea: true,
     showDragHandle: false,
     backgroundColor: Colors.white,
     barrierColor: Colors.black.withValues(alpha: 0.45),
@@ -45,7 +43,7 @@ Future<bool?> showDishDetailBottomSheet(
     ),
     builder:
         (sheetContext) => SizedBox(
-          height: availableHeight * 0.85,
+          height: availableHeight * 0.94,
           child: MediaQuery.removePadding(
             context: sheetContext,
             removeTop: true,
@@ -87,24 +85,20 @@ class DishDetailScreen extends StatefulWidget {
   State<DishDetailScreen> createState() => _DishDetailScreenState();
 }
 
-class _DishDetailScreenState extends State<DishDetailScreen>
-    with SingleTickerProviderStateMixin {
-  static const _primaryPink = AppColors.primary;
-
-  late TabController _tabController;
+class _DishDetailScreenState extends State<DishDetailScreen> {
   final Map<String, Set<String>> _selectedOptions = {};
   int _quantity = 1;
   String? _specialInstructions;
-  final _arabicNumber = NumberFormat.decimalPattern('ar');
 
   // بيانات حقيقية من الباك إند
   ProductModel? _productData;
   bool _isLoadingProduct = false;
+  bool _productLoadFailed = false;
+  bool _addingToCart = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
 
     // استخدام البيانات الممررة إذا كانت متوفرة، وإلا جلبها من API
     developer.log('🔍 DishDetailScreen.initState:');
@@ -136,6 +130,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   /// 🔥 مجموعات الخيارات الفعّالة: الخيارات المضمنة في Dish أولاً،
   /// وإلا تُشتق من بيانات الإضافات/المتغيرات الخام القادمة من الباك إند
   List<OptionGroup> get _optionGroups {
+    if (_productData?.optionGroups != null) return _productData!.optionGroups!;
     if (widget.dish.optionGroups.isNotEmpty) return widget.dish.optionGroups;
     return OptionGroup.listFromAddons(
       _productData?.addons ?? _productData?.variations,
@@ -150,14 +145,21 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   }
 
   void _ensureOptionKeys() {
-    for (var g in _optionGroups) {
-      _selectedOptions.putIfAbsent(g.id, () => <String>{});
+    final groups = _optionGroups;
+    _selectedOptions.removeWhere((id, _) => !groups.any((g) => g.id == id));
+    for (final g in groups) {
+      final ids = _selectedOptions.putIfAbsent(g.id, () => <String>{});
+      ids.removeWhere(
+        (id) => !g.options.any((o) => o.id == id && o.isAvailable),
+      );
+      if (ids.length > g.maxSelections) ids.clear();
     }
   }
 
   Future<void> _loadProductDetails() async {
     setState(() {
       _isLoadingProduct = true;
+      _productLoadFailed = false;
     });
 
     try {
@@ -183,6 +185,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
       if (mounted) {
         setState(() {
           _productData = productData;
+          _productLoadFailed = productData == null;
           _isLoadingProduct = false;
         });
         // إذا وصلت مجموعات خيارات جديدة من الباك إند، تهيئة مفاتيحها
@@ -190,6 +193,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
       }
     } catch (e) {
       developer.log('❌ خطأ في جلب تفاصيل المنتج: $e');
+      _productLoadFailed = true;
       if (mounted) {
         setState(() {
           _isLoadingProduct = false;
@@ -200,7 +204,6 @@ class _DishDetailScreenState extends State<DishDetailScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -294,7 +297,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
     return {
       'id': widget.dish.id,
       'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
-      'price': _calculateTotal(),
+      'price': _calculateTotal() / _quantity,
       'description':
           _productDescription.isNotEmpty
               ? _productDescription
@@ -306,7 +309,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
       'store_address':
           widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
       'special_instructions': _specialInstructions?.trim(),
-      'base_price': _productPrice, // إضافة السعر الأساسي
+      'base_price': _calculateTotal() / _quantity, // إضافة السعر الأساسي
       'selected_options': _selectedOptions.map(
         (k, v) => MapEntry(k, v.toList()),
       ), // الخيارات المختارة
@@ -340,680 +343,413 @@ class _DishDetailScreenState extends State<DishDetailScreen>
     ); // يغلق شاشة الطبق
   }
 
+  bool get _choicesComplete => _optionGroups.every((g) {
+    final ids = _selectedOptions[g.id] ?? <String>{};
+    return (!g.required || ids.isNotEmpty) &&
+        ids.length <= g.maxSelections &&
+        ids.every((id) => g.options.any((o) => o.id == id && o.isAvailable));
+  });
+  String? get _choiceHint {
+    if (_isLoadingProduct) return 'جارٍ تحميل خيارات الوجبة…';
+    if (_productLoadFailed) return 'تعذر تحميل تفاصيل الوجبة؛ أعد المحاولة';
+    if (_productData?.isAvailable == false)
+      return 'هذا المنتج غير متوفر حاليًا';
+    for (final g in _optionGroups) {
+      if (g.required && (_selectedOptions[g.id]?.isEmpty ?? true))
+        return 'اختر ${g.title} لإكمال وجبتك';
+    }
+    return null;
+  }
+
+  Future<void> _editInstructions() async {
+    var draft = _specialInstructions ?? '';
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder:
+          (sheet) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              MediaQuery.viewInsetsOf(sheet).bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ملاحظات للمطعم',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: discoveryInk,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'اكتب ملاحظات التحضير؛ اختيار الأحجام والإضافات يكون من الخيارات أعلاه.',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF647184)),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  initialValue: draft,
+                  maxLength: 500,
+                  minLines: 2,
+                  maxLines: 4,
+                  onChanged: (value) => draft = value,
+                  decoration: const InputDecoration(
+                    hintText: 'مثال: بدون بصل',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: discoveryGold,
+                      foregroundColor: discoveryInk,
+                    ),
+                    onPressed: () => Navigator.pop(sheet, draft.trim()),
+                    child: const Text('حفظ الملاحظة'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+    );
+    if (mounted && result != null)
+      setState(() => _specialInstructions = result);
+  }
+
+  Future<void> _submitDish() async {
+    if (_addingToCart ||
+        !_choicesComplete ||
+        _isLoadingProduct ||
+        _productLoadFailed ||
+        _productData?.isAvailable == false)
+      return;
+    setState(() => _addingToCart = true);
+    try {
+      // أولاً: فحص توفر المطعم وحالة قبول الطلبات
+      developer.log('🔍 فحص توفر المطعم قبل إضافة المنتج للسلة');
+      developer.log('  storeId: ${widget.storeId}');
+
+      final availabilityService = RestaurantAvailabilityService.instance;
+      final availabilityStatus = await availabilityService
+          .checkRestaurantAvailability(
+            widget.storeId,
+            skipCache: true, // فحص حالي للحصول على أحدث البيانات
+          );
+
+      if (!mounted) return;
+      developer.log('📊 نتيجة فحص توفر المطعم:');
+      developer.log('  isAvailable: ${availabilityStatus.isAvailable}');
+      developer.log('  acceptingOrders: ${availabilityStatus.acceptingOrders}');
+      developer.log(
+        '  isWithinWorkingHours: ${availabilityStatus.isWithinWorkingHours}',
+      );
+      developer.log(
+        '  reasonUnavailable: ${availabilityStatus.reasonUnavailable}',
+      );
+
+      // إذا كان المطعم غير متاح، أظهر رسالة مناسبة
+      if (!availabilityStatus.isAvailable) {
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
+        String errorMessage;
+
+        if (!availabilityStatus.acceptingOrders) {
+          errorMessage = 'عذراً، هذا المطعم لا يستقبل طلبات جديدة حالياً';
+        } else if (!availabilityStatus.isWithinWorkingHours) {
+          errorMessage = 'عذراً، هذا المطعم مغلق حالياً';
+        } else {
+          errorMessage =
+              availabilityStatus.reasonUnavailable ??
+              'عذراً، هذا المطعم غير متاح حالياً';
+        }
+
+        developer.log('⚠️ المطعم غير متاح: $errorMessage');
+
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber,
+                    color: const Color(0xFF00296B),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(errorMessage)),
+                ],
+              ),
+              backgroundColor: Colors.orange.shade600,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'حسناً',
+                textColor: Colors.white,
+                onPressed: () {
+                  scaffoldMessenger.hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+        return; // توقف هنا ولا تضيف للسلة
+      }
+
+      // إذا كان المطعم متاحاً، تابع عملية إضافة المنتج للسلة
+      developer.log('✅ المطعم متاح، المتابعة لإضافة المنتج للسلة');
+
+      final appState = Provider.of<AppStateProvider>(context, listen: false);
+
+      developer.log('🛒 محاولة إضافة منتج للسلة');
+      developer.log('  المنتج: $_productName');
+      developer.log('  الوصف: $_productDescription');
+      developer.log('  الصورة: $_productImageUrl');
+      developer.log('  السعر الأساسي: $_productPrice');
+      developer.log('  السعر الإجمالي: ${_calculateTotal()}');
+      developer.log('  الكمية: $_quantity');
+      developer.log('  المطعم: ${widget.storeId}');
+      developer.log(
+        '  التعليمات الخاصة: "${_specialInstructions ?? 'لا توجد ملاحظات'}"',
+      );
+      developer.log(
+        '  طول الملاحظات: ${_specialInstructions?.length ?? 0} حرف',
+      );
+
+      // إنشاء عنصر السلة مع التأكد من صحة جميع البيانات
+      final cartItem = _buildCartItemMap();
+
+      // محاولة إضافة العنصر للسلة
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final favoritesModel = Provider.of<FavoritesModel>(
+        context,
+        listen: false,
+      );
+      final navigator = Navigator.of(context);
+      await appState.addToCart(cartItem);
+
+      // التحقق من نوع الخطأ
+      if (appState.errorMessage == 'DIFFERENT_STORE') {
+        // إظهار dialog المطعم المختلف
+        developer.log('⚠️ مطعم مختلف، إظهار dialog');
+        appState.clearError(); // مسح الخطأ
+        _showDifferentStoreDialog();
+        return;
+      } else if (appState.errorMessage != null) {
+        // خطأ آخر
+        developer.log('❌ خطأ في إضافة المنتج: ${appState.errorMessage}');
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text(appState.errorMessage!),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // نجحت العملية - العودة للشاشة السابقة
+      developer.log('✅ تم إضافة المنتج للسلة بنجاح');
+      if (mounted) {
+        // العودة للشاشة السابقة مع حالة المفضلة
+        developer.log(
+          '🔙 العودة لشاشة تفاصيل المطعم مع حالة المفضلة: ${favoritesModel.isDishFavorite(widget.dish.id)}',
+        );
+        navigator.pop(favoritesModel.isDishFavorite(widget.dish.id));
+      }
+    } finally {
+      if (mounted) setState(() => _addingToCart = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final photo = _productImageUrl;
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
-        extendBodyBehindAppBar: true,
-        backgroundColor: Colors.white,
-        body:
-            _isLoadingProduct
-                ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(color: const Color(0xFF00296B)),
-                      SizedBox(height: 16),
-                      Text('جاري تحميل تفاصيل المنتج...'),
-                    ],
-                  ),
-                )
-                : ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    // صورة الغلاف مع أزرار الخروج والتفضيل
-                    Stack(
-                      children: [
-                        SizedBox(
-                          height: 240,
-                          width: double.infinity,
-                          child: Builder(
-                            builder: (context) {
-                              // إضافة logging مفصل
-                              final imageUrl = _productImageUrl;
-                              developer.log('🖼️ بناء صورة الطبق:');
-                              developer.log('  imageUrl: "$imageUrl"');
-                              developer.log(
-                                '  imageUrl.isNotEmpty: ${imageUrl.isNotEmpty}',
-                              );
-                              developer.log(
-                                '  imageUrl.length: ${imageUrl.length}',
-                              );
-
-                              return imageUrl.isNotEmpty
-                                  ? Image.network(
-                                    imageUrl,
-                                    height: 240,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                    loadingBuilder: (
-                                      context,
-                                      child,
-                                      loadingProgress,
-                                    ) {
-                                      if (loadingProgress == null) {
-                                        developer.log(
-                                          '✅ تم تحميل صورة الطبق بنجاح',
-                                        );
-                                        return child;
-                                      }
-                                      developer.log(
-                                        '📥 جاري تحميل صورة الطبق...',
-                                      );
-                                      return Container(
-                                        height: 240,
-                                        width: double.infinity,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[200],
-                                        ),
-                                        child: const Center(
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  _primaryPink,
-                                                ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    errorBuilder: (context, error, stackTrace) {
-                                      developer.log(
-                                        '❌ خطأ في تحميل صورة الطبق: $error',
-                                      );
-                                      developer.log(
-                                        '❌ Stack trace: $stackTrace',
-                                      );
-                                      return Container(
-                                        height: 240,
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: [
-                                              Colors.grey[300]!,
-                                              Colors.grey[200]!,
-                                            ],
-                                          ),
-                                        ),
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.fastfood,
-                                            size: 60,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  )
-                                  : Container(
-                                    height: 240,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.grey[300]!,
-                                          Colors.grey[200]!,
-                                        ],
-                                      ),
-                                    ),
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.fastfood,
-                                        size: 60,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  );
-                            },
-                          ),
-                        ),
-                        Positioned(
-                          top: widget.isBottomSheet ? 12 : 40,
-                          right: 16,
-                          child: CircleAvatar(
-                            backgroundColor: Colors.white,
-                            child: IconButton(
-                              tooltip: 'إغلاق',
-                              icon: const Icon(
-                                Icons.close,
-                                color: AppColors.secondary,
-                              ),
-                              onPressed: () {
-                                developer.log('❌ إغلاق تفاصيل الطبق (زر X)');
-                                Navigator.pop(context);
-                              },
-                            ),
-                          ),
-                        ),
-                        // زر القلب تم إخفاؤه
-                        // Positioned(
-                        //   top: 24, left: 16,
-                        //   child: Consumer<FavoritesModel>(
-                        //     builder: (context, favoritesModel, child) {
-                        //       final isFavorite = favoritesModel.isDishFavorite(widget.dish.id);
-                        //       return CircleAvatar(
-                        //         backgroundColor: Colors.white,
-                        //         child: IconButton(
-                        //           icon: Icon(
-                        //             isFavorite ? Icons.favorite : Icons.favorite_border,
-                        //             color: _primaryPink
-                        //           ),
-                        //           onPressed: () {
-                        //             if (isFavorite) {
-                        //               favoritesModel.removeDishFavorite(widget.dish.id);
-                        //             } else {
-                        //               favoritesModel.addDishFavorite(widget.dish.id);
-                        //             }
-                        //           },
-                        //         ),
-                        //       );
-                        //     },
-                        //   ),
-                        // ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // اسم الطبق
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Text(
-                        _productName,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    // وصف الطبق
-                    if (_productDescription.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          _productDescription,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    // التحكم في الكمية
-                    _buildQuantitySelector(),
-                    const SizedBox(height: 16),
-                    // الخيارات (نفس منطقك القديم)
-                    for (var g in _optionGroups) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          '${g.title} • ${g.required ? "مطلوب" : "اختياري"} • '
-                          '${g.required ? "اختر 1" : "حتى ${_arabicNumber.format(g.maxSelections)}"}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      for (var o in g.options)
-                        g.required
-                            ? RadioListTile<String>(
-                              title: Text(
-                                '${o.name}${o.extraPrice != 0 ? " (+${_arabicNumber.format(o.extraPrice)})" : ""}',
-                              ),
-                              value: o.id,
-                              groupValue:
-                                  _selectedOptions[g.id]!.isEmpty
-                                      ? null
-                                      : _selectedOptions[g.id]!.first,
-                              onChanged:
-                                  (id) => setState(
-                                    () => _selectedOptions[g.id] = {id!},
-                                  ),
-                            )
-                            : CheckboxListTile(
-                              title: Text(
-                                '${o.name}${o.extraPrice != 0 ? " (+${_arabicNumber.format(o.extraPrice)})" : ""}',
-                              ),
-                              value: _selectedOptions[g.id]!.contains(o.id),
-                              onChanged:
-                                  (chk) => setState(() {
-                                    if (chk! &&
-                                        _selectedOptions[g.id]!.length <
-                                            g.maxSelections) {
-                                      _selectedOptions[g.id]!.add(o.id);
-                                    } else {
-                                      _selectedOptions[g.id]!.remove(o.id);
-                                    }
-                                  }),
-                            ),
-                    ],
-                    // تعليمات خاصة
-                    ListTile(
-                      title: Text(
-                        _specialInstructions?.isNotEmpty == true
-                            ? 'تعليمات خاصة'
-                            : 'إضافة تعليمات خاصة',
-                      ),
-                      subtitle:
-                          _specialInstructions?.isNotEmpty == true
-                              ? Text(
-                                _specialInstructions!,
-                                style: TextStyle(
-                                  color: const Color(0xFF00296B),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              )
-                              : null,
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        final txt = await showModalBottomSheet<String>(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) {
-                            final ctrl = TextEditingController(
-                              text: _specialInstructions,
-                            );
-                            return Directionality(
-                              textDirection: ui.TextDirection.rtl,
-                              child: Container(
-                                margin: EdgeInsets.only(
-                                  bottom:
-                                      MediaQuery.of(context).viewInsets.bottom,
-                                ),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.vertical(
-                                    top: Radius.circular(20),
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Header
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.note_add,
-                                            color: const Color(0xFF00296B),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          const Text(
-                                            'تعليمات خاصة',
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          if (_specialInstructions
-                                                  ?.isNotEmpty ==
-                                              true)
-                                            TextButton(
-                                              onPressed: () {
-                                                ctrl.clear();
-                                                Navigator.pop(context, '');
-                                              },
-                                              child: const Text(
-                                                'مسح',
-                                                style: TextStyle(
-                                                  color: Colors.red,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 16),
-
-                                      // Text field
-                                      TextField(
-                                        controller: ctrl,
-                                        maxLines: 4,
-                                        textDirection: ui.TextDirection.rtl,
-                                        decoration: InputDecoration(
-                                          labelText: 'اكتب ملاحظاتك هنا...',
-                                          hintText:
-                                              'مثال: بدون بصل، إضافة صوص، طبخ جيد، إلخ',
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: AppColors.primary,
-                                              width: 2,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 20),
-
-                                      // Buttons
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: OutlinedButton(
-                                              onPressed:
-                                                  () => Navigator.pop(
-                                                    context,
-                                                    null,
-                                                  ),
-                                              style: OutlinedButton.styleFrom(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 14,
-                                                    ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                              ),
-                                              child: const Text('إلغاء'),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: ElevatedButton(
-                                              style: ElevatedButton.styleFrom(
-                                                foregroundColor:
-                                                    readableForeground(
-                                                      AppColors.primary,
-                                                    ),
-                                                backgroundColor:
-                                                    AppColors.primary,
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 14,
-                                                    ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                              ),
-                                              onPressed: () {
-                                                developer.log(
-                                                  '💾 حفظ الملاحظات: "${ctrl.text.trim()}"',
-                                                );
-                                                Navigator.pop(
-                                                  context,
-                                                  ctrl.text.trim(),
-                                                );
-                                              },
-                                              child: const Text(
-                                                'حفظ',
-                                                style: TextStyle(
-                                                  color: AppColors.secondary,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                        if (txt != null) {
-                          setState(() {
-                            _specialInstructions = txt.isNotEmpty ? txt : null;
-                          });
-                          developer.log(
-                            '📝 تم حفظ الملاحظات: "${_specialInstructions ?? 'فارغة'}"',
-                          );
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-        bottomNavigationBar: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                foregroundColor: readableForeground(_primaryPink),
-                backgroundColor: _primaryPink,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                // أولاً: فحص توفر المطعم وحالة قبول الطلبات
-                developer.log('🔍 فحص توفر المطعم قبل إضافة المنتج للسلة');
-                developer.log('  storeId: ${widget.storeId}');
-
-                final availabilityService =
-                    RestaurantAvailabilityService.instance;
-                final availabilityStatus = await availabilityService
-                    .checkRestaurantAvailability(
-                      widget.storeId,
-                      skipCache: true, // فحص حالي للحصول على أحدث البيانات
-                    );
-
-                developer.log('📊 نتيجة فحص توفر المطعم:');
-                developer.log(
-                  '  isAvailable: ${availabilityStatus.isAvailable}',
-                );
-                developer.log(
-                  '  acceptingOrders: ${availabilityStatus.acceptingOrders}',
-                );
-                developer.log(
-                  '  isWithinWorkingHours: ${availabilityStatus.isWithinWorkingHours}',
-                );
-                developer.log(
-                  '  reasonUnavailable: ${availabilityStatus.reasonUnavailable}',
-                );
-
-                // إذا كان المطعم غير متاح، أظهر رسالة مناسبة
-                if (!availabilityStatus.isAvailable) {
-                  final scaffoldMessenger = ScaffoldMessenger.of(context);
-                  String errorMessage;
-
-                  if (!availabilityStatus.acceptingOrders) {
-                    errorMessage =
-                        'عذراً، هذا المطعم لا يستقبل طلبات جديدة حالياً';
-                  } else if (!availabilityStatus.isWithinWorkingHours) {
-                    errorMessage = 'عذراً، هذا المطعم مغلق حالياً';
-                  } else {
-                    errorMessage =
-                        availabilityStatus.reasonUnavailable ??
-                        'عذراً، هذا المطعم غير متاح حالياً';
-                  }
-
-                  developer.log('⚠️ المطعم غير متاح: $errorMessage');
-
-                  if (mounted) {
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(
-                              Icons.warning_amber,
-                              color: const Color(0xFF00296B),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(errorMessage)),
-                          ],
-                        ),
-                        backgroundColor: Colors.orange.shade600,
-                        duration: const Duration(seconds: 4),
-                        action: SnackBarAction(
-                          label: 'حسناً',
-                          textColor: Colors.white,
-                          onPressed: () {
-                            scaffoldMessenger.hideCurrentSnackBar();
-                          },
-                        ),
-                      ),
-                    );
-                  }
-                  return; // توقف هنا ولا تضيف للسلة
-                }
-
-                // إذا كان المطعم متاحاً، تابع عملية إضافة المنتج للسلة
-                developer.log('✅ المطعم متاح، المتابعة لإضافة المنتج للسلة');
-
-                final appState = Provider.of<AppStateProvider>(
-                  context,
-                  listen: false,
-                );
-
-                developer.log('🛒 محاولة إضافة منتج للسلة');
-                developer.log('  المنتج: $_productName');
-                developer.log('  الوصف: $_productDescription');
-                developer.log('  الصورة: $_productImageUrl');
-                developer.log('  السعر الأساسي: $_productPrice');
-                developer.log('  السعر الإجمالي: ${_calculateTotal()}');
-                developer.log('  الكمية: $_quantity');
-                developer.log('  المطعم: ${widget.storeId}');
-                developer.log(
-                  '  التعليمات الخاصة: "${_specialInstructions ?? 'لا توجد ملاحظات'}"',
-                );
-                developer.log(
-                  '  طول الملاحظات: ${_specialInstructions?.length ?? 0} حرف',
-                );
-
-                // إنشاء عنصر السلة مع التأكد من صحة جميع البيانات
-                final cartItem = _buildCartItemMap();
-
-                // محاولة إضافة العنصر للسلة
-                final scaffoldMessenger = ScaffoldMessenger.of(context);
-                final favoritesModel = Provider.of<FavoritesModel>(
-                  context,
-                  listen: false,
-                );
-                final navigator = Navigator.of(context);
-                await appState.addToCart(cartItem);
-
-                // التحقق من نوع الخطأ
-                if (appState.errorMessage == 'DIFFERENT_STORE') {
-                  // إظهار dialog المطعم المختلف
-                  developer.log('⚠️ مطعم مختلف، إظهار dialog');
-                  appState.clearError(); // مسح الخطأ
-                  _showDifferentStoreDialog();
-                  return;
-                } else if (appState.errorMessage != null) {
-                  // خطأ آخر
-                  developer.log(
-                    '❌ خطأ في إضافة المنتج: ${appState.errorMessage}',
-                  );
-                  if (mounted) {
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text(appState.errorMessage!),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                  return;
-                }
-
-                // نجحت العملية - العودة للشاشة السابقة
-                developer.log('✅ تم إضافة المنتج للسلة بنجاح');
-                if (mounted) {
-                  // العودة للشاشة السابقة مع حالة المفضلة
-                  developer.log(
-                    '🔙 العودة لشاشة تفاصيل المطعم مع حالة المفضلة: ${favoritesModel.isDishFavorite(widget.dish.id)}',
-                  );
-                  navigator.pop(favoritesModel.isDishFavorite(widget.dish.id));
-                }
-              },
-              child: Text(
-                'إضافة إلى الطلب • ${formatIqd(_calculateTotal())}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  color: AppColors.secondary,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuantitySelector() {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        backgroundColor: discoveryCanvas,
+        body: ListView(
+          padding: EdgeInsets.zero,
           children: [
-            GestureDetector(
-              onTap: () {
-                if (_quantity > 1) setState(() => _quantity--);
-              },
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  shape: BoxShape.circle,
+            Stack(
+              children: [
+                AspectRatio(
+                  aspectRatio: 1.45,
+                  child:
+                      photo.isEmpty
+                          ? const ColoredBox(
+                            color: Color(0xFFE8EDF4),
+                            child: Icon(
+                              Icons.restaurant_rounded,
+                              size: 64,
+                              color: discoveryInk,
+                            ),
+                          )
+                          : Image.network(
+                            photo,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (_, __, ___) => const ColoredBox(
+                                  color: Color(0xFFE8EDF4),
+                                  child: Icon(
+                                    Icons.restaurant_rounded,
+                                    size: 64,
+                                    color: discoveryInk,
+                                  ),
+                                ),
+                          ),
                 ),
-                child: const Center(
-                  child: Text('−', style: TextStyle(fontSize: 20)),
+                PositionedDirectional(
+                  top:
+                      widget.isBottomSheet
+                          ? 16
+                          : MediaQuery.paddingOf(context).top + 12,
+                  start: 16,
+                  child: IconButton(
+                    tooltip: 'إغلاق',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: discoveryInk,
+                      elevation: 2,
+                      shadowColor: Colors.black12,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ),
+              ],
+            ),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _productName,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: discoveryInk,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    formatIqd(_productPrice),
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: discoveryInk,
+                    ),
+                  ),
+                  if (_productDescription.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _productDescription,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF59687B),
+                        height: 1.7,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                _arabicNumber.format(_quantity),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            GestureDetector(
-              onTap: () => setState(() => _quantity++),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: const BoxDecoration(
-                  color: _primaryPink,
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(Icons.add, color: AppColors.secondary),
-                ),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_isLoadingProduct)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(
+                        child: CircularProgressIndicator(color: discoveryInk),
+                      ),
+                    ),
+                  if (_productLoadFailed)
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: _loadProductDetails,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('إعادة تحميل التفاصيل'),
+                      ),
+                    ),
+                  for (final group in _optionGroups)
+                    MealChoiceGroup(
+                      group: group,
+                      selected: _selectedOptions[group.id] ?? {},
+                      onChanged: (ids) {
+                        if (_addingToCart) return;
+                        setState(() => _selectedOptions[group.id] = ids);
+                      },
+                    ),
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      leading: const Icon(
+                        Icons.edit_note_rounded,
+                        color: discoveryInk,
+                      ),
+                      title: const Text(
+                        'ملاحظات للمطعم',
+                        style: TextStyle(
+                          color: discoveryInk,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _specialInstructions?.isNotEmpty == true
+                            ? _specialInstructions!
+                            : 'اختياري · تعليمات التحضير فقط',
+                        style: const TextStyle(
+                          color: Color(0xFF647184),
+                          fontSize: 13,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_left,
+                        color: discoveryInk,
+                      ),
+                      onTap: _addingToCart ? null : _editInstructions,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
+        ),
+        bottomNavigationBar: CustomerOrderActionBar(
+          quantity: _quantity,
+          total: _calculateTotal(),
+          onQuantity: (q) => setState(() => _quantity = q),
+          busy: _addingToCart,
+          hint: _choiceHint,
+          onAdd:
+              _choicesComplete &&
+                      !_isLoadingProduct &&
+                      !_productLoadFailed &&
+                      _productData?.isAvailable != false
+                  ? _submitDish
+                  : null,
         ),
       ),
     );

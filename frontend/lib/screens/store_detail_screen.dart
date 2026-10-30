@@ -1,3 +1,4 @@
+import '../widgets/discovery/customer_components.dart';
 import '../utils/readable_colors.dart';
 import '../services/storefront_pricing.dart';
 import '../widgets/storefront_value.dart';
@@ -72,7 +73,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   static const _primaryPink = AppColors.primary;
 
   /// ارتفاع الهيدر الموسع (صورة الغلاف)
-  static const double _kExpandedHeight = 470.0;
+  static const double _kExpandedHeight = 360.0;
   List<StoreDiscount> _menuOffers = [];
 
   /// منع تعارض الـ scroll-spy مع التنقل عبر التبويبات
@@ -1102,18 +1103,19 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                   colors: [
                     Color(0x26000000),
                     Color(0x00000000),
-                    Color(0xc2403527),
-                    Color(0xff403527),
+                    Color(0x990D1928),
+                    Color(0xFF0D1928),
                   ],
                 ),
               ),
             ),
             Positioned(
-              left: 16,
-              right: 16,
-              bottom: 22,
+              left: 0,
+              right: 0,
+              bottom: 10,
               child: RestaurantHeroDetails(
                 store: widget.store,
+                overImage: true,
                 ratingOverride: _freshRating,
                 reviewsOverride: _freshReviewCount,
                 onDetails: _showStoreInfoBottomSheet,
@@ -1464,8 +1466,8 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     required VoidCallback onPressed,
   }) {
     return Container(
-      width: 40,
-      height: 40,
+      width: 44,
+      height: 44,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
@@ -1478,7 +1480,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
         ],
       ),
       child: IconButton(
-        icon: Icon(icon, color: iconColor ?? const Color(0xff222222), size: 20),
+        icon: Icon(icon, color: iconColor ?? discoveryInk, size: 20),
         onPressed: onPressed,
         padding: EdgeInsets.zero,
       ),
@@ -1807,11 +1809,11 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'العروض والمزايا',
+          'عروض تستحق التجربة',
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-            color: Color(0xff171717),
+            fontSize: 21,
+            fontWeight: FontWeight.w700,
+            color: discoveryInk,
           ),
         ),
         const SizedBox(height: 14),
@@ -3258,6 +3260,11 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
 
   /// إضافة منتج إلى السلة (مع نافذة تعارض المطاعم عند الحاجة)
   Future<void> _addToCart(ProductModel product) async {
+    if (!product.isAvailable) return;
+    if (product.effectiveOptionGroups.isNotEmpty) {
+      await _openMenuProduct(product);
+      return;
+    }
     try {
       final appState = Provider.of<AppStateProvider>(context, listen: false);
 

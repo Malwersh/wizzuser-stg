@@ -48,9 +48,10 @@ void main() {
       );
       expect(find.text('مطعم فتوش'), findsOneWidget);
       expect(find.text('4.6'), findsOneWidget);
-      expect(find.text('مشويات  •  بغداد'), findsOneWidget);
+      expect(find.text('مشويات · بغداد'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('4.6'));
+      expect(find.text('(120 تقييم)'), findsOneWidget);
+      await tester.tap(find.text('معلومات المطعم'));
       expect(opened, isTrue);
     },
   );

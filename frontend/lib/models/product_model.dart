@@ -1,6 +1,8 @@
+import 'dish.dart';
 // lib/models/product_model.dart
 
 class ProductModel {
+  final List<OptionGroup>? optionGroups;
   final String id;
   final String businessId;
   final String categoryId;
@@ -11,7 +13,8 @@ class ProductModel {
   final double price;
   final bool isAvailable;
   final bool isFeatured; // 🔥 الأكثر مبيعاً/مميز
-  final List<dynamic>? addons; // 🔥 إضافات/خيارات خام من الباك إند (شكل غير مضمون)
+  final List<dynamic>?
+  addons; // 🔥 إضافات/خيارات خام من الباك إند (شكل غير مضمون)
   final List<dynamic>? variations; // 🔥 متغيرات خام من الباك إند
   final int preparationTime;
   final Map<String, dynamic>? nutritionInfo;
@@ -33,6 +36,7 @@ class ProductModel {
     required this.price,
     this.isAvailable = true,
     this.isFeatured = false,
+    this.optionGroups,
     this.addons,
     this.variations,
     this.preparationTime = 0,
@@ -47,35 +51,66 @@ class ProductModel {
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
     return ProductModel(
-      id: json['productId']?.toString() ?? json['product_id']?.toString() ?? json['id']?.toString() ?? '',
-      businessId: json['businessId']?.toString() ?? json['business_id']?.toString() ?? '',
-      categoryId: json['categoryId']?.toString() ?? json['category_id']?.toString() ?? '',
-      categoryName: json['categoryName']?.toString() ?? json['category_name']?.toString(), // 🔥 إضافة
+      id:
+          json['productId']?.toString() ??
+          json['product_id']?.toString() ??
+          json['id']?.toString() ??
+          '',
+      businessId:
+          json['businessId']?.toString() ??
+          json['business_id']?.toString() ??
+          '',
+      categoryId:
+          json['categoryId']?.toString() ??
+          json['category_id']?.toString() ??
+          '',
+      categoryName:
+          json['categoryName']?.toString() ??
+          json['category_name']?.toString(), // 🔥 إضافة
       name: json['name']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
-      imageUrl: json['imageUrl']?.toString() ?? json['image_url']?.toString() ?? '',
+      imageUrl:
+          json['imageUrl']?.toString() ?? json['image_url']?.toString() ?? '',
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
-      isAvailable: json['is_available'] ?? true,
+      isAvailable: json['isAvailable'] ?? json['is_available'] ?? true,
       isFeatured: json['is_featured'] == true || json['isFeatured'] == true,
-      addons: json['addons'] is List ? List<dynamic>.from(json['addons'] as List) : null,
-      variations: json['variations'] is List ? List<dynamic>.from(json['variations'] as List) : null,
+      optionGroups:
+          json.containsKey('optionGroups')
+              ? (json['optionGroups'] as List)
+                  .map(
+                    (v) => OptionGroup.fromJson(Map<String, dynamic>.from(v)),
+                  )
+                  .toList()
+              : null,
+      addons:
+          json['addons'] is List
+              ? List<dynamic>.from(json['addons'] as List)
+              : null,
+      variations:
+          json['variations'] is List
+              ? List<dynamic>.from(json['variations'] as List)
+              : null,
       preparationTime: (json['preparation_time'] as num?)?.toInt() ?? 0,
       nutritionInfo: json['nutrition_info'] as Map<String, dynamic>?,
-      allergens: json['allergens'] != null 
-          ? List<String>.from(json['allergens']) 
-          : [],
+      allergens:
+          json['allergens'] != null ? List<String>.from(json['allergens']) : [],
       isVegetarian: json['is_vegetarian'] ?? false,
       isVegan: json['is_vegan'] ?? false,
       isGlutenFree: json['is_gluten_free'] ?? false,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
-      updatedAt: json['updated_at'] != null 
-          ? DateTime.tryParse(json['updated_at'].toString())
-          : null,
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+      updatedAt:
+          json['updated_at'] != null
+              ? DateTime.tryParse(json['updated_at'].toString())
+              : null,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      if (optionGroups != null)
+        'optionGroups': optionGroups!.map((v) => v.toJson()).toList(),
       'id': id,
       'business_id': businessId,
       'category_id': categoryId,
@@ -94,6 +129,9 @@ class ProductModel {
       'updated_at': updatedAt?.toIso8601String(),
     };
   }
+
+  List<OptionGroup> get effectiveOptionGroups =>
+      optionGroups ?? OptionGroup.listFromAddons(addons ?? variations);
 
   // للتوافق مع النظام الحالي
   String get image => imageUrl;

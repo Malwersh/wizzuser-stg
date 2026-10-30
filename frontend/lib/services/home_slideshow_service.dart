@@ -1,3 +1,5 @@
+import '../models/home_layout.dart';
+import 'browsing_location_service.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/home_slide.dart';
@@ -8,7 +10,8 @@ import 'package:uuid/uuid.dart';
 class HomeSlideshowFeed {
   final bool configured;
   final List<HomeSlide> slides;
-  const HomeSlideshowFeed(this.configured, this.slides);
+  final HomeLayout? layout;
+  const HomeSlideshowFeed(this.configured, this.slides, [this.layout]);
 }
 
 class HomeSlideshowService {
@@ -19,6 +22,7 @@ class HomeSlideshowService {
   );
   static final _sessionId = const Uuid().v4();
   Future<HomeSlideshowFeed> load({String? regionId}) async {
+    regionId ??= BrowsingLocationService.instance.selection?.regionId;
     final session = SessionService();
     final token = session.isLoggedIn ? await session.getToken() : null;
     if (session.isLoggedIn && token == null)
@@ -41,7 +45,13 @@ class HomeSlideshowService {
         (data['slides'] as List)
             .map((row) => HomeSlide.fromJson(Map<String, dynamic>.from(row)))
             .toList();
-    return HomeSlideshowFeed((data['version'] as num) > 0, slides);
+    return HomeSlideshowFeed(
+      (data['version'] as num) > 0,
+      slides,
+      data['layout'] is Map
+          ? HomeLayout.fromJson(Map<String, dynamic>.from(data['layout']))
+          : null,
+    );
   }
 
   Future<List<HomeSlide>> campaigns() async {
