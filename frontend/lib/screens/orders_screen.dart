@@ -4,7 +4,6 @@ import '../services/order_service_v2.dart';
 import '../services/session_service.dart';
 import '../services/websocket_service.dart';
 import '../models/order_model.dart';
-import '../widgets/connection_status_widget.dart';
 import 'order_tracking_screen.dart';
 import 'dart:async';
 
@@ -24,7 +23,6 @@ class _OrdersScreenState extends State<OrdersScreen>
   Timer? _refreshTimer;
   
   // متغيرات حالة الاتصال للتحكم في UI
-  bool _isWebSocketConnected = false;
   bool _isInitialized = false;
 
   // جعل الشاشة تستمع للتغييرات في OrderServiceV2
@@ -267,9 +265,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       // لا نقوم بإنشاء اتصال جديد هنا - الاتصالات تتم فقط عبر connectForOrder(orderId)
       if (_wsService.isConnected) {
         print('✅ WebSocket: متصل بالفعل - إعداد المستمعات للطلبات الموجودة');
-        setState(() {
-          _isWebSocketConnected = true;
-        });
         _setupOrderUpdatesListener();
         return;
       }
@@ -285,7 +280,6 @@ class _OrdersScreenState extends State<OrdersScreen>
         print('OrdersScreen: WebSocket connection status changed: $isConnected');
         if (mounted) {
           setState(() {
-            _isWebSocketConnected = isConnected;
             if (isConnected) {
               print('✅ WebSocket: متصل - تفعيل التحديثات الفورية');
               // إعادة إعداد المستمعات عند إعادة الاتصال - فوري وبدون تأخير
@@ -307,9 +301,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       
       // تحديث الحالة الأولية وإعداد المستمع
       if (mounted) {
-        setState(() {
-          _isWebSocketConnected = _wsService.isConnected;
-        });
         if (_wsService.isConnected) {
           // إعداد المستمعات فورياً
           Future.microtask(() {
@@ -320,9 +311,6 @@ class _OrdersScreenState extends State<OrdersScreen>
     } catch (e) {
       print('❌ خطأ في إعداد WebSocket: $e');
       if (mounted) {
-        setState(() {
-          _isWebSocketConnected = false;
-        });
       }
       // لا نريد إيقاف التطبيق بسبب مشكلة WebSocket
     }
@@ -729,7 +717,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       }
       
       if (mounted) {
-        setState(() {});
         print('🔔 تم تحديث واجهة المستخدم');
       }
       
@@ -782,7 +769,7 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   Future<void> _loadCompletedOrders() async {
     try {
-      print('🔄 _loadCompletedOrders: استخدام البيانات المحلية الفورية...');
+      await _orderService.getUserOrders(await _getCurrentUserId());
       
       // 🚀 FIX: استخدام البيانات المحلية فقط للتحديث السريع
       // البيانات محدثة بالفعل عبر WebSocket real-time
@@ -1313,78 +1300,12 @@ class _OrdersScreenState extends State<OrdersScreen>
               title: const Text('الطلبات', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               iconTheme: const IconThemeData(color: Colors.black),
               automaticallyImplyLeading: false,
-              actions: [
-                // مؤشر حالة الاتصال في AppBar
-                Container(
-                  margin: const EdgeInsets.only(right: 16),
-                  child: GestureDetector(
-                    onTap: () {
-                      // التحقق من أن الـ widget ما زال mounted قبل عرض الـ dialog
-                      if (!mounted) return;
-                      
-                      // عرض تفاصيل الاتصال
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('حالة الاتصال'),
-                          content: const ConnectionStatusWidget(showDetailed: true),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('حسناً'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _isWebSocketConnected 
-                            ? Colors.green.withOpacity(0.1)
-                            : AppColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _isWebSocketConnected ? Colors.green : AppColors.primary,
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _isWebSocketConnected ? Icons.wifi : Icons.refresh,
-                            size: 16,
-                            color: _isWebSocketConnected ? Colors.green : AppColors.primary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _isWebSocketConnected ? 'مباشر' : 'تلقائي',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _isWebSocketConnected ? Colors.green : AppColors.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+
             ),
           ),
         ),
         body: Column(
           children: [
-            // شريط حالة الاتصال
-            Container(
-              width: double.infinity,
-              child: const ConnectionStatusWidget(
-                showDetailed: false,
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              ),
-            ),
             // التبويبات
             Container(
               color: Colors.white,
@@ -1396,7 +1317,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                 indicatorColor: AppColors.primary,
                 tabs: const [
                   Tab(text: 'الحالية'),
-                  Tab(text: 'السابقة'),
+                  Tab(text: 'السابقة (٣٠ يوم)'),
                 ],
               ),
             ),

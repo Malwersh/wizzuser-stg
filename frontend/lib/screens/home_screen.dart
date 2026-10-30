@@ -491,33 +491,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
             return;
           }
-          // 🛡️ Guard: إذا كان العدد نفسه ولا توجد معرفات جديدة، تخطي
-          if (_allRealBusinesses.isNotEmpty &&
-              rawRestaurants.length == _allRealBusinesses.length) {
-            final existingIds = _allRealBusinesses.map((b) => b.id).toSet();
-            bool hasNew = false;
-            for (final item in rawRestaurants) {
-              String? id;
-              if (item is BusinessModel) {
-                id = item.id;
-              } else if (item is Map<String, dynamic>) {
-                id = (item['businessId'] ?? item['business_id']) as String?;
-              }
-              if (id != null && !existingIds.contains(id)) {
-                hasNew = true;
-                break;
-              }
-            }
-            if (!hasNew) {
-              developer.log(
-                '🛡️ Provider LISTENER SKIP (same size, no new IDs) size=${rawRestaurants.length}',
-              );
-              return;
-            }
-            developer.log(
-              '🌉 Provider LISTENER: same size but new IDs detected → proceed',
-            );
-          }
+          // Existing stores can have updated names, photos, or availability.
+          // Apply refreshed data even when the IDs and list size are unchanged.
           final List<BusinessModel> businesses = [];
           for (final item in rawRestaurants) {
             try {
@@ -643,31 +618,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
         return;
       }
-      // 🛡️ Guard 2: إذا كانت القائمة الحالية تحتوي على نفس عدد العناصر ولكن معرفات مختلفة، نتحقق إن كان الـ Provider يحتوي على عناصر جديدة
-      if (_allRealBusinesses.isNotEmpty &&
-          rawRestaurants.length == _allRealBusinesses.length) {
-        final currentIds = _allRealBusinesses.map((b) => b.id).toSet();
-        bool providerHasNew = false;
-        for (final item in rawRestaurants) {
-          String? id;
-          if (item is BusinessModel) {
-            id = item.id;
-          } else if (item is Map<String, dynamic>) {
-            id = (item['businessId'] ?? item['business_id']) as String?;
-          }
-          if (id != null && !currentIds.contains(id)) {
-            providerHasNew = true;
-            break;
-          }
-        }
-        if (!providerHasNew) {
-          debugPrint(
-            '🛡️ BRIDGE: SKIP — provider has no new IDs compared to current UI list',
-          );
-          return;
-        }
-        debugPrint('🌉 BRIDGE: provider has new IDs — proceeding with merge');
-      }
+      // Refresh metadata for existing stores as well as newly added stores.
       debugPrint(
         '🌉 BRIDGE: وجدنا ${rawRestaurants.length} عنصر في Provider - جاري التحويل...',
       );

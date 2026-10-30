@@ -41,6 +41,7 @@ exports.handler = async (event) => {
         // Get query parameters
         const queryParams = event.queryStringParameters || {};
         const limit = parseInt(queryParams.limit) || 20;
+        const historyDays = queryParams.historyDays === '30' ? 30 : null;
         const status = queryParams.status;
         const guestToken = queryParams.guestToken; // Support guestToken for guest orders
 
@@ -77,6 +78,12 @@ exports.handler = async (event) => {
             Limit: limit
         };
 
+        if (historyDays) {
+            queryCommand.KeyConditionExpression += ' AND createdAt >= :since';
+            queryCommand.ExpressionAttributeValues[':since'] = new Date(Date.now() - historyDays * 86400000).toISOString();
+            queryCommand.Limit = 100;
+        }
+
         // Add status filter if provided
         if (status) {
             if (['active','completed'].includes(status)) {
@@ -94,10 +101,13 @@ exports.handler = async (event) => {
             }
         }
 
-        const command = new QueryCommand(queryCommand);
-        const result = await dynamoDb.send(command);
-
-        const orders = result.Items || [];
+        const orders = [];
+        let result;
+        do {
+            result = await dynamoDb.send(new QueryCommand(queryCommand));
+            orders.push(...(result.Items || []));
+            queryCommand.ExclusiveStartKey = result.LastEvaluatedKey;
+        } while (historyDays && result.LastEvaluatedKey);
 
         console.log('Orders retrieved successfully:', orders.length, 'orders found');
 

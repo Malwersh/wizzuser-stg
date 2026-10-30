@@ -789,7 +789,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
                 }
               },
               child: Text(
-                'إضافة إلى الطلب • ${_calculateTotal().toStringAsFixed(2)} ر.س',
+                'إضافة إلى الطلب • ${_arabicNumber.format(_calculateTotal())} د.ع',
                 style: const TextStyle(fontSize: 18, color: AppColors.secondary),
               ),
             ),

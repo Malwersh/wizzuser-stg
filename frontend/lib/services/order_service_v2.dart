@@ -480,9 +480,12 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// الحصول على الطلبات السابقة فقط
   List<OrderModel> getPastOrders() {
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
     return _orders
-        .where((order) => terminalStatuses.contains(order.status.value))
-        .toList();
+        .where((order) => terminalStatuses.contains(order.status.value) &&
+            !order.createdAt.isBefore(cutoff))
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   /// جلب تفاصيل طلب محدد
@@ -613,11 +616,11 @@ class OrderServiceV2 extends ChangeNotifier {
       String url;
       if (userId != null && userId != 'guest') {
         // Registered user - use userId
-        url = '$_baseUrl/users/$userId/orders';
+        url = '$_baseUrl/users/$userId/orders?historyDays=30';
         print('OrderService: 📡 طلب GET للمستخدم المسجل إلى: $url');
       } else if (_guestToken != null && _guestToken!.isNotEmpty) {
         // Guest user with guestToken
-        url = '$_baseUrl/users/guest/orders?guestToken=$_guestToken';
+        url = '$_baseUrl/users/guest/orders?historyDays=30&guestToken=$_guestToken';
         print('OrderService: 📡 طلب GET للضيف باستخدام guestToken إلى: $url');
       } else {
         // No valid identifier for fetching orders
@@ -733,7 +736,7 @@ class OrderServiceV2 extends ChangeNotifier {
       }
 
       // إذا كان لدينا طلبات بالفعل، تحديث الطلبات النشطة فقط
-      final url = '$_baseUrl/users/$userId/orders';
+      final url = '$_baseUrl/users/$userId/orders?historyDays=30';
       print('OrderService: 🔗 URL لتحديث الطلبات: $url');
 
       final response = await http.get(
@@ -798,7 +801,7 @@ class OrderServiceV2 extends ChangeNotifier {
       _clearError();
 
       final response = await http.get(
-        Uri.parse('$_baseUrl/users/$userId/orders?status=completed&limit=50'),
+        Uri.parse('$_baseUrl/users/$userId/orders?status=completed&historyDays=30'),
         headers: await _getHeaders(),
       );
 
@@ -874,9 +877,12 @@ class OrderServiceV2 extends ChangeNotifier {
 
   /// الحصول على الطلبات المكتملة من القائمة المحلية
   List<OrderModel> getCompletedOrdersLocal() {
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
     return _orders
-        .where((order) => terminalStatuses.contains(order.status.value))
-        .toList();
+        .where((order) => terminalStatuses.contains(order.status.value) &&
+            !order.createdAt.isBefore(cutoff))
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   /// تحديث حالة طلب
