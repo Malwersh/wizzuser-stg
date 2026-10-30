@@ -810,7 +810,8 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   Future<void> _loadCompletedOrders() async {
     try {
-      print('🔄 _loadCompletedOrders: استخدام البيانات المحلية الفورية...');
+      await _orderService.getUserOrders(await _getCurrentUserId());
+      if (!mounted) return;
 
       // 🚀 FIX: استخدام البيانات المحلية فقط للتحديث السريع
       // البيانات محدثة بالفعل عبر WebSocket real-time
@@ -1433,7 +1434,10 @@ class _OrdersScreenState extends State<OrdersScreen>
                 labelColor: AppColors.primary,
                 unselectedLabelColor: Colors.grey,
                 indicatorColor: AppColors.primary,
-                tabs: const [Tab(text: 'الحالية'), Tab(text: 'السابقة')],
+                tabs: const [
+                  Tab(text: 'الحالية'),
+                  Tab(text: 'السابقة (٣٠ يوم)'),
+                ],
               ),
             ),
             // المحتوى

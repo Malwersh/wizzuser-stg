@@ -10,8 +10,7 @@ import '../services/logout_service.dart';
 import 'login_screen.dart';
 import 'register_screen_tabs.dart';
 import 'addresses_screen.dart';
-import 'change_email_phone_screen.dart';
-import 'change_password_screen.dart';
+import 'verified_phone_screen.dart';
 import 'notification_settings_screen.dart';
 import 'language_settings_screen.dart';
 import 'country_settings_screen.dart';
@@ -393,15 +392,9 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             ),
             _buildDivider(),
             _buildMenuItem(
-              icon: Icons.email,
-              title: 'تغيير البريد/الهاتف',
-              onTap: () => _navigateToChangeEmailPhone(),
-            ),
-            _buildDivider(),
-            _buildMenuItem(
-              icon: Icons.lock,
-              title: 'تغيير كلمة المرور',
-              onTap: () => _navigateToChangePassword(),
+              icon: Icons.phone,
+              title: 'تغيير الهاتف',
+              onTap: () => _navigateToChangePhone(),
             ),
             _buildDivider(),
           ],
@@ -568,17 +561,10 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     ).push(MaterialPageRoute(builder: (context) => const AddressesScreen()));
   }
 
-  void _navigateToChangeEmailPhone() {
+  void _navigateToChangePhone() {
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ChangeEmailPhoneScreen()),
-    );
-  }
-
-  void _navigateToChangePassword() {
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
+      MaterialPageRoute(builder: (context) => const VerifiedPhoneScreen()),
     );
   }
 

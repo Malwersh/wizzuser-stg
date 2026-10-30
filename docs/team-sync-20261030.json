@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-30",
+  "branch": "integration/team-sync-20261030",
+  "snapshot": "c28be6a71566074a2ad006e1cfc3d72caaf6e3f3",
+  "incoming": "d5b9d9d5f904271469205b6aae593cff0c185829",
+  "resolutions": [
+    {
+      "repo": "wizzuser-stg",
+      "file": "backend/src/functions/create-order/quote-runtime/orderGoodsPricing.js",
+      "resolution": "ours",
+      "reason": "Keep current published-menu live-availability/stock fences and modern option selection/cart unit pricing; integrate separate new history refresh/label after conflict resolution."
+    },
+    {
+      "repo": "wizzuser-stg",
+      "file": "backend/src/functions/get-business-products/index.js",
+      "resolution": "ours",
+      "reason": "Keep current published-menu live-availability/stock fences and modern option selection/cart unit pricing; integrate separate new history refresh/label after conflict resolution."
+    },
+    {
+      "repo": "wizzuser-stg",
+      "file": "backend/test/business-products-pagination.test.cjs",
+      "resolution": "ours",
+      "reason": "Keep current published-menu live-availability/stock fences and modern option selection/cart unit pricing; integrate separate new history refresh/label after conflict resolution."
+    },
+    {
+      "repo": "wizzuser-stg",
+      "file": "frontend/lib/screens/dish_detail_screen.dart",
+      "resolution": "ours",
+      "reason": "Keep current published-menu live-availability/stock fences and modern option selection/cart unit pricing; integrate separate new history refresh/label after conflict resolution."
+    },
+    {
+      "repo": "wizzuser-stg",
+      "file": "frontend/lib/screens/orders_screen.dart",
+      "resolution": "ours",
+      "reason": "Keep current published-menu live-availability/stock fences and modern option selection/cart unit pricing; integrate separate new history refresh/label after conflict resolution."
+    },
+    {
+      "repo": "wizzuser-stg",
+      "file": "frontend/lib/services/home_slideshow_service.dart",
+      "resolution": "colleague",
+      "reason": "Use colleague region-aware load and smooth carousel as base; reapply current published-layout callbacks and scope invalidation explicitly."
+    },
+    {
+      "repo": "wizzuser-stg",
+      "file": "frontend/lib/widgets/home_slideshow.dart",
+      "resolution": "colleague",
+      "reason": "Use colleague region-aware load and smooth carousel as base; reapply current published-layout callbacks and scope invalidation explicitly."
+    }
+  ],
+  "notes": [
+    "Upstream history is merged without force/reset. Current inventory/quote/permissions guards retained where upstream versions are older.",
+    "New customer regional carousel and GIF playback preserved alongside published home-layout callbacks.",
+    "Cloud deployments and financial/content records are unchanged by this GitHub synchronization."
+  ]
+}
