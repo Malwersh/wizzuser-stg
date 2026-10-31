@@ -57,11 +57,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => PasswordResetConfirmationScreen(
-                username: identifier,
-                userType: result['userType'] ?? 'unknown',
-                resetToken: result['resetToken'], // For phone users
-              ),
+              builder:
+                  (_) => PasswordResetConfirmationScreen(
+                    username: identifier,
+                    userType: result['userType'] ?? 'unknown',
+                    resetToken: result['resetToken'], // For phone users
+                  ),
             ),
           );
         }
@@ -98,7 +99,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                
+
                 // أيقونة وعنوان
                 Center(
                   child: Column(
@@ -137,9 +138,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: 40),
-                
+
                 // حقل الإدخال
                 TextField(
                   controller: _identifierController,
@@ -153,60 +154,71 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.primary, width: 2),
+                      borderSide: BorderSide(
+                        color: AppColors.primary,
+                        width: 2,
+                      ),
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 30),
-                
+
                 // زر الإرسال
                 SizedBox(
                   width: double.infinity,
-                  child: _isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primary,
-                          ),
-                        )
-                      : ElevatedButton(
-                          onPressed: _handlePasswordReset,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: AppColors.secondary,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                  child:
+                      _isLoading
+                          ? const Center(
+                            child: CircularProgressIndicator(
+                              color: const Color(0xFF00296B),
                             ),
-                            elevation: 2,
+                          )
+                          : ElevatedButton(
+                            onPressed: _handlePasswordReset,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: AppColors.secondary,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                            ),
+                            child: const Text(
+                              'إرسال رابط الاستعادة',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
-                          child: const Text(
-                            'إرسال رابط الاستعادة',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
-                        ),
                 ),
-                
+
                 // رسالة الحالة
                 if (_message != null) ...[
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _isSuccess 
-                          ? Colors.green.withValues(alpha: 0.1)
-                          : Colors.red.withValues(alpha: 0.1),
+                      color:
+                          _isSuccess
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: _isSuccess 
-                            ? Colors.green.withValues(alpha: 0.3)
-                            : Colors.red.withValues(alpha: 0.3),
+                        color:
+                            _isSuccess
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : Colors.red.withValues(alpha: 0.3),
                       ),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          _isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                          _isSuccess
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
                           color: _isSuccess ? Colors.green : Colors.red,
                           size: 20,
                         ),
@@ -225,9 +237,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 30),
-                
+
                 // رابط العودة لتسجيل الدخول
                 Center(
                   child: TextButton(
@@ -235,7 +247,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     child: const Text(
                       'العودة إلى تسجيل الدخول',
                       style: TextStyle(
-                        color: AppColors.primary,
+                        color: const Color(0xFF00296B),
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),

@@ -40,18 +40,28 @@ class BusinessModel {
     this.metadata,
   });
 
+  int? get averagePreparationMinutes {
+    final value=metadata?['averagePreparationMinutes'] ?? metadata?['orderReceptionSettings']?['defaultPreparationMinutes'];
+    return value is int && value>=5 && value<=120 ? value : null;
+  }
+  int? get reviewCount {
+    final raw = metadata?['reviewCount'];
+    final value = raw is num ? raw : num.tryParse(raw?.toString() ?? '');
+    return value != null && value.isFinite && value >= 0 && value == value.roundToDouble() ? value.toInt() : null;
+  }
+
   factory BusinessModel.fromJson(Map<String, dynamic> json) {
     // دالة مساعدة لتحويل التقييم من String أو num
     double parseRating(dynamic ratingValue) {
-      if (ratingValue == null) return 4.2;
+      if (ratingValue == null) return 0.0;
       if (ratingValue is num) return ratingValue.toDouble();
       if (ratingValue is String) {
-        return double.tryParse(ratingValue) ?? 4.2;
+        return double.tryParse(ratingValue) ?? 0.0;
       }
-      return 4.2;
+      return 0.0;
     }
 
-    final rating = parseRating(json['rating']);
+    final rating = parseRating(json['customerRating'] ?? json['rating']);
     
     // تحليل العنوان المحسن
     String addressString = 'العنوان غير متوفر';
@@ -124,14 +134,19 @@ class BusinessModel {
       businessType: json['businessType']?.toString() ?? json['business_type']?.toString() ?? 'restaurant',
       isActive: parseBool(json['isActive'] ?? json['is_active'], defaultValue: true),
       rating: rating, // استخدام التقييم المحلل
-      distance: json['distance']?.toString() ?? '2.5 كم', // مسافة افتراضية
-      deliveryFee: json['deliveryFee']?.toString() ?? json['delivery_fee']?.toString() ?? '5000',
-      deliveryTime: json['deliveryTime']?.toString() ?? json['delivery_time']?.toString() ?? '25 دقيقة',
+      distance: json['distance']?.toString() ?? '', // مسافة افتراضية
+      deliveryFee: json['deliveryFee']?.toString() ?? json['delivery_fee']?.toString() ?? '',
+      deliveryTime: json['deliveryTime']?.toString() ?? json['delivery_time']?.toString() ?? '',
       phone: json['phoneNumber']?.toString() ?? json['phone_number']?.toString() ?? json['phone']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       latitude: json['latitude'] != null ? double.tryParse(json['latitude'].toString()) : null,
       longitude: json['longitude'] != null ? double.tryParse(json['longitude'].toString()) : null,
       metadata: {
+        'minimumOrderAmountIqd': json['minimumOrderAmountIqd'] ?? json['minimum_order'] ?? json['metadata']?['minimumOrderAmountIqd'],
+        'storefrontDeliveryAgreements': json['storefrontDeliveryAgreements'] ?? json['metadata']?['storefrontDeliveryAgreements'] ?? [],
+        'averagePreparationMinutes':json['averagePreparationMinutes'] ?? json['orderReceptionSettings']?['defaultPreparationMinutes'] ?? json['metadata']?['averagePreparationMinutes'],
+        'orderReceptionSettings':json['orderReceptionSettings'],
+        'reviewCount': json['customerRatingCount'] ?? json['reviewCount'] ?? json['reviewsCount'] ?? json['ratingCount'] ?? json['metadata']?['reviewCount'],
         'sponsored': parseBool(json['sponsored'], defaultValue: false),
         'popular': rating >= 4.0,
         'owner_name': json['ownerName']?.toString() ?? json['owner_name']?.toString() ?? '',
@@ -165,6 +180,7 @@ class BusinessModel {
       'business_type': businessType,
       'is_active': isActive,
       'rating': rating,
+      'reviewCount': reviewCount,
       'distance': distance,
       'delivery_fee': deliveryFee,
       'delivery_time': deliveryTime,
@@ -182,8 +198,8 @@ class BusinessModel {
   String get logoUrl => businessPhotoUrl;
   bool get isOpen => isActive;
   String get fee => deliveryFee;
-  String get ratingString => rating.toStringAsFixed(1);
-  String get reviews => '0'; // يمكن إضافة هذا الحقل لاحقاً
+  String get ratingString => rating.isFinite && rating >= 1 && rating <= 5 ? rating.toStringAsFixed(1) : '—';
+  String get reviews => reviewCount?.toString() ?? '';
   String get time => deliveryTime;
   String get category => businessType;
 

@@ -1,0 +1,25 @@
+{
+  "part": 361,
+  "status": "IMPLEMENTED_INSTALLED_SIMULATOR",
+  "date": "2026-10-30",
+  "changes": [
+    "Short photo cover; restaurant identity and verified rating on white surface",
+    "Compact fee and ETA columns with route distance and minimum from existing storefront pricing",
+    "Navy sticky category tabs; responsive photo product grid with shared availability gates",
+    "Featured carousel only for genuinely flagged products; no invented popularity",
+    "Existing offers, favorites, search, sharing and cart flows retained"
+  ],
+  "verification": {
+    "flutterWidgetTests": 5,
+    "narrowWidths": [
+      320,
+      390
+    ],
+    "analyzer": "No errors or warnings; 3 existing style infos",
+    "iosSimulatorBuild": "passed",
+    "installedAndLaunched": "iPhone 16 Pro",
+    "visualStoreReview": "pending: host accessibility does not permit automated navigation"
+  },
+  "backendDeploymentRequired": false,
+  "githubPushPerformed": false
+}

@@ -1,4 +1,5 @@
-const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { PrivateOrderApiClient: ApiGatewayManagementApiClient } = require('../../private-order-delivery-346');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand, ScanCommand, DeleteCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 

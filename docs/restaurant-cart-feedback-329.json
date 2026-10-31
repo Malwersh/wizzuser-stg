@@ -1,0 +1,21 @@
+{
+  "part": 329,
+  "status": "IMPLEMENTED_SIMULATOR239_INSTALLED",
+  "changes": [
+    "Transparent Material surface gives restaurant cart overlay proper typography outside Scaffold, removing yellow debug underlines",
+    "Restore navy text directly on gold bar; readable navy count/amount badge",
+    "Remove successful direct restaurant add-to-cart snackbar; retain error and different-store handling",
+    "Pulse entire expanded bar subtly on quantity increase, including adding another unit of an existing dish",
+    "Count badge reflects total quantity rather than distinct lines"
+  ],
+  "testsPassed": 13,
+  "regressions": [
+    "Restaurant overlay outside Scaffold has no underline decoration",
+    "320px width with2x Arabic text has no layout exception",
+    "Additional unit updates quantity and triggers cart pulse"
+  ],
+  "nativeBuild": 239,
+  "financialLogicChanged": false,
+  "installedOn": "09DA4C20-FD4B-446E-8C2F-9D04E5CFC206",
+  "dataPreserved": true
+}

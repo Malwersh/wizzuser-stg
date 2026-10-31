@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 // lib/models/offer.dart
 
 class Offer {
@@ -59,7 +60,7 @@ class Offer {
       case OfferType.percentage:
         return '${discountPercentage.toInt()}%';
       case OfferType.fixedAmount:
-        return '${discountPercentage.toStringAsFixed(2)} ر.س';
+        return '${formatIqd(discountPercentage)}';
       case OfferType.buyOneGetOne:
         return 'اشتري واحد واحصل على آخر مجاناً';
     }

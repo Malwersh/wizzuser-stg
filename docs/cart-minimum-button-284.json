@@ -1,0 +1,11 @@
+{
+  "status": "IMPLEMENTED_TESTED_SIMULATOR_BUILD_IN_PROGRESS",
+  "behavior": "Continue disabled while goods subtotal is below known minimum, enabled at equality, disabled again on quantity decrease; delivery fees do not count toward goods minimum. Existing authoritative checkout verification retained.",
+  "testResults": {
+    "cartSuitePassed": 11,
+    "cartSuiteFailed": 3,
+    "newBoundaryTest": "PASSED",
+    "baselineComparison": "Same three delivery preview failures confirmed without button change"
+  },
+  "manualAcceptance": "NOT_RUN"
+}

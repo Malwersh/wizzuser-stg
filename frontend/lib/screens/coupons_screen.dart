@@ -28,6 +28,7 @@ class _CouponsScreenState extends State<CouponsScreen>
     _tabController = TabController(length: 3, vsync: this);
     _userService.addListener(_onUserDataChanged);
     _userService.checkExpiredCoupons();
+    _userService.syncUserData();
   }
 
   @override
@@ -53,13 +54,11 @@ class _CouponsScreenState extends State<CouponsScreen>
         backgroundColor: Colors.grey[50],
         body: Column(
           children: [
-          // Header Section
-          _buildHeader(),
-          // Content Section with TabBar and TabBarView
-          Expanded(
-            child: _buildContent(),
-          ),
-        ],
+            // Header Section
+            _buildHeader(),
+            // Content Section with TabBar and TabBarView
+            Expanded(child: _buildContent()),
+          ],
         ),
       ),
     );
@@ -71,10 +70,7 @@ class _CouponsScreenState extends State<CouponsScreen>
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            _primaryColor,
-            _primaryColor.withValues(alpha: 0.8),
-          ],
+          colors: [_primaryColor, _primaryColor.withValues(alpha: 0.8)],
         ),
       ),
       child: SafeArea(
@@ -87,14 +83,17 @@ class _CouponsScreenState extends State<CouponsScreen>
                 children: [
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: const Color(0xFF00296B),
+                    ),
                   ),
                   const Expanded(
                     child: Text(
                       'قسائم الخصم',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -126,7 +125,7 @@ class _CouponsScreenState extends State<CouponsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'أضف قسيمة خصم',
+            'اختر كوداً للطلب القادم',
             style: TextStyle(
               color: Colors.white,
               fontSize: 16,
@@ -171,20 +170,21 @@ class _CouponsScreenState extends State<CouponsScreen>
                     onTap: _isAddingCoupon ? null : _addCoupon,
                     child: Container(
                       padding: const EdgeInsets.all(14),
-                      child: _isAddingCoupon
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+                      child:
+                          _isAddingCoupon
+                              ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _primaryColor,
+                                ),
+                              )
+                              : const Icon(
+                                Icons.add,
                                 color: _primaryColor,
+                                size: 20,
                               ),
-                            )
-                          : const Icon(
-                              Icons.add,
-                              color: _primaryColor,
-                              size: 20,
-                            ),
                     ),
                   ),
                 ),
@@ -219,7 +219,10 @@ class _CouponsScreenState extends State<CouponsScreen>
               indicatorWeight: 3,
               isScrollable: false,
               tabAlignment: TabAlignment.fill,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              labelPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 8,
+              ),
               labelStyle: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
@@ -238,7 +241,7 @@ class _CouponsScreenState extends State<CouponsScreen>
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          'صالحة (${_userService.validCoupons.length})',
+                          'عروض (${_userService.validCoupons.length})',
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 13),
                         ),
@@ -255,7 +258,7 @@ class _CouponsScreenState extends State<CouponsScreen>
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          'مستخدمة (${_userService.usedCoupons.length})',
+                          'سجل الاستخدام',
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 13),
                         ),
@@ -272,7 +275,7 @@ class _CouponsScreenState extends State<CouponsScreen>
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          'منتهية (${_userService.expiredCoupons.length})',
+                          'المنتهية',
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 13),
                         ),
@@ -300,13 +303,30 @@ class _CouponsScreenState extends State<CouponsScreen>
   }
 
   Widget _buildValidCouponsTab() {
+    if (_userService.couponsLoading)
+      return const Center(child: CircularProgressIndicator());
+    if (_userService.couponsError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_userService.couponsError!),
+            TextButton(
+              onPressed: _userService.syncUserData,
+              child: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
+    }
     final validCoupons = _userService.validCoupons;
-    
+
     if (validCoupons.isEmpty) {
       return _buildEmptyState(
         icon: Icons.local_offer_outlined,
         title: 'لا توجد قسائم صالحة',
-        subtitle: 'أضف قسيمة خصم جديدة أو اكسب نقاط من شاشة المكافآت',
+        subtitle:
+            'لا توجد عروض متاحة حالياً. تُراجع أهلية الكود عند إتمام الطلب.',
       );
     }
 
@@ -322,12 +342,12 @@ class _CouponsScreenState extends State<CouponsScreen>
 
   Widget _buildUsedCouponsTab() {
     final usedCoupons = _userService.usedCoupons;
-    
+
     if (usedCoupons.isEmpty) {
       return _buildEmptyState(
         icon: Icons.check_circle_outline,
-        title: 'لا توجد قسائم مستخدمة',
-        subtitle: 'القسائم التي تستخدمها ستظهر هنا',
+        title: 'سجل الاستخدام غير متاح حالياً',
+        subtitle: 'يمكنك مراجعة الخصومات المطبقة ضمن تفاصيل طلباتك.',
       );
     }
 
@@ -343,12 +363,12 @@ class _CouponsScreenState extends State<CouponsScreen>
 
   Widget _buildExpiredCouponsTab() {
     final expiredCoupons = _userService.expiredCoupons;
-    
+
     if (expiredCoupons.isEmpty) {
       return _buildEmptyState(
         icon: Icons.schedule_outlined,
-        title: 'لا توجد قسائم منتهية الصلاحية',
-        subtitle: 'القسائم المنتهية الصلاحية ستظهر هنا',
+        title: 'سجل القسائم المنتهية غير متاح حالياً',
+        subtitle: 'تعرض القائمة العروض الحالية فقط.',
       );
     }
 
@@ -373,11 +393,7 @@ class _CouponsScreenState extends State<CouponsScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 80,
-              color: Colors.grey[400],
-            ),
+            Icon(icon, size: 80, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               title,
@@ -391,10 +407,7 @@ class _CouponsScreenState extends State<CouponsScreen>
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -512,7 +525,7 @@ class _CouponsScreenState extends State<CouponsScreen>
                         ),
                       ),
                     ),
-                        if (isValid)
+                    if (isValid)
                       InkWell(
                         onTap: () => _copyCouponCode(coupon['code'] ?? ''),
                         child: Container(
@@ -542,7 +555,7 @@ class _CouponsScreenState extends State<CouponsScreen>
                   const Spacer(),
                   if (coupon['minOrder'] != null && coupon['minOrder'] > 0)
                     Text(
-                      'الحد الأدنى: ${coupon['minOrder']} ر.س',
+                      'الحد الأدنى: ${coupon['minOrder']} د.ع',
                       style: TextStyle(
                         fontSize: 12,
                         color: textColor.withValues(alpha: 0.8),
@@ -570,18 +583,27 @@ class _CouponsScreenState extends State<CouponsScreen>
 
     try {
       final success = await _userService.addCoupon(code);
+      if (!mounted) return;
       if (success) {
         _couponController.clear();
-        _showSnackBar('تم إضافة القسيمة بنجاح!');
+        _showSnackBar(
+          'تم اختيار الكود للطلب القادم. سيتم التحقق منه عند الدفع.',
+        );
       } else {
-        _showSnackBar('كود القسيمة غير صحيح أو منتهي الصلاحية', isError: true);
+        _showSnackBar(
+          'أدخل كوداً يحتوي على أحرف إنجليزية أو أرقام أو _ أو -',
+          isError: true,
+        );
       }
     } catch (e) {
-      _showSnackBar('حدث خطأ أثناء إضافة القسيمة', isError: true);
+      if (mounted)
+        _showSnackBar('تعذر اختيار الكود. أعد المحاولة.', isError: true);
     } finally {
-      setState(() {
-        _isAddingCoupon = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isAddingCoupon = false;
+        });
+      }
     }
   }
 
@@ -652,10 +674,7 @@ class _CouponsScreenState extends State<CouponsScreen>
                     ),
                     Text(
                       coupon['description'] ?? '',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -667,7 +686,7 @@ class _CouponsScreenState extends State<CouponsScreen>
           _buildDetailRow('قيمة الخصم', coupon['discount'] ?? ''),
           _buildDetailRow('تاريخ الانتهاء', coupon['expiry'] ?? ''),
           if (coupon['minOrder'] != null && coupon['minOrder'] > 0)
-            _buildDetailRow('الحد الأدنى للطلب', '${coupon['minOrder']} ر.س'),
+            _buildDetailRow('الحد الأدنى للطلب', '${coupon['minOrder']} د.ع'),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -686,10 +705,7 @@ class _CouponsScreenState extends State<CouponsScreen>
               ),
               child: const Text(
                 'نسخ كود القسيمة',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -719,10 +735,7 @@ class _CouponsScreenState extends State<CouponsScreen>
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -736,9 +749,7 @@ class _CouponsScreenState extends State<CouponsScreen>
         content: Text(message),
         backgroundColor: isError ? Colors.red : _primaryColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

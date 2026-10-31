@@ -4,8 +4,9 @@
  */
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, ScanCommand, TransactWriteCommand, PutCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const crypto = require('crypto');
+const {writeContext,commitBook,fullAddress319}=require('../shared/address-book-319');
 
 // Function to generate UUID-like string using crypto
 function generateUUID() {
@@ -138,68 +139,10 @@ function buildFullAddress(data) {
 }
 
 /**
- * Clear existing default addresses for user
- */
-async function clearDefaultAddresses(userId) {
-    try {
-        // First, find all default addresses for this user
-        const queryParams = {
-            TableName: TABLE_NAME,
-            IndexName: 'userId-isDefault-index',
-            KeyConditionExpression: 'userId = :userId AND isDefault = :isDefault',
-            ExpressionAttributeValues: {
-                ':userId': userId,
-                ':isDefault': 'true' // DynamoDB stores booleans as strings in GSI
-            }
-        };
-
-        const result = await dynamodb.send(new QueryCommand(queryParams));
-        
-        // Update each default address to not be default
-        for (const address of result.Items) {
-            const updateParams = {
-                TableName: TABLE_NAME,
-                Key: { addressId: address.addressId },
-                UpdateExpression: 'SET isDefault = :isDefault, updatedAt = :updatedAt',
-                ExpressionAttributeValues: {
-                    ':isDefault': false,
-                    ':updatedAt': new Date().toISOString()
-                }
-            };
-            
-            await dynamodb.send(new UpdateCommand(updateParams));
-        }
-        
-        console.log(`✅ Cleared ${result.Items.length} default addresses for user ${userId}`);
-    } catch (error) {
-        console.error('❌ Error clearing default addresses:', error);
-        throw error;
-    }
-}
-
-/**
- * Check if user has reached address limit
- */
-async function checkAddressLimit(userId, limit = 10) {
-    const queryParams = {
-        TableName: TABLE_NAME,
-        IndexName: 'userId-index',
-        KeyConditionExpression: 'userId = :userId',
-        ExpressionAttributeValues: {
-            ':userId': userId
-        },
-        Select: 'COUNT'
-    };
-
-    const result = await dynamodb.send(new QueryCommand(queryParams));
-    return result.Count < limit;
-}
-
-/**
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Create address request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -226,6 +169,7 @@ exports.handler = async (event) => {
             };
         }
 
+        const write=await writeContext(dynamodb,event,userId);
         // Parse request body
         let requestData;
         try {
@@ -241,7 +185,7 @@ exports.handler = async (event) => {
             };
         }
 
-        console.log('📋 Request data:', JSON.stringify(requestData, null, 2));
+
 
         // Validate address data
         const validationErrors = validateAddressData(requestData);
@@ -257,33 +201,39 @@ exports.handler = async (event) => {
             };
         }
 
-        // Check address limit
-        const canAddMore = await checkAddressLimit(userId);
-        if (!canAddMore) {
-            return {
-                statusCode: 400,
-                headers: CORS_HEADERS,
-                body: JSON.stringify({
-                    success: false,
-                    message: 'لا يمكن إضافة أكثر من 10 عناوين'
-                })
-            };
+        if(requestData.save_to_address_book!==undefined&&typeof requestData.save_to_address_book!=='boolean')throw Object.assign(Error('INVALID_ADDRESS_STORAGE'),{statusCode:400});
+        const checkoutOnly=requestData.save_to_address_book===false;
+        if(requestData.save_to_address_book!==undefined){
+          const meaningful=value=>typeof value==='string'&&value.trim().length>=2&&!['-','غير محدد','موقع محدد من الخريطة'].includes(value.trim());
+          if(!meaningful(requestData.neighborhood)||!meaningful(requestData.landmark))throw Object.assign(Error('DELIVERY_DETAILS_REQUIRED'),{statusCode:400});
+          if(checkoutOnly)requestData.is_default=false;
         }
+        const idempotency=require('./idempotency-315');
+        const requestIntent=idempotency.intent(userId,requestData);
+        const replay=await idempotency.replay({db:dynamodb,GetCommand,table:TABLE_NAME,userId,intent:requestIntent,data:requestData});
+        if(replay)return createdResponse(replay,true);
 
-        // If this is set as default, clear other default addresses
-        if (requestData.is_default === true) {
-            await clearDefaultAddresses(userId);
+        const regionApi=require('../../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
+        const verifiedRegion=await regionApi.resolve(requestData.latitude,requestData.longitude);
+        if(requestData.save_to_address_book!==undefined&&requestData.region_id&&requestData.region_id!==verifiedRegion.regionId)throw Object.assign(Error('REGION_SELECTION_CHANGED'),{statusCode:400});
+        if(requestData.save_to_address_book!==undefined){
+          const path=verifiedRegion.path;
+          requestData.province=path[1].base.name_ar||path[1].base.name;
+          requestData.district=path[2].base.name_ar||path[2].base.name;
+          requestData.region_level=3;requestData.region_is_active=true;
         }
-
+        requestData.region_id=verifiedRegion.regionId;requestData.region_name_ar=verifiedRegion.regionNameAr;
         // Generate address ID and timestamps
-        const addressId = generateUUID();
+        const addressId = requestIntent?.addressId || generateUUID();
         const now = new Date().toISOString();
         
         // Build full address
-        const fullAddress = buildFullAddress(requestData);
+        const fullAddress = fullAddress319({...requestData,regionNameAr:requestData.region_name_ar});
 
         // Create address item
         const addressItem = {
+            ...(requestIntent?{creationRequestHash:requestIntent.hash}:{}),
+            ...(checkoutOnly?{recordType:'CHECKOUT_ADDRESS',checkoutExpiresAt:Math.floor(Date.now()/1000)+7*24*60*60}:{}),
             addressId: addressId,
             userId: userId,
             name: requestData.name.trim(),
@@ -293,8 +243,8 @@ exports.handler = async (event) => {
             landmark: requestData.landmark.trim(),
             detailedAddress: requestData.detailed_address?.trim() || null,
             fullAddress: fullAddress,
-            latitude: requestData.latitude || null,
-            longitude: requestData.longitude || null,
+            latitude: requestData.latitude ?? null,
+            longitude: requestData.longitude ?? null,
             addressType: requestData.address_type || 'other',
             isDefault: requestData.is_default === true ? 'true' : 'false', // Store as string for GSI
             buildingNumber: requestData.building_number?.trim() || null,
@@ -323,10 +273,31 @@ exports.handler = async (event) => {
             Item: addressItem
         };
 
-        await dynamodb.send(new PutCommand(putParams));
+        putParams.ConditionExpression='attribute_not_exists(addressId)';
+        await commitBook({db:dynamodb,write,operation:{Put:putParams},makeDefault:requestData.is_default===true,regionChecks:regionApi.checks(verifiedRegion.path)});
 
-        // Format response
-        const responseData = {
+        console.log('✅ Address created successfully:', addressId);
+
+        return createdResponse(addressItem);
+
+    } catch (error) {
+        console.error('💥 Error creating address:', error);
+
+        return {
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
+            headers: CORS_HEADERS,
+            body: JSON.stringify({
+                success: false,
+                message: error.code==='ADDRESS_LIMIT_REACHED'?'لا يمكن إضافة أكثر من 10 عناوين':error.code==='ADDRESS_BOOK_CHANGED'?'تغيّرت العناوين. أعد المحاولة للتحقق من الحفظ.':'تعذر تأكيد حفظ العنوان. أعد المحاولة.',
+                code:error.code||null,
+                error: error.message
+            })
+        };
+    }
+};
+
+function addressData(addressItem) {
+    return {
             id: addressItem.addressId,
             user_id: addressItem.userId,
             name: addressItem.name,
@@ -358,29 +329,5 @@ exports.handler = async (event) => {
             updated_at: addressItem.updatedAt
         };
 
-        console.log('✅ Address created successfully:', addressId);
-
-        return {
-            statusCode: 201,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({
-                success: true,
-                message: 'تم إنشاء العنوان بنجاح',
-                data: responseData
-            })
-        };
-
-    } catch (error) {
-        console.error('💥 Error creating address:', error);
-        
-        return {
-            statusCode: 500,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({
-                success: false,
-                message: 'خطأ في إنشاء العنوان',
-                error: error.message
-            })
-        };
-    }
-};
+}
+function createdResponse(item,reused=false){return {statusCode:201,headers:CORS_HEADERS,body:JSON.stringify({success:true,message:reused?'العنوان محفوظ مسبقًا':'تم إنشاء العنوان بنجاح',data:addressData(item)})};}

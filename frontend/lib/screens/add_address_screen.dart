@@ -1,3 +1,4 @@
+import '../services/iraqi_delivery_details.dart';
 // lib/screens/add_address_screen.dart
 
 import 'package:flutter/material.dart';
@@ -21,9 +22,11 @@ class AddAddressScreen extends StatefulWidget {
 class _AddAddressScreenState extends State<AddAddressScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  
+
   // 🔥 النظام الجديد: حقلان فقط
-  final _fullAddressController = TextEditingController(); // العنوان الكامل من Google
+  final _fullAddressController =
+      TextEditingController(); // العنوان الكامل من Google
+  final _neighborhoodController = TextEditingController();
   final _landmarkController = TextEditingController(); // الوصف الإجباري
 
   // 🔥 GPS & Region System
@@ -41,6 +44,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
   void dispose() {
     _nameController.dispose();
     _fullAddressController.dispose();
+    _neighborhoodController.dispose();
     _landmarkController.dispose();
     super.dispose();
   }
@@ -54,7 +58,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
           'إضافة عنوان جديد',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: const Color(0xFF00296B),
           ),
         ),
         backgroundColor: AppColors.primary,
@@ -82,10 +86,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                           value: 'العراق',
                           child: Row(
                             children: [
-                              Text(
-                                '🇮🇶',
-                                style: TextStyle(fontSize: 20),
-                              ),
+                              Text('🇮🇶', style: TextStyle(fontSize: 20)),
                               const SizedBox(width: 8),
                               const Text('العراق'),
                             ],
@@ -95,16 +96,22 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                       onChanged: null, // غير قابل للتعديل
                       decoration: InputDecoration(
                         labelText: 'البلد *',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         filled: true,
                         fillColor: Colors.white,
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                          borderSide: BorderSide(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: AppColors.primary),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
                     ),
@@ -142,10 +149,10 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              
+
               // 🔥 زر اختيار من الخريطة - جديد
               _buildMapPickerButton(),
-              
+
               const SizedBox(height: 16),
               _buildSectionCard(
                 title: 'تفاصيل العنوان',
@@ -158,7 +165,15 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                     icon: Icons.location_on,
                     isRequired: true,
                     maxLines: 3,
-                    readOnly: true, // للقراءة فقط - يتم ملؤه من الخريطة
+                    readOnly: false, // للقراءة فقط - يتم ملؤه من الخريطة
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(
+                    controller: _neighborhoodController,
+                    label: 'اسم الحي أو المحلة *',
+                    hint: 'اكتب اسم الحي',
+                    icon: Icons.location_city,
+                    isRequired: true,
                   ),
                   const SizedBox(height: 16),
                   _buildTextField(
@@ -209,11 +224,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                     color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    icon,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
+                  child: Icon(icon, color: AppColors.primary, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -253,9 +264,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         labelText: label + (isRequired ? ' *' : ''),
         hintText: hint,
         prefixIcon: icon != null ? Icon(icon) : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: AppColors.primary, width: 2),
@@ -265,35 +274,52 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
         filled: true,
-        fillColor: readOnly ? Colors.grey[100] : Colors.white, // لون مختلف للقراءة فقط
+        fillColor:
+            readOnly ? Colors.grey[100] : Colors.white, // لون مختلف للقراءة فقط
       ),
-      validator: (label == 'رقم الهاتف')
-          ? (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'هذا الحقل مطلوب';
-              }
-              final phone = value.trim();
-              if (!phone.startsWith('+964') || phone.length < 13) {
-                return 'يرجى إدخال رقم عراقي صحيح يبدأ بـ +964';
-              }
-              return null;
-            }
-          : (isRequired
+      validator:
+          (label == 'رقم الهاتف')
               ? (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'هذا الحقل مطلوب';
-                  }
-                  return null;
+                if (value == null || value.trim().isEmpty) {
+                  return 'هذا الحقل مطلوب';
                 }
-              : null),
+                final phone = value.trim();
+                if (!phone.startsWith('+964') || phone.length < 13) {
+                  return 'يرجى إدخال رقم عراقي صحيح يبدأ بـ +964';
+                }
+                return null;
+              }
+              : (isRequired
+                  ? (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'هذا الحقل مطلوب';
+                    }
+                    return null;
+                  }
+                  : null),
     );
   }
 
   Widget _buildAddressTypeSelector() {
     final types = [
-      {'type': AddressType.home, 'name': 'المنزل', 'icon': Icons.home, 'color': Colors.green},
-      {'type': AddressType.work, 'name': 'العمل', 'icon': Icons.work, 'color': Colors.blue},
-      {'type': AddressType.other, 'name': 'أخرى', 'icon': Icons.location_on, 'color': AppColors.primary},
+      {
+        'type': AddressType.home,
+        'name': 'المنزل',
+        'icon': Icons.home,
+        'color': Colors.green,
+      },
+      {
+        'type': AddressType.work,
+        'name': 'العمل',
+        'icon': Icons.work,
+        'color': Colors.blue,
+      },
+      {
+        'type': AddressType.other,
+        'name': 'أخرى',
+        'icon': Icons.location_on,
+        'color': AppColors.primary,
+      },
     ];
 
     return Column(
@@ -301,63 +327,68 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       children: [
         const Text(
           'نوع العنوان',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Row(
-          children: types.map((type) {
-            final isSelected = _selectedType == type['type'];
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedType = type['type'] as String;
-                  });
-                },
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.primary.withValues(alpha: 0.1)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.primary
-                          : Colors.grey[300]!,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        type['icon'] as IconData,
-                        color: isSelected
-                            ? AppColors.primary
-                            : Colors.grey[600],
-                        size: 24,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        type['name'] as String,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected
-                              ? AppColors.primary
-                              : Colors.grey[600],
+          children:
+              types.map((type) {
+                final isSelected = _selectedType == type['type'];
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedType = type['type'] as String;
+                      });
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? AppColors.primary.withValues(alpha: 0.1)
+                                : Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color:
+                              isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey[300]!,
+                          width: isSelected ? 2 : 1,
                         ),
                       ),
-                    ],
+                      child: Column(
+                        children: [
+                          Icon(
+                            type['icon'] as IconData,
+                            color:
+                                isSelected
+                                    ? AppColors.primary
+                                    : Colors.grey[600],
+                            size: 24,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            type['name'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight:
+                                  isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                              color:
+                                  isSelected
+                                      ? AppColors.primary
+                                      : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            );
-          }).toList(),
+                );
+              }).toList(),
         ),
       ],
     );
@@ -377,22 +408,27 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
           ),
           elevation: 2,
         ),
-        child: _isLoading
-            ? const SmallLoadingWidget(color: Colors.white)
-            : const Text(
-                'حفظ العنوان',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+        child:
+            _isLoading
+                ? const SmallLoadingWidget(color: Colors.white)
+                : const Text(
+                  'حفظ العنوان',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              ),
       ),
     );
   }
 
   Future<void> _saveAddress() async {
+    if (!IraqiDeliveryDetails.meaningful(_neighborhoodController.text) ||
+        !IraqiDeliveryDetails.meaningful(_landmarkController.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أكمل اسم الحي وأقرب نقطة دالة.')),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
-    
+
     // 🔥 تحقق من وجود العنوان والموقع
     if (_fullAddressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -403,7 +439,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       );
       return;
     }
-    
+
     if (_latitude == null || _longitude == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -418,7 +454,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
 
     try {
       final addressService = context.read<EnhancedAddressService>();
-      
+
       // تحديد الاسم حسب النوع
       String displayName;
       if (_selectedType == AddressType.home) {
@@ -428,7 +464,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       } else {
         displayName = _nameController.text.trim();
       }
-      
+
       // 🔥 استخراج المحافظة من العنوان الكامل
       String? extractedProvince;
       final fullAddress = _fullAddressController.text.trim();
@@ -437,13 +473,13 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         // أول جزء عادة هو المحافظة في نتائج Google
         extractedProvince = parts.first.trim();
       }
-      
+
       final request = AddressCreateRequest(
         name: displayName,
         // 🔥 العنوان الكامل من Google Places
         province: extractedProvince ?? 'غير محدد',
         district: '-', // placeholder - سيتم تحديثه في Backend
-        neighborhood: '-', // placeholder - سيتم تحديثه في Backend
+        neighborhood: _neighborhoodController.text.trim(),
         landmark: _landmarkController.text.trim(), // الوصف الإجباري من المستخدم
         detailedAddress: fullAddress, // العنوان الكامل
         // 🔥 GPS Data - إجباري الآن
@@ -463,10 +499,11 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         regionIsActive: _regionData?.effective.isActive,
         deliveryFee: _regionData?.effective.service?.delivery?.baseFee,
         minimumOrder: _regionData?.effective.service?.delivery?.minimumOrder,
-        maxDistanceKm: _regionData?.effective.limits?.maxDeliveryDistanceKm.toDouble(),
+        maxDistanceKm:
+            _regionData?.effective.limits?.maxDeliveryDistanceKm.toDouble(),
         pricePerKm: null, // لم نعد نستخدمه
       );
-      
+
       // 🔥 Log بيانات المنطقة للتحقق
       print('📍 حفظ عنوان جديد:');
       print('   - الاسم: $displayName');
@@ -476,15 +513,19 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       if (_regionData != null) {
         print('   - المنطقة: ${_regionData!.region.nameAr}');
         print('   - Region ID: ${_regionData!.region.id}');
-        print('   - رسوم التوصيل: ${_regionData!.effective.service?.delivery?.baseFee}');
-        print('   - الحد الأدنى: ${_regionData!.effective.service?.delivery?.minimumOrder}');
+        print(
+          '   - رسوم التوصيل: ${_regionData!.effective.service?.delivery?.baseFee}',
+        );
+        print(
+          '   - الحد الأدنى: ${_regionData!.effective.service?.delivery?.minimumOrder}',
+        );
         print('   - نشطة: ${_regionData!.effective.isActive}');
       } else {
         print('   ⚠️ لا توجد بيانات منطقة');
       }
 
       final newAddress = await addressService.createAddress(request);
-      
+
       if (newAddress != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -517,7 +558,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       }
     }
   }
-  
+
   // 🔥 زر اختيار من الخريطة
   Widget _buildMapPickerButton() {
     return Card(
@@ -525,9 +566,10 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: _regionData != null 
-              ? Colors.green.withValues(alpha: 0.5) 
-              : AppColors.primary.withValues(alpha: 0.2),
+          color:
+              _regionData != null
+                  ? Colors.green.withValues(alpha: 0.5)
+                  : AppColors.primary.withValues(alpha: 0.2),
           width: _regionData != null ? 2 : 1,
         ),
       ),
@@ -544,13 +586,18 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: (_regionData != null ? Colors.green : AppColors.primary)
+                      color: (_regionData != null
+                              ? Colors.green
+                              : AppColors.primary)
                           .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       _regionData != null ? Icons.check_circle : Icons.map,
-                      color: _regionData != null ? Colors.green : AppColors.primary,
+                      color:
+                          _regionData != null
+                              ? Colors.green
+                              : AppColors.primary,
                       size: 28,
                     ),
                   ),
@@ -560,21 +607,24 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _regionData != null 
+                          _regionData != null
                               ? '✅ تم اختيار الموقع من الخريطة'
                               : '🗺️ اختيار الموقع من الخريطة',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: _regionData != null ? Colors.green : AppColors.primary,
+                            color:
+                                _regionData != null
+                                    ? Colors.green
+                                    : AppColors.primary,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _regionData != null
-                              ? _fullAddressController.text.isNotEmpty 
-                                ? _fullAddressController.text
-                                : 'تم تحديد الموقع'
+                              ? _fullAddressController.text.isNotEmpty
+                                  ? _fullAddressController.text
+                                  : 'تم تحديد الموقع'
                               : 'بحث ذكي + GPS دقيق + رسوم التوصيل',
                           style: TextStyle(
                             fontSize: 13,
@@ -588,12 +638,12 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                   ),
                   Icon(
                     Icons.arrow_forward_ios,
-                    color: AppColors.primary,
+                    color: const Color(0xFF00296B),
                     size: 20,
                   ),
                 ],
               ),
-              
+
               // عرض معلومات المنطقة إذا تم الاختيار
               if (_regionData != null) ...[
                 const Divider(height: 24),
@@ -608,7 +658,8 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                     '${_regionData!.effective.service!.delivery!.baseFee!.toStringAsFixed(0)} د.ع',
                     Colors.green,
                   ),
-                if (_regionData!.effective.service?.delivery?.minimumOrder != null)
+                if (_regionData!.effective.service?.delivery?.minimumOrder !=
+                    null)
                   _buildRegionInfoRow(
                     '🛒 الحد الأدنى للطلب',
                     '${_regionData!.effective.service!.delivery!.minimumOrder!.toStringAsFixed(0)} د.ع',
@@ -621,20 +672,14 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       ),
     );
   }
-  
+
   Widget _buildRegionInfoRow(String label, String value, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey[700],
-              fontSize: 14,
-            ),
-          ),
+          Text(label, style: TextStyle(color: Colors.grey[700], fontSize: 14)),
           Text(
             value,
             style: TextStyle(
@@ -647,21 +692,23 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       ),
     );
   }
-  
+
   // 🔥 فتح LocationPickerScreen
   Future<void> _openMapPicker() async {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder: (context) => LocationPickerScreen(
-          initialPosition: _latitude != null && _longitude != null
-              ? LatLng(_latitude!, _longitude!)
-              : null,
-          initialAddress: _fullAddressController.text,
-        ),
+        builder:
+            (context) => LocationPickerScreen(
+              initialPosition:
+                  _latitude != null && _longitude != null
+                      ? LatLng(_latitude!, _longitude!)
+                      : null,
+              initialAddress: _fullAddressController.text,
+            ),
       ),
     );
-    
+
     if (result != null && mounted) {
       setState(() {
         final position = result['position'] as LatLng?;
@@ -669,16 +716,18 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
         _longitude = position?.longitude;
         final selectedAddress = result['address'] as String?;
         _regionData = result['region'] as RegionResolveResult?;
-        
+
         // 🔥 ملء حقل العنوان الكامل تلقائياً
         if (selectedAddress != null && selectedAddress.isNotEmpty) {
           _fullAddressController.text = selectedAddress;
         }
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ تم تحديد الموقع: ${_regionData?.region.nameAr ?? "غير معروف"}'),
+          content: Text(
+            '✅ تم تحديد الموقع: ${_regionData?.region.nameAr ?? "غير معروف"}',
+          ),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),

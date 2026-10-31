@@ -1,3 +1,5 @@
+import 'customer_legal_screen.dart';
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'package:provider/provider.dart';
@@ -8,8 +10,7 @@ import '../services/logout_service.dart';
 import 'login_screen.dart';
 import 'register_screen_tabs.dart';
 import 'addresses_screen.dart';
-import 'change_email_phone_screen.dart';
-import 'change_password_screen.dart';
+import 'verified_phone_screen.dart';
 import 'notification_settings_screen.dart';
 import 'language_settings_screen.dart';
 import 'country_settings_screen.dart';
@@ -30,7 +31,8 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
   bool isLoadingProfile = false;
   String? profileError;
   bool _hasLoadedOnce = false; // 🔧 إضافة فلاج لتجنب التحميل المتكرر
-  bool _isDisposed = false; // 🔧 إضافة فلاج للتأكد من عدم استدعاء setState بعد dispose
+  bool _isDisposed =
+      false; // 🔧 إضافة فلاج للتأكد من عدم استدعاء setState بعد dispose
   bool _isLoggingOut = false; // 🔧 فلاج لمنع تكرار محاولات تسجيل الخروج
 
   @override
@@ -61,16 +63,16 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
   Future<void> _loadUserProfile() async {
     final appState = Provider.of<AppStateProvider>(context, listen: false);
-    
+
     // 🔧 فحوصات الأمان الأساسية
     if (!mounted || _isDisposed) return;
-    
+
     // 🔧 منع التحميل المتكرر
     if (_hasLoadedOnce) {
       developer.log('⚠️ تم تجنب التحميل المتكرر', name: 'IMPROVED_ACCOUNT');
       return;
     }
-    
+
     // 🔧 تحميل البروفايل للمستخدمين المسجلين فقط
     if (appState.isLoggedIn && appState.userData != null) {
       if (mounted && !_isDisposed) {
@@ -81,12 +83,15 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
       }
 
       try {
-        final userId = appState.userData!['userId'] ?? 
-                      appState.userData!['user_id'] ?? 
-                      appState.userData!['email'];
-        
+        final userId =
+            appState.userData!['userId'] ??
+            appState.userData!['user_id'] ??
+            appState.userData!['email'];
+
         if (userId != null) {
-          final profile = await UserProfileService.getUserProfile(userId.toString());
+          final profile = await UserProfileService.getUserProfile(
+            userId.toString(),
+          );
           if (mounted && !_isDisposed) {
             setState(() {
               userProfile = profile;
@@ -132,12 +137,13 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: widget.onBack != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.black),
-                onPressed: widget.onBack,
-              )
-            : null,
+        leading:
+            widget.onBack != null
+                ? IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.black),
+                  onPressed: widget.onBack,
+                )
+                : null,
         title: const Text(
           'حسابي',
           style: TextStyle(
@@ -171,9 +177,22 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     final userData = appState.userData;
 
     // إصلاح: عرض البيانات من المصادر الصحيحة
-    final userName = userData?['name'] ?? userData?['username'] ?? userData?['userName'] ?? 'مستخدم';
-    final userEmail = userData?['email'] ?? userData?['userEmail'] ?? 'غير محدد';
-    
+    final userName =
+        userData?['name'] ??
+        userData?['username'] ??
+        userData?['userName'] ??
+        'مستخدم';
+    final userPhone = [
+          userData?['phone'],
+          userData?['phone_number'],
+          userData?['userPhone'],
+        ]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty,
+          orElse: () => 'رقم الهاتف غير مضاف',
+        );
+
     // 🔧 إصلاح: إزالة الـ developer.log من build methods لتجنب اللوب اللانهائي
 
     return Container(
@@ -199,10 +218,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(50),
-              border: Border.all(
-                color: Colors.white,
-                width: 3,
-              ),
+              border: Border.all(color: Colors.white, width: 3),
             ),
             child: Icon(
               isLoggedIn ? Icons.person : Icons.person_outline,
@@ -211,7 +227,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // معلومات المستخدم
           if (isLoggedIn) ...[
             Text(
@@ -219,7 +235,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: const Color(0xFF00296B),
               ),
             ),
             const SizedBox(height: 8),
@@ -230,10 +246,11 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                userEmail,
+                userPhone,
+                textDirection: TextDirection.ltr,
                 style: const TextStyle(
                   fontSize: 14,
-                  color: Colors.black,
+                  color: Colors.white,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -252,10 +269,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             Text(
               'أنت تتصفح كضيف - سجل للحصول على تجربة أفضل!',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
             const SizedBox(height: 16),
             Container(
@@ -276,18 +290,18 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.star, color: Colors.black, size: 20),
+                      Icon(Icons.star, color: Colors.white, size: 20),
                       const SizedBox(width: 8),
                       const Text(
                         'مستخدم ضيف',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.black,
+                          color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Icon(Icons.star, color: Colors.black, size: 20),
+                      Icon(Icons.star, color: Colors.white, size: 20),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -296,7 +310,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.black,
+                      color: Colors.white,
                       height: 1.3,
                     ),
                   ),
@@ -314,7 +328,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                     label: const Text('تسجيل الدخول'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
-                      foregroundColor: AppColors.primary,
+                      foregroundColor: readableForeground(Colors.white),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -349,7 +363,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
   Widget _buildOptionsMenu(AppStateProvider appState) {
     final isLoggedIn = appState.isLoggedIn;
-    
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -378,19 +392,13 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             ),
             _buildDivider(),
             _buildMenuItem(
-              icon: Icons.email,
-              title: 'تغيير البريد/الهاتف',
-              onTap: () => _navigateToChangeEmailPhone(),
-            ),
-            _buildDivider(),
-            _buildMenuItem(
-              icon: Icons.lock,
-              title: 'تغيير كلمة المرور',
-              onTap: () => _navigateToChangePassword(),
+              icon: Icons.phone,
+              title: 'تغيير الهاتف',
+              onTap: () => _navigateToChangePhone(),
             ),
             _buildDivider(),
           ],
-          
+
           _buildMenuItem(
             icon: Icons.notifications,
             title: 'إعدادات الإشعارات',
@@ -407,8 +415,21 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             icon: Icons.public,
             title: 'الدولة والمنطقة',
             onTap: () => _navigateToCountrySettings(),
-            ),
-          
+          ),
+
+          _buildDivider(),
+          _buildMenuItem(
+            icon: Icons.policy_outlined,
+            title: 'السياسات والشروط',
+            onTap:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CustomerLegalScreen(),
+                  ),
+                ),
+          ),
+
           if (isLoggedIn) ...[
             _buildDivider(),
             _buildMenuItem(
@@ -458,11 +479,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                 ),
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
           ],
         ),
       ),
@@ -485,7 +502,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
     try {
       final success = await LogoutService.performSecureLogout(context);
-      
+
       if (success) {
         // إعادة تعيين الحالة المحلية بأمان
         _hasLoadedOnce = false;
@@ -518,50 +535,45 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     // 🔧 إصلاح نهائي: استخدام push عادي بدلاً من pushAndRemoveUntil لتجنب تعارض التنقل
     // بعد تسجيل الدخول بنجاح، ستتولى شاشة تسجيل الدخول نفسها التنقل الصحيح
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const LoginScreen()));
   }
 
   void _navigateToRegister() {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const RegisterScreenTabs()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const RegisterScreenTabs()));
   }
 
   void _navigateToPersonalInfo() {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const PersonalInfoScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const PersonalInfoScreen()));
   }
 
   void _navigateToAddresses() {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const AddressesScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const AddressesScreen()));
   }
 
-  void _navigateToChangeEmailPhone() {
+  void _navigateToChangePhone() {
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ChangeEmailPhoneScreen()),
-    );
-  }
-
-  void _navigateToChangePassword() {
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
+      MaterialPageRoute(builder: (context) => const VerifiedPhoneScreen()),
     );
   }
 
   void _navigateToNotificationSettings() {
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()),
+      MaterialPageRoute(
+        builder: (context) => const NotificationSettingsScreen(),
+      ),
     );
   }
 

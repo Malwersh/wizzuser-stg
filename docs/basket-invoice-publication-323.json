@@ -1,0 +1,35 @@
+{
+  "status": "PUBLISHED_AUTHENTICATED_POINT_INVOICE_SUCCESS_NATIVE323_INSTALLED",
+  "publishedAt": "2026-10-27T21:02:17.145722+00:00",
+  "function": "WizzUser-CreateOrder-staging",
+  "beforeHash": "qUgVj28VOdSri7QToBoH3b+GxkpmNezE8U4zER0GUcE=",
+  "hash": "FgH1KUYk89oPTPRhcUxaGw4nlgELU6zV60J+4m5yGNo=",
+  "onlyPreviewAdapterAndBundleChanged": true,
+  "legacyOrderCreationFinancialBundleUnchanged": true,
+  "environmentAndIAMUnchanged": true,
+  "previewAllowedWithExistingActiveOrder": true,
+  "newOrderStillBlockedWithExistingActiveOrder": true,
+  "allPreviewDatabasesReadOnly": true,
+  "businessWritesPerformed": false,
+  "tests": {
+    "completePointAndBoundary": 6,
+    "financialCompatibility": 51,
+    "flutter": 53,
+    "preexistingSkipped": 1,
+    "targetAnalyzerErrors": 0
+  },
+  "native": {
+    "device": "iPhone16Pro",
+    "build": 323,
+    "installed": true,
+    "launched": true,
+    "dataPreserved": true
+  },
+  "observedLiveSuccess": {
+    "kind": "POINT_INVOICE_READY",
+    "customerTotalIqd": 17000,
+    "authentication": "Existing customer app session, not an agent-created order",
+    "details": "Server returned a complete point invoice after background basket prefetch"
+  },
+  "humanScreenTransitionAcceptance": "PENDING_USER"
+}
