@@ -141,6 +141,11 @@ class PointInvoice321 extends ChangeNotifier {
       address: {},
       storeName: storeName,
       storeAddress: storeAddress,
+      discountId:
+          PendingOffer.current?.merchantId == branch &&
+                  PendingOffer.current?.offer['source'] == 'merchant'
+              ? PendingOffer.current?.offer['id'] as String?
+              : null,
       offerSlideId:
           PendingOffer.current?.merchantId == branch
               ? PendingOffer.current?.slideId

@@ -2784,56 +2784,107 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildManagedSection(HomeSection section) => Consumer<FavoritesModel>(
     builder: (context, favorites, _) {
-      var stores = switch (section.source) {
-        'new' => _getNewStores(),
-        'rating' =>
-          _getPopularStores()
-              .where((s) => (double.tryParse(s.rating) ?? 0) > 0)
-              .toList(),
-        _ => _allRealBusinesses.map((b) => _businessToStore(b)).toList(),
-      };
-      if (section.source == 'curated') {
-        final byId = {for (final store in stores) store.id: store};
-        stores =
-            section.merchantIds
-                .where(byId.containsKey)
-                .map((id) => byId[id]!)
-                .toList();
-      }
-      if (section.source == 'favorites')
-        stores = stores.where((s) => favorites.isStoreFavorite(s.id)).toList();
-      stores = stores.take(section.limit).toList();
+      final stores =
+          selectHomeBusinesses(
+            section,
+            _allRealBusinesses,
+            facts: _publishedHomeLayout?.discovery ?? {},
+            isFavorite: favorites.isStoreFavorite,
+            point: BrowsingLocationService.instance.selection,
+            now: DateTime.now(),
+          ).map((business) => _businessToStore(business)).toList();
       if (stores.isEmpty) return const SizedBox.shrink();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           DiscoverySectionHeading(title: section.title),
-          SizedBox(
-            height: 270,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: stores.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder:
-                  (context, index) => SizedBox(
-                    width: 228,
-                    child: EnhancedRestaurantCard(
-                      store: stores[index],
-                      isCompact: true,
-                      onTap:
-                          () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (_) =>
-                                      StoreDetailScreen(store: stores[index]),
-                            ),
-                          ),
+          if (section.layout == 'compactList')
+            for (final store in stores)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 5,
+                ),
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(10),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 66,
+                        height: 66,
+                        child:
+                            store.image.isEmpty
+                                ? const Icon(
+                                  Icons.restaurant_rounded,
+                                  color: discoveryInk,
+                                )
+                                : Image.network(
+                                  store.image,
+                                  fit: BoxFit.cover,
+                                  errorBuilder:
+                                      (_, __, ___) => const Icon(
+                                        Icons.restaurant_rounded,
+                                        color: discoveryInk,
+                                      ),
+                                ),
+                      ),
                     ),
+                    title: Text(
+                      store.name,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: discoveryInk,
+                      ),
+                    ),
+                    subtitle: Text(
+                      store.ratingLabel,
+                      style: const TextStyle(color: discoveryInk),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_left,
+                      color: discoveryInk,
+                    ),
+                    onTap:
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StoreDetailScreen(store: store),
+                          ),
+                        ),
                   ),
+                ),
+              ),
+          if (section.layout != 'compactList')
+            SizedBox(
+              height: 270,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: stores.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder:
+                    (context, index) => SizedBox(
+                      width: 228,
+                      child: EnhancedRestaurantCard(
+                        store: stores[index],
+                        isCompact: true,
+                        onTap:
+                            () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (_) =>
+                                        StoreDetailScreen(store: stores[index]),
+                              ),
+                            ),
+                      ),
+                    ),
+              ),
             ),
-          ),
         ],
       );
     },

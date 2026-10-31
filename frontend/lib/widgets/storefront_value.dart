@@ -103,7 +103,8 @@ class _StorefrontValueState extends State<StorefrontValue> {
       }
     }
 
-    String text = key == null ? 'يُحدد بعد إكمال عنوان التوصيل' : 'جارٍ الحساب…';
+    String text =
+        key == null ? 'يُحدد بعد إكمال عنوان التوصيل' : 'جارٍ الحساب…';
     if (widget.field == StorefrontField.preparation &&
         widget.initialPreparationMinutes != null)
       text = 'نحو ${widget.initialPreparationMinutes} دقيقة';
@@ -141,7 +142,9 @@ class _StorefrontValueState extends State<StorefrontValue> {
         child: Text('إعادة حساب التوصيل', style: widget.style),
       );
     if (widget.field == StorefrontField.fee &&
-        key != null && fee == null && error == null) {
+        key != null &&
+        fee == null &&
+        error == null) {
       return Semantics(
         liveRegion: true,
         label: 'جارٍ حساب رسوم التوصيل',
@@ -158,8 +161,12 @@ class _StorefrontValueState extends State<StorefrontValue> {
             ),
             const SizedBox(width: 8),
             Flexible(
-              child: Text('جارٍ حساب الرسوم…', style: widget.style,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text(
+                'جارٍ حساب الرسوم…',
+                style: widget.style,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -177,7 +184,12 @@ class _StorefrontValueState extends State<StorefrontValue> {
 /// Shared minimum presentation; missing configuration never becomes an invented amount.
 class StorefrontMinimum extends StatelessWidget {
   final String branchId;
-  const StorefrontMinimum({super.key, required this.branchId});
+  final bool metricLayout;
+  const StorefrontMinimum({
+    super.key,
+    required this.branchId,
+    this.metricLayout = false,
+  });
   @override
   Widget build(BuildContext context) {
     final items =
@@ -190,13 +202,64 @@ class StorefrontMinimum extends StatelessWidget {
       listenable: StorefrontPricing.instance,
       builder: (context, _) {
         final minimum = StorefrontPricing.instance.minimumIqd(branchId, items);
+        if (metricLayout) {
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                minimum == null ? 'غير محدد' : '$minimum د.ع',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF00296B),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.shopping_basket_outlined,
+                    size: 15,
+                    color: Color(0xFF647184),
+                  ),
+                  SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      'الحد الأدنى للأصناف',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Color(0xFF647184)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }
         return Row(
           children: [
-            const Icon(Icons.shopping_basket_outlined, size: 17, color: Colors.black54),
+            const Icon(
+              Icons.shopping_basket_outlined,
+              size: 17,
+              color: Colors.black54,
+            ),
             const SizedBox(width: 6),
-            const Expanded(child: Text('الحد الأدنى للأصناف', style: TextStyle(fontSize: 12))),
-            Flexible(child: Text(minimum == null ? 'غير محدد' : '$minimum د.ع',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+            const Expanded(
+              child: Text(
+                'الحد الأدنى للأصناف',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            Flexible(
+              child: Text(
+                minimum == null ? 'غير محدد' : '$minimum د.ع',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ],
         );
       },

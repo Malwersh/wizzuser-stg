@@ -4295,6 +4295,13 @@ Resources:
       Policies:
         - Statement:
           - Effect: Allow
+            Action: [dynamodb:GetItem]
+            Resource:
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Products"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/WhizzMerchants_Categories"
+              - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/staging-MerchantPlatform"
+        - Statement:
+          - Effect: Allow
             Action:
               - dynamodb:GetItem
               - dynamodb:Query

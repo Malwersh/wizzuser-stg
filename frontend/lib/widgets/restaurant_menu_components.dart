@@ -1,3 +1,4 @@
+import 'menu_item_price.dart';
 import '../utils/readable_colors.dart';
 import 'storefront_value.dart';
 import 'package:flutter/material.dart';
@@ -27,13 +28,33 @@ class RestaurantHeroDetails extends StatelessWidget {
     final rating = ratingOverride ?? store.ratingLabel;
     final reviews = reviewsOverride ?? store.reviews;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F5F8),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child:
+                    store.logoUrl.isEmpty
+                        ? Icon(Icons.restaurant_rounded, color: ink)
+                        : Image.network(
+                          store.logoUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (_, __, ___) =>
+                                  Icon(Icons.restaurant_rounded, color: ink),
+                        ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -41,94 +62,91 @@ class RestaurantHeroDetails extends StatelessWidget {
                     Text(
                       store.name,
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 26,
                         fontWeight: FontWeight.w800,
                         height: 1.25,
                         color: ink,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    if (store.category?.isNotEmpty == true)
+                    if (store.category?.isNotEmpty == true) ...[
+                      const SizedBox(height: 4),
                       Text(
-                        [
-                          store.category == 'restaurant'
-                              ? 'مطعم'
-                              : store.category!,
-                          if (store.address.isNotEmpty) store.address,
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        store.category == 'restaurant'
+                            ? 'مطعم'
+                            : store.category!,
                         style: TextStyle(fontSize: 13, color: muted),
                       ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Container(
-                width: 66,
-                height: 66,
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE8ECF2)),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child:
-                      store.logoUrl.isEmpty
-                          ? const Icon(
-                            Icons.restaurant_rounded,
-                            color: Color(0xFF00296B),
-                          )
-                          : Image.network(
-                            store.logoUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder:
-                                (_, __, ___) => const Icon(
-                                  Icons.restaurant_rounded,
-                                  color: Color(0xFF00296B),
-                                ),
-                          ),
-                ),
+              IconButton(
+                onPressed: onDetails,
+                tooltip: 'معلومات المطعم',
+                icon: Icon(Icons.info_outline_rounded, color: ink, size: 23),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Wrap(
+            spacing: 6,
+            runSpacing: 4,
             crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
             children: [
               Icon(Icons.star_rounded, color: ink, size: 18),
-              const SizedBox(width: 4),
               Text(
                 rating,
-                style: TextStyle(fontWeight: FontWeight.w700, color: ink),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: ink,
+                ),
               ),
-              if (int.tryParse(reviews) != null && int.parse(reviews) > 0) ...[
-                const SizedBox(width: 5),
+              if (int.tryParse(reviews) != null && int.parse(reviews) > 0)
                 Text(
                   '($reviews تقييم)',
                   style: TextStyle(fontSize: 12, color: muted),
                 ),
-              ],
-
-              TextButton(
-                onPressed: onDetails,
-                style: TextButton.styleFrom(
-                  foregroundColor: ink,
-                  minimumSize: const Size(0, 36),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+            ],
+          ),
+          if (store.address.isNotEmpty)
+            InkWell(
+              onTap: onDetails,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
                   children: [
-                    Text('معلومات المطعم'),
-                    SizedBox(width: 5),
-                    Icon(Icons.info_outline_rounded, size: 17),
+                    Icon(Icons.location_on_outlined, size: 16, color: muted),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        store.address,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Icon(Icons.route_outlined, size: 16, color: muted),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: StorefrontValue(
+                    branchId: store.id,
+                    field: StorefrontField.distance,
+                    items: const [],
+                    style: TextStyle(fontSize: 12, color: muted),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -150,111 +168,197 @@ class RestaurantSummaryCard extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(top: 16, bottom: 6),
+    margin: const EdgeInsets.only(bottom: 10),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: const Color(0xFFE5E8ED)),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xFFE6E9EE)),
     ),
-    child: Column(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: const BoxDecoration(
-            color: Color(0xFFF3F5F8),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth / 3).clamp(126.0, 190.0).toDouble();
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                SizedBox(
+                  width: width,
+                  child: _metric(
+                    'رسوم التوصيل',
+                    StorefrontField.fee,
+                    Icons.delivery_dining_rounded,
+                  ),
+                ),
+                const VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: Color(0xFFE6E9EE),
+                ),
+                SizedBox(
+                  width: width,
+                  child: StorefrontMinimum(
+                    branchId: store.id,
+                    metricLayout: true,
+                  ),
+                ),
+                const VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: Color(0xFFE6E9EE),
+                ),
+                SizedBox(
+                  width: width,
+                  child: _metric(
+                    'وقت التحضير',
+                    StorefrontField.preparation,
+                    Icons.restaurant_outlined,
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: Row(
+        );
+      },
+    ),
+  );
+
+  Widget _metric(String title, StorefrontField field, IconData icon) => Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      StorefrontValue(
+        branchId: store.id,
+        field: field,
+        initialPreparationMinutes: store.averagePreparationMinutes,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF00296B),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF647184)),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF647184)),
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+/// Photo-first menu card. All actions use the same availability gates as the list.
+class RestaurantProductCard extends StatelessWidget {
+  final ProductModel product;
+  final bool available;
+  final VoidCallback onDetails;
+  final VoidCallback onAdd;
+  final String? unavailableReason;
+  const RestaurantProductCard({
+    super.key,
+    required this.product,
+    required this.available,
+    required this.onDetails,
+    required this.onAdd,
+    this.unavailableReason,
+  });
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: available ? onDetails : null,
+    borderRadius: BorderRadius.circular(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AspectRatio(
+          aspectRatio: 1.12,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              const Icon(
-                Icons.delivery_dining_rounded,
-                size: 23,
-                color: Color(0xFF00296B),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: ColoredBox(
+                  color: const Color(0xFFF1F3F6),
+                  child:
+                      product.imageUrl.isEmpty
+                          ? const Icon(
+                            Icons.restaurant_outlined,
+                            color: Color(0xFF8B97A8),
+                            size: 32,
+                          )
+                          : Image.network(
+                            product.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (_, __, ___) => const Icon(
+                                  Icons.restaurant_outlined,
+                                  color: Color(0xFF8B97A8),
+                                  size: 32,
+                                ),
+                          ),
+                ),
               ),
-              const SizedBox(width: 9),
-              const Text(
-                'يصلك خلال',
-                style: TextStyle(fontSize: 14, color: Color(0xFF647184)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: StorefrontValue(
-                  branchId: store.id,
-                  field: StorefrontField.arrival,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF00296B),
+              if (!available) const ColoredBox(color: Color(0x88FFFFFF)),
+              PositionedDirectional(
+                end: 8,
+                bottom: 8,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 2,
+                  shadowColor: const Color(0x3000296B),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: 'إضافة إلى السلة',
+                    onPressed: available ? onAdd : null,
+                    icon: const Icon(Icons.add_rounded),
+                    color: AppColors.secondary,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 40,
+                      height: 40,
+                    ),
+                    padding: EdgeInsets.zero,
                   ),
                 ),
               ),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Wrap(
-                spacing: 18,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'رسوم التوصيل ',
-                        style: TextStyle(
-                          color: Color(0xFF647184),
-                          fontSize: 13,
-                        ),
-                      ),
-                      Flexible(
-                        child: StorefrontValue(
-                          branchId: store.id,
-                          field: StorefrontField.fee,
-                          style: const TextStyle(
-                            color: Color(0xFF00296B),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.route_outlined,
-                        size: 16,
-                        color: Color(0xFF647184),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: StorefrontValue(
-                          branchId: store.id,
-                          field: StorefrontField.distance,
-                          style: const TextStyle(
-                            color: Color(0xFF647184),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Divider(height: 1, color: Color(0xFFEDF0F4)),
-              ),
-              StorefrontMinimum(branchId: store.id),
-            ],
+        const SizedBox(height: 9),
+        Text(
+          product.name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            height: 1.4,
+            color: Color(0xFF172338),
           ),
         ),
+        const SizedBox(height: 4),
+        MenuItemPrice(
+          branch: product.businessId,
+          product: product.id,
+          original: product.price,
+        ),
+        if (!available)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(
+              unavailableReason ?? 'غير متاح حالياً',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF697587)),
+            ),
+          ),
       ],
     ),
   );

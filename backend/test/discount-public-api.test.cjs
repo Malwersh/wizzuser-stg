@@ -56,3 +56,13 @@ test('older clients with an authorization header but no identity query retain th
  const response=await api({headers:{Authorization:'Bearer legacy-client'},pathParameters:{businessId:'b1'}});
  assert.equal(response.statusCode,200);assert.equal(JSON.parse(response.body).discounts.length,1);
 });
+
+test('unit preview selection is bounded and never trusts client price fields',async()=>{
+ const row={...raw(),calculationMode:'perItem',applicability:'specificItems',applicable_item_ids:['p1']};let called;
+ const db={async send(c){return c.input.Key?{Item:row}:{Items:[row]};}};
+ const api=loader('discount-list.js',db,{'./menu-item-prices':{enrich:async(db,branch,rows,ids)=>{called={branch,ids};rows[0].itemPrices=[{productId:'p1',originalUnitFils:5000000,netUnitFils:4500000}];}}}).list(false);
+ const response=await api({pathParameters:{businessId:'b1'},queryStringParameters:{itemIds:'p1',price:'1'}});
+ assert.equal(response.statusCode,200);assert.equal(JSON.parse(response.body).discounts[0].calculationMode,'perItem');assert.equal(called.branch,'b1');assert.equal(called.ids.join(','),'p1');
+ assert.equal((await api({pathParameters:{businessId:'b1'},queryStringParameters:{itemIds:'p1,p1'}})).statusCode,400);
+ assert.equal((await api({pathParameters:{businessId:'b1'},queryStringParameters:{itemIds:Array.from({length:41},(_,i)=>'p'+i).join(',')}})).statusCode,400);
+});

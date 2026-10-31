@@ -1,3 +1,4 @@
+import 'menu_item_price.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
@@ -80,10 +81,18 @@ class BasketLineCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      '${basketMoney(item.unitPrice)} للقطعة',
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
+                    if (ids.isEmpty)
+                      MenuItemPrice(
+                        branch: item.storeId,
+                        product: item.dish.id,
+                        original: item.unitPrice,
+                        basket: true,
+                      )
+                    else
+                      Text(
+                        '${basketMoney(item.unitPrice)} للقطعة',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
                     if (choices.isNotEmpty)
                       Text(
                         choices,
@@ -150,15 +159,24 @@ class BasketLineCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  basketMoney(item.totalPrice),
-                  textAlign: TextAlign.end,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.secondaryDark,
-                  ),
-                ),
+                child:
+                    ids.isEmpty
+                        ? MenuItemPrice(
+                          branch: item.storeId,
+                          product: item.dish.id,
+                          original: item.unitPrice,
+                          quantity: item.quantity,
+                          basket: true,
+                        )
+                        : Text(
+                          basketMoney(item.totalPrice),
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.secondaryDark,
+                          ),
+                        ),
               ),
             ],
           ),

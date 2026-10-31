@@ -48,10 +48,11 @@ void main() {
       );
       expect(find.text('مطعم فتوش'), findsOneWidget);
       expect(find.text('4.6'), findsOneWidget);
-      expect(find.text('مشويات · بغداد'), findsOneWidget);
+      expect(find.text('مشويات'), findsOneWidget);
+      expect(find.text('بغداد'), findsOneWidget);
       expect(tester.takeException(), isNull);
       expect(find.text('(120 تقييم)'), findsOneWidget);
-      await tester.tap(find.text('معلومات المطعم'));
+      await tester.tap(find.byTooltip('معلومات المطعم'));
       expect(opened, isTrue);
     },
   );
@@ -87,6 +88,51 @@ void main() {
       );
       await mount(true);
       expect(find.text('3500 د.ع'), findsOneWidget);
+      await tester.tap(find.byTooltip('إضافة إلى السلة'));
+      await tester.tap(find.text('كباب'));
+      expect(added, 1);
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+      await mount(false);
+      expect(
+        tester.widget<IconButton>(find.byType(IconButton)).onPressed,
+        isNull,
+      );
+      expect(find.text('غير متاح حالياً'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'photo menu card preserves prices and actions, and blocks unavailable additions',
+    (tester) async {
+      var added = 0;
+      var opened = 0;
+      final p = ProductModel(
+        id: 'p',
+        businessId: 'b',
+        categoryId: 'c',
+        name: 'كباب',
+        description: 'وجبة مشوية',
+        imageUrl: '',
+        price: 3500,
+        createdAt: DateTime(2026),
+      );
+      Future<void> mount(bool available) => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 160,
+              child: RestaurantProductCard(
+                product: p,
+                available: available,
+                onDetails: () => opened++,
+                onAdd: () => added++,
+              ),
+            ),
+          ),
+        ),
+      );
+      await mount(true);
+      expect(find.text('3,500 د.ع'), findsOneWidget);
       await tester.tap(find.byTooltip('إضافة إلى السلة'));
       await tester.tap(find.text('كباب'));
       expect(added, 1);

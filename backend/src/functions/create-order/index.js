@@ -595,7 +595,7 @@ async function handleOrder321(event, pointDb=null) {
         const selectedDeliveryBenefit=body.deliveryBenefitId?await require('../shared/platform-benefits').loadDelivery(dynamoDb,body.deliveryBenefitId,currentOffers):resolvedDiscount.platformDeliveryBenefit;
         if(selectedDeliveryBenefit&&resolvedDiscount.snapshot)require('../shared/platform-benefits').assertStacking(resolvedDiscount.campaign,selectedDeliveryBenefit.campaign);
         const discountFils = resolvedDiscount.amount;
-        if (resolvedDiscount.snapshot &&
+        if (resolvedDiscount.snapshot && body.action !== 'preview_commercial' &&
             (typeof body.discount !== 'number' || !Number.isFinite(body.discount) || Math.round(body.discount*1000) !== discountFils))
             throw Object.assign(Error('DISCOUNT_PREVIEW_CHANGED'),{statusCode:409});
         // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discount

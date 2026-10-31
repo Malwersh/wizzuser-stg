@@ -13,6 +13,9 @@ exports.list = platform => async event => {
  try {
   const table=platform?(process.env.PLATFORM_DISCOUNTS_TABLE||'WizzCentral_Platform_Discounts'):(process.env.DISCOUNTS_TABLE||'WhizzMerchants_Discounts');
   const query=event.queryStringParameters||{};
+  const itemIds=query.itemIds?query.itemIds.split(','):[];
+  if(itemIds.length>40||itemIds.some(id=>!/^[-\w]{1,150}$/.test(id))||new Set(itemIds).size!==itemIds.length)return reply(400,{success:false,message:'INVALID_ITEM_SELECTION'});
+
   const authenticated=!!(event.headers?.Authorization||event.headers?.authorization);
   const context=authenticated&&query.userId?await require('./offer-context').offerContext(db,event,{userId:query.userId,addressId:query.addressId}):null;
   const rows=[];let cursor;
@@ -34,7 +37,7 @@ exports.list = platform => async event => {
     if(!(platform?validatePlatformPromo(d,Number.MAX_SAFE_INTEGER):validateDiscount(d,Number.MAX_SAFE_INTEGER)).valid)continue;
     if(![undefined,'allItems','minimumOrder','specificItems','specificCategories'].includes(d.applicability))continue;
     if(platform&&!d.code)continue;
-    const terms={maxDiscountAmount:d.maxDiscountAmount??d.maxDiscount??null,
+    const terms={calculationMode:d.calculationMode||'order',maxDiscountAmount:d.maxDiscountAmount??d.maxDiscount??null,
       firstOrderOnly:d.firstOrderOnly===true||['first-order','first_order'].includes(d.campaignType),
       newCustomerOnly:['new-customer','new_customer'].includes(d.campaignType),
       singleUse:d.singleUse===true,perCustomerLimit:d.perCustomerLimit??null,customerSegments:d.customerSegments||['all'],
@@ -44,7 +47,10 @@ exports.list = platform => async event => {
        applicability:d.applicability||'allItems',applicable_item_ids:d.applicable_item_ids||[],applicable_category_ids:d.applicable_category_ids||[],minimumOrderAmount:d.minimumOrderAmount,validFrom:d.validFrom||null,validTo:d.validTo||null,imageUrl:d.imageUrl||d.image_url||null});
     if(rows.length>200)throw Error('DISCOUNT_LIST_LIMIT');
    }
-   cursor=result.LastEvaluatedKey;if(!cursor)return reply(200,{success:true,[platform?'promos':'discounts']:rows,count:rows.length});
+   cursor=result.LastEvaluatedKey;if(!cursor){
+    if(!platform&&itemIds.length) await require('./menu-item-prices').enrich(db,branch,rows,itemIds,{GetCommand});
+    return reply(200,{success:true,[platform?'promos':'discounts']:rows,count:rows.length});
+   }
   }
   throw Error('DISCOUNT_LIST_LIMIT');
  }catch{return reply(503,{success:false,message:'DISCOUNT_LIST_UNAVAILABLE'});}

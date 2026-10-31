@@ -7,7 +7,7 @@ const fail = () => {throw Object.assign(Error('DISCOUNT_UNAVAILABLE'), {statusCo
 const merchantTable = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
 const platformTable = process.env.PLATFORM_DISCOUNTS_TABLE || 'WizzCentral_Platform_Discounts';
 const fields = ['discountId','businessId','code','status','isActive','type','discountType','value','discountValue',
- 'applicability','applicable_item_ids','applicable_category_ids','conditionalParameters','conditional_parameters',
+ 'calculationMode','applicability','applicable_item_ids','applicable_category_ids','conditionalParameters','conditional_parameters',
  'validFrom','validTo','valid_from','valid_to','startDate','endDate','minimumOrderAmount','minimum_order_amount',
  'minOrderAmount','minOrderValue','usageCount','usage_count','usage','currentUsage','usageLimit','usage_limit','limit',
  'version','fundingPolicyId','fundingPolicyVersion','updatedAt','updated_at','funding','merchantShare','platformShare','maxDiscount','maxDiscountAmount',
@@ -70,9 +70,9 @@ async function resolveDiscount({db,branchId,discountId,promoCode,platformDiscoun
  if(amount===0)throw Object.assign(Error('OFFER_NO_SAVINGS'),{statusCode:409});
  if(!Number.isSafeInteger(amount)||amount<0||amount>(d.type==='freeDelivery'?deliveryFee:subtotal))fail();
  const lines=[];let remaining=amount;const basis=eligibleItems.reduce((sum,i)=>sum+i.price*i.quantity,0);
- if(d.type!=='freeDelivery'&&basis>0){for(let n=0;n<eligibleItems.length;n++){const i=eligibleItems[n],gross=i.price*i.quantity,saving=n===eligibleItems.length-1?remaining:Number(BigInt(amount)*BigInt(gross)/BigInt(basis));remaining-=saving;lines.push({itemId:i.itemId||i.id,...(i.lineId?{lineId:i.lineId}:{}),grossFils:gross,savingsFils:saving,netFils:gross-saving});}}
+ if(d.type!=='freeDelivery'&&basis>0){for(let n=0;n<eligibleItems.length;n++){const i=eligibleItems[n],gross=i.price*i.quantity,saving=d.calculationMode==='perItem'?calculateCheckoutDiscountAmount(d,gross,[i],0):n===eligibleItems.length-1?remaining:Number(BigInt(amount)*BigInt(gross)/BigInt(basis));remaining-=saving;lines.push({itemId:i.itemId||i.id,...(i.lineId?{lineId:i.lineId}:{}),grossFils:gross,savingsFils:saving,netFils:gross-saving});}}
  return {amount,lines,campaign:raw,expiresAt:d.validTo?Date.parse(d.validTo):null,operations:[reserve(raw,platform?platformTable:merchantTable,platform),...(eligible.redemption?[eligible.redemption]:[])],
-  snapshot:{discountId:raw.discountId,source:platform?'PLATFORM':'MERCHANT',type:d.type,target:d.type==='freeDelivery'?'DELIVERY':'GOODS',
+  snapshot:{discountId:raw.discountId,source:platform?'PLATFORM':'MERCHANT',calculationMode:d.calculationMode||'order',type:d.type,target:d.type==='freeDelivery'?'DELIVERY':'GOODS',
    amount,version:raw.version??null,updatedAt:raw.updatedAt??raw.updated_at??null,
    // Explicitly a legacy checkout snapshot, not a commercial funding or settlement proof.
    provesFunding:false}};

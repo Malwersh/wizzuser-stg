@@ -902,6 +902,7 @@ class OrderService extends ChangeNotifier {
   Future<List<StoreDiscount>> getStoreDiscounts(
     String storeId, {
     String? addressId,
+    List<String> itemIds = const [],
   }) async {
     try {
       final response = await http.get(
@@ -910,6 +911,7 @@ class OrderService extends ChangeNotifier {
             if (SessionService.instance.isLoggedIn)
               'userId': SessionService.instance.currentUserId!,
             if (addressId != null) 'addressId': addressId,
+            if (itemIds.isNotEmpty) 'itemIds': itemIds.join(','),
           },
         ),
         headers: {

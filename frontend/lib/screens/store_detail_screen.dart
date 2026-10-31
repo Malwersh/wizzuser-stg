@@ -1,3 +1,5 @@
+import '../services/menu_offer_pricing.dart';
+import '../widgets/menu_item_price.dart';
 import '../widgets/discovery/customer_components.dart';
 import '../utils/readable_colors.dart';
 import '../services/storefront_pricing.dart';
@@ -73,8 +75,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   static const _primaryPink = AppColors.primary;
 
   /// ارتفاع الهيدر الموسع (صورة الغلاف)
-  static const double _kExpandedHeight = 360.0;
+  static const double _kExpandedHeight = 218.0;
   List<StoreDiscount> _menuOffers = [];
+  Timer? _menuPriceRefresh;
 
   /// منع تعارض الـ scroll-spy مع التنقل عبر التبويبات
   bool _isTabTapScrolling = false;
@@ -178,6 +181,12 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     _startBusinessStatusUpdates();
     _loadPreviousOrderItems();
     _loadMenuOffers();
+    _menuPriceRefresh = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (mounted &&
+          ModalRoute.of(context)?.isCurrent == true &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed)
+        _loadMenuOffers();
+    });
 
     // 🔥 إعداد اشتراك SubscriptionManager (يستقبل تحديثات polling)
     _setupSubscriptionListener();
@@ -209,6 +218,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       // عند العودة للتطبيق - تحديث الحالة من الكاش
       _loadBusinessStatus();
       _refreshRating();
+      _loadMenuOffers();
     }
   }
 
@@ -222,6 +232,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     _tabController?.dispose();
     _scrollCtrl.dispose();
     _statusRefreshTimer?.cancel();
+    _menuPriceRefresh?.cancel();
     _businessStatusSubscription?.cancel();
 
     // 🔥 إلغاء اشتراك polling updates
@@ -360,6 +371,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
         }
       });
 
+      _loadMenuOffers();
       if (!_openedInitialCategory && widget.initialCategoryName != null) {
         _openedInitialCategory = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -694,6 +706,23 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
               // 1) الهيدر المنهار (SliverAppBar مع صورة الغلاف والمعلومات)
               _buildSliverAppBar(),
 
+              SliverToBoxAdapter(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(26),
+                    ),
+                  ),
+                  child: RestaurantHeroDetails(
+                    store: widget.store,
+                    ratingOverride: _freshRating,
+                    reviewsOverride: _freshReviewCount,
+                    onDetails: _showStoreInfoBottomSheet,
+                  ),
+                ),
+              ),
+
               // 2) بانر "مغلق/مشغول" - يبقى الطلب معطلاً لكن الصفحة تظل مفتوحة
               if (!canAcceptOrders) _buildClosedBanner(),
 
@@ -716,10 +745,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                     children: [
                       const Expanded(
                         child: Text(
-                          'ماذا تشتهي اليوم؟',
+                          'استكشف القائمة',
                           style: TextStyle(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
                             color: Color(0xff171717),
                           ),
                         ),
@@ -734,7 +763,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                 ),
               ),
               _buildStickyHeader(),
-              if (_categoryProducts.values.any((items) => items.isNotEmpty))
+              if (_categoryProducts.values
+                  .expand((items) => items)
+                  .any((product) => product.isFeatured))
                 SliverToBoxAdapter(child: _buildFeaturedDishes()),
 
               // 5) قسم "طلبت من هنا من قبل"
@@ -1103,22 +1134,22 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                   colors: [
                     Color(0x26000000),
                     Color(0x00000000),
-                    Color(0x990D1928),
-                    Color(0xFF0D1928),
+                    Color(0x100D1928),
+                    Color(0x200D1928),
                   ],
                 ),
               ),
             ),
-            Positioned(
+            const Positioned(
               left: 0,
               right: 0,
-              bottom: 10,
-              child: RestaurantHeroDetails(
-                store: widget.store,
-                overImage: true,
-                ratingOverride: _freshRating,
-                reviewsOverride: _freshReviewCount,
-                onDetails: _showStoreInfoBottomSheet,
+              bottom: -1,
+              height: 26,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+                ),
               ),
             ),
           ],
@@ -1192,15 +1223,18 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                     child: TabBar(
                       controller: _tabController,
                       isScrollable: true,
-                      labelColor: Colors.white,
+                      labelColor: AppColors.secondary,
                       unselectedLabelColor: Colors.black87,
                       dividerColor: Colors.transparent,
                       indicatorSize: TabBarIndicatorSize.tab,
-                      indicator: BoxDecoration(
-                        color: const Color(0xff191919),
-                        borderRadius: BorderRadius.circular(28),
+                      indicator: const UnderlineTabIndicator(
+                        borderSide: BorderSide(
+                          color: AppColors.secondary,
+                          width: 3,
+                        ),
+                        insets: EdgeInsets.symmetric(horizontal: 12),
                       ),
-                      indicatorPadding: const EdgeInsets.symmetric(vertical: 9),
+                      indicatorPadding: EdgeInsets.zero,
                       labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -1736,31 +1770,40 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
             ),
           ),
 
-          // قائمة المنتجات الرأسية بنمط طلبات
-          Column(
-            children: [
-              for (var i = 0; i < products.length; i++) ...[
-                Builder(
-                  builder: (context) {
-                    final product = products[i];
-                    final availability = _getDishAvailability(product);
-                    final available =
-                        availability.isAvailable &&
-                        _canRestaurantAcceptOrders();
-                    return RestaurantMenuTile(
-                      product: product,
-                      available: available,
-                      isBestseller: product.isFeatured,
-                      unavailableReason: availability.reasonText,
-                      onDetails: () => _openMenuProduct(product),
-                      onAdd: () => _addToCart(product),
-                    );
-                  },
-                ),
-                if (i < products.length - 1)
-                  const Divider(height: 1, color: Color(0xffeeeeee)),
-              ],
-            ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns =
+                    constraints.maxWidth >= 600
+                        ? 3
+                        : constraints.maxWidth < 260
+                        ? 1
+                        : 2;
+                final width =
+                    (constraints.maxWidth - 14 * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: 14,
+                  runSpacing: 24,
+                  children:
+                      products.map((product) {
+                        final availability = _getDishAvailability(product);
+                        return SizedBox(
+                          width: width,
+                          child: RestaurantProductCard(
+                            product: product,
+                            available:
+                                availability.isAvailable &&
+                                _canRestaurantAcceptOrders(),
+                            unavailableReason: availability.reasonText,
+                            onDetails: () => _openMenuProduct(product),
+                            onAdd: () => _addToCart(product),
+                          ),
+                        );
+                      }).toList(),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -1791,102 +1834,285 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     );
   }
 
+  int _menuOfferAttempt = 0;
   Future<void> _loadMenuOffers() async {
+    final attempt = ++_menuOfferAttempt;
     try {
-      final offers = await OrderService().getStoreDiscounts(
-        widget.store.id,
-        addressId: DeliveryAddressManager.instance.activeAddress?.addressId,
-      );
-      if (mounted) setState(() => _menuOffers = offers);
+      final ids =
+          _categoryProducts.values
+              .expand((items) => items)
+              .map((p) => p.id)
+              .toSet()
+              .toList();
+      final merged = <String, StoreDiscount>{};
+      final groups =
+          ids.isEmpty
+              ? <List<String>>[[]]
+              : [
+                for (var i = 0; i < ids.length; i += 40)
+                  ids.skip(i).take(40).toList(),
+              ];
+      for (final group in groups) {
+        final offers = await OrderService().getStoreDiscounts(
+          widget.store.id,
+          addressId: DeliveryAddressManager.instance.activeAddress?.addressId,
+          itemIds: group,
+        );
+        for (final offer in offers) {
+          final old = merged[offer.discountId];
+          if (old == null || old.pricingRevision != offer.pricingRevision) {
+            merged[offer.discountId] = offer;
+          } else {
+            merged[offer.discountId] = offer.withItemPrices([
+              ...old.itemPrices,
+              ...offer.itemPrices,
+            ], validUntil: old.itemPricesValidUntil);
+          }
+        }
+      }
+      if (mounted && attempt == _menuOfferAttempt) {
+        final offers = merged.values.toList();
+        MenuOfferPricing.instance.absorb(widget.store.id, offers);
+        setState(() => _menuOffers = offers);
+      }
     } catch (_) {
-      if (mounted) setState(() => _menuOffers = []);
+      if (mounted && attempt == _menuOfferAttempt) {
+        MenuOfferPricing.instance.absorb(widget.store.id, []);
+        setState(() => _menuOffers = []);
+      }
     }
   }
 
-  Widget _buildMenuOffers() => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'عروض تستحق التجربة',
-          style: TextStyle(
-            fontSize: 21,
-            fontWeight: FontWeight.w700,
-            color: discoveryInk,
-          ),
-        ),
-        const SizedBox(height: 14),
-        ..._menuOffers.map(
-          (offer) =>
-              offer.imageUrl?.isNotEmpty == true
-                  ? Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _buildImageOfferCard(offer),
-                  )
-                  : Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xffe5e5e5)),
-                      color: Colors.white,
+  void _showMenuOfferTerms(StoreDiscount offer) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder:
+          (context) => SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (offer.imageUrl?.isNotEmpty == true) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.network(
+                        offer.imageUrl!,
+                        height: 160,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
                     ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  Text(
+                    offer.displayValue,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.secondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    offer.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (offer.description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(offer.description),
+                    ),
+                  const SizedBox(height: 16),
+                  Text(
+                    offer.termsSummary,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.8,
+                      color: Color(0xFF536175),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'تُراجع أهلية العرض وقيمته عند تطبيقه في السلة.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF647184)),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.secondary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('حسنًا'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  Widget _buildMenuOffers() {
+    final now = DateTime.now();
+    final discounted =
+        _categoryProducts.values
+            .expand((p) => p)
+            .where(
+              (product) => _menuOffers.any(
+                (offer) => offer.includesMenuItem(
+                  itemId: product.id,
+                  categoryId: product.categoryId,
+                  branchId: widget.store.id,
+                  now: now,
+                ),
+              ),
+            )
+            .toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'عروض على طلبك',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: discoveryInk,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ..._menuOffers.map(
+            (offer) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Material(
+                color: const Color(0xFFF5F7FB),
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  onTap: () => _showMenuOfferTerms(offer),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
                     child: Row(
                       children: [
-                        const Icon(
-                          Icons.sell_rounded,
-                          color: Color(0xffce2c20),
-                          size: 27,
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.local_offer_outlined,
+                            color: AppColors.secondary,
+                            size: 22,
+                          ),
                         ),
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${offer.displayValue} • ${offer.title}',
+                                offer.displayValue,
                                 style: const TextStyle(
-                                  color: Color(0xffba261d),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.secondary,
                                 ),
                               ),
-                              if (offer.description.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 5),
-                                  child: Text(
-                                    offer.description,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.black54,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
+                              const SizedBox(height: 4),
                               Text(
-                                offer.termsSummary,
+                                offer.calculationMode == 'perItem'
+                                    ? 'على الوجبات المحددة • عرض واحد لكل طلب'
+                                    : offer.minimumOrderAmount > 0
+                                    ? 'للطلبات من ${offer.minimumOrderAmount.toStringAsFixed(0)} د.ع • الشروط والتفاصيل'
+                                    : 'اطّلع على شروط العرض',
                                 style: const TextStyle(
-                                  color: Colors.black54,
                                   fontSize: 12,
+                                  color: Color(0xFF647184),
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        const Icon(
+                          Icons.chevron_left_rounded,
+                          color: Color(0xFF647184),
+                          size: 20,
+                        ),
                       ],
                     ),
                   ),
-        ),
-      ],
-    ),
-  );
+                ),
+              ),
+            ),
+          ),
+          if (discounted.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Text(
+              'وجبات مشمولة بالعروض',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: discoveryInk,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'تُطبق شروط العرض في السلة • عرض واحد لكل طلب',
+              style: TextStyle(fontSize: 12, color: Color(0xFF647184)),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 266,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: discounted.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 14),
+                itemBuilder: (_, i) {
+                  final product = discounted[i];
+                  final availability = _getDishAvailability(product);
+                  return SizedBox(
+                    width: 165,
+                    child: RestaurantProductCard(
+                      product: product,
+                      available:
+                          availability.isAvailable &&
+                          _canRestaurantAcceptOrders(),
+                      unavailableReason: availability.reasonText,
+                      onDetails: () => _openMenuProduct(product),
+                      onAdd: () => _addToCart(product),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _buildFeaturedDishes() {
     final all = _categoryProducts.values.expand((items) => items).toList();
     final featured = all.where((p) => p.isFeatured).toList();
-    final products = (featured.isEmpty ? all : featured).take(8).toList();
+    final products = featured.take(8).toList();
     return SizedBox(
       height: 265,
       child: ListView.separated(
@@ -1969,12 +2195,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  Text(
-                    '${product.price.toStringAsFixed(0)} د.ع',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  MenuItemPrice(
+                    branch: widget.store.id,
+                    product: product.id,
+                    original: product.price,
                   ),
                 ],
               ),
@@ -1982,133 +2206,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
           );
         },
       ),
-    );
-  }
-
-  Widget _buildImageOfferCard(StoreDiscount offer) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xffe2e2e2)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Image.network(
-            offer.imageUrl!,
-            width: double.infinity,
-            height: 150,
-            fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => Container(
-                  width: double.infinity,
-                  height: 150,
-                  color: const Color(0xffedf1f5),
-                  child: const Icon(
-                    Icons.local_offer_outlined,
-                    color: Colors.black26,
-                    size: 40,
-                  ),
-                ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: _buildOfferCardBody(offer, isYellow: false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOfferCardBody(StoreDiscount offer, {required bool isYellow}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    offer.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: Color(0xff1a1a1a),
-                    ),
-                  ),
-                  if (offer.description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        offer.description,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color:
-                    isYellow
-                        ? const Color(0xffffe082)
-                        : AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                offer.displayValue,
-                style: TextStyle(
-                  color:
-                      isYellow
-                          ? const Color(0xffe65100)
-                          : AppColors.secondaryDark,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Icon(
-              Icons.shopping_bag_outlined,
-              size: 14,
-              color: Colors.grey.shade700,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                offer.termsSummary.isNotEmpty
-                    ? offer.termsSummary
-                    : offer.displayValue,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade800,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 
@@ -3318,6 +3415,13 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
         // إضافة العنصر للسلة
         await appState.addToCart(cartItem);
       }
+
+      if (appState.errorMessage == null)
+        MenuOfferPricing.instance.select(
+          widget.store.id,
+          product.id,
+          product.price,
+        );
 
       // التحقق من نجاح الإضافة قبل عرض رسالة التأكيد
       if (appState.errorMessage != null) {

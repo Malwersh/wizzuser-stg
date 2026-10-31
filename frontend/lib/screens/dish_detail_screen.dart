@@ -1,3 +1,5 @@
+import '../services/menu_offer_pricing.dart';
+import '../widgets/menu_item_price.dart';
 import '../utils/currency_format.dart';
 import 'dart:developer' as developer;
 // lib/screens/dish_detail_screen.dart
@@ -334,6 +336,13 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
     // تفريغ السلة ثم إضافة العنصر الجديد
     appState.clearCart();
     await appState.addToCart(_buildCartItemMap());
+    if (appState.errorMessage == null &&
+        _selectedOptions.values.every((v) => v.isEmpty))
+      MenuOfferPricing.instance.select(
+        widget.storeId,
+        widget.dish.id,
+        _productPrice,
+      );
 
     if (!mounted) return;
     final favoritesModel = Provider.of<FavoritesModel>(context, listen: false);
@@ -535,6 +544,13 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
       );
       final navigator = Navigator.of(context);
       await appState.addToCart(cartItem);
+      if (appState.errorMessage == null &&
+          _selectedOptions.values.every((v) => v.isEmpty))
+        MenuOfferPricing.instance.select(
+          widget.storeId,
+          widget.dish.id,
+          _productPrice,
+        );
 
       // التحقق من نوع الخطأ
       if (appState.errorMessage == 'DIFFERENT_STORE') {
@@ -653,6 +669,14 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                       color: discoveryInk,
                     ),
                   ),
+                  if (_selectedOptions.values.every((v) => v.isEmpty)) ...[
+                    const SizedBox(height: 10),
+                    MenuItemPrice(
+                      branch: widget.storeId,
+                      product: widget.dish.id,
+                      original: _productPrice,
+                    ),
+                  ],
                   if (_productDescription.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(
@@ -737,19 +761,37 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
             ),
           ],
         ),
-        bottomNavigationBar: CustomerOrderActionBar(
-          quantity: _quantity,
-          total: _calculateTotal(),
-          onQuantity: (q) => setState(() => _quantity = q),
-          busy: _addingToCart,
-          hint: _choiceHint,
-          onAdd:
-              _choicesComplete &&
-                      !_isLoadingProduct &&
-                      !_productLoadFailed &&
-                      _productData?.isAvailable != false
-                  ? _submitDish
-                  : null,
+        bottomNavigationBar: ListenableBuilder(
+          listenable: MenuOfferPricing.instance,
+          builder:
+              (context, _) => CustomerOrderActionBar(
+                quantity: _quantity,
+                total:
+                    _selectedOptions.values.every((v) => v.isEmpty)
+                        ? (MenuOfferPricing.instance
+                                    .price(
+                                      widget.storeId,
+                                      widget.dish.id,
+                                      _productPrice,
+                                    )
+                                    ?.unit
+                                    .netFils
+                                    .toDouble() ??
+                                (_productPrice * 1000)) /
+                            1000 *
+                            _quantity
+                        : _calculateTotal(),
+                onQuantity: (q) => setState(() => _quantity = q),
+                busy: _addingToCart,
+                hint: _choiceHint,
+                onAdd:
+                    _choicesComplete &&
+                            !_isLoadingProduct &&
+                            !_productLoadFailed &&
+                            _productData?.isAvailable != false
+                        ? _submitDish
+                        : null,
+              ),
         ),
       ),
     );

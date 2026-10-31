@@ -36,6 +36,7 @@ class HomeSlideshowService {
     final response = await (_client?.get ?? http.get)(
           Uri.parse(baseUrl).replace(
             queryParameters: {
+              'layoutVersion': '2',
               if (region != null && region.isNotEmpty) 'regionId': region,
               if (session.isLoggedIn && session.currentUserId != null)
                 'userId': session.currentUserId!,

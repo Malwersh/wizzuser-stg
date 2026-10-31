@@ -103,16 +103,77 @@ class BasketInvoiceTotals extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!ApiConfig.commercialPricingEnabled) return const SizedBox.shrink();
-    if(store==null){
-      final r=PointInvoice321.basketRequest(branch,items,storeName:storeName);
-      if(r==null)return const SizedBox.shrink();
-      return ListenableBuilder(listenable:PointInvoice321.instance,builder:(context,_){
-        final p=PointInvoice321.instance.peek(r);if(p==null)return const SizedBox.shrink();
-        return Column(children:[
-          Padding(padding:const EdgeInsets.only(top:10),child:Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('رسوم الخدمة'),Text(basketMoney((p['serviceFee']['minorAmount']as num)/1000),style:const TextStyle(color:AppColors.secondary))])),
-          Padding(padding:const EdgeInsets.only(top:10),child:Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('المجموع الكلي',style:TextStyle(fontWeight:FontWeight.bold)),Text(basketMoney((p['customerTotal']['minorAmount']as num)/1000),style:const TextStyle(color:AppColors.secondary,fontWeight:FontWeight.bold))])),
-        ]);
-      });
+    if (store == null) {
+      final r = PointInvoice321.basketRequest(
+        branch,
+        items,
+        storeName: storeName,
+      );
+      if (r == null) return const SizedBox.shrink();
+      return ListenableBuilder(
+        listenable: PointInvoice321.instance,
+        builder: (context, _) {
+          final p = PointInvoice321.instance.peek(r);
+          if (p == null) return const SizedBox.shrink();
+          return Column(
+            children: [
+              if ((p['discount']?['minorAmount'] as num? ?? 0) > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'خصم الوجبات',
+                        style: TextStyle(color: Color(0xFF087345)),
+                      ),
+                      Text(
+                        '-${basketMoney((p['discount']['minorAmount'] as num) / 1000)}',
+                        style: const TextStyle(color: Color(0xFF087345)),
+                      ),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('رسوم الخدمة'),
+                    Text(
+                      basketMoney(
+                        (p['serviceFee']['minorAmount'] as num) / 1000,
+                      ),
+                      style: const TextStyle(color: AppColors.secondary),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'المجموع الكلي',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      basketMoney(
+                        (p['customerTotal']['minorAmount'] as num) / 1000,
+                      ),
+                      style: const TextStyle(
+                        color: AppColors.secondary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      );
     }
     final source = store ?? CheckoutInvoiceStore.instance;
     return ListenableBuilder(
@@ -206,17 +267,30 @@ class BasketInvoiceDelivery extends StatelessWidget {
     final source = store ?? CheckoutInvoiceStore.instance;
     final display = pricing ?? StorefrontPricing.instance;
     return ListenableBuilder(
-      listenable: Listenable.merge([source, display,PointInvoice321.instance]),
+      listenable: Listenable.merge([source, display, PointInvoice321.instance]),
       builder: (context, _) {
         final request = source.basketRequest(branch, items);
         final invoice = request == null ? null : source.peek(request);
-        final pointRequest=store==null?PointInvoice321.basketRequest(branch,items):null;
-        final proposal=(pointRequest==null?null:PointInvoice321.instance.peek(pointRequest))??invoice?.proposal;
-        final cachedFee = request == null ? display.browsingPointFeeIqd(branch, items) : display.cachedDisplayFeeIqd(branch, items);
+        final pointRequest =
+            store == null ? PointInvoice321.basketRequest(branch, items) : null;
+        final proposal =
+            (pointRequest == null
+                ? null
+                : PointInvoice321.instance.peek(pointRequest)) ??
+            invoice?.proposal;
+        final cachedFee =
+            request == null
+                ? display.browsingPointFeeIqd(branch, items)
+                : display.cachedDisplayFeeIqd(branch, items);
         return proposal == null
             ? Text(
-              request == null ? (cachedFee!=null?basketMoney(cachedFee):'يُحسب بعد إكمال عنوان التوصيل') :
-                  cachedFee != null ? '${basketMoney(cachedFee)} (تقديري)' : 'بانتظار سعر التوصيل',
+              request == null
+                  ? (cachedFee != null
+                      ? basketMoney(cachedFee)
+                      : 'يُحسب بعد إكمال عنوان التوصيل')
+                  : cachedFee != null
+                  ? '${basketMoney(cachedFee)} (تقديري)'
+                  : 'بانتظار سعر التوصيل',
               style: const TextStyle(color: AppColors.textSecondary),
             )
             : Text(
