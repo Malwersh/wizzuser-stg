@@ -1,0 +1,11 @@
+{
+  "driverBatch": 270,
+  "installedRelease": 248,
+  "centralPolicy": "CONFIG#TRANSFERS.enabled",
+  "refresh": "wallet open / app resume / every 30 seconds",
+  "failClosedOnReadError": true,
+  "balancesAndHistoryRemainAvailable": true,
+  "pendingOperationRecoveryPreserved": true,
+  "commissionAdded": false,
+  "evidence": "whizzCentralPlatform-stg/docs/trip-transfer-controls-270.json"
+}

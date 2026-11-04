@@ -1,0 +1,56 @@
+{
+  "status": "PUBLISHED_LIVE_READ_VERIFIED",
+  "publishedAt": "2026-10-27T05:20:34.019924+00:00",
+  "name": "WizzUser-DeliveryQuotes-staging",
+  "beforeHash": "X+bXWrVSD+uJorKon5SArVuW/sGT/rsjgoIPPgXZEJQ=",
+  "hash": "PRKpqKTj2j6wEoRmzcnRpaz9hacF1P5SRZrSYXB7QF4=",
+  "legacyFinancialAndQuoteEntriesPreserved": true,
+  "environmentUnchanged": true,
+  "approvalReadOnlyPolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "dynamodb:GetItem",
+        "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff",
+        "Condition": {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": [
+              "COMMERCIAL_AGREEMENT#*"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "liveBaseFeePreview": {
+    "kind": "SERVICE_FEE_PREVIEW",
+    "schemaVersion": 1,
+    "branchId": "business_1791634772438_p2hlg6w5qii",
+    "baseServiceFee": {
+      "currency": "IQD",
+      "scale": 1000,
+      "moneySchemaVersion": 1,
+      "minorAmount": 300000
+    },
+    "createdAt": "2026-10-27T05:20:33.926Z",
+    "expiresAt": "2026-10-27T05:22:33.926Z",
+    "informationalOnly": true,
+    "requiresFinalConfirmation": true
+  },
+  "noAddressRoutingRequired": true,
+  "businessWrites": false,
+  "tests": {
+    "node": 35,
+    "flutter": 39,
+    "flutterSkippedPreexisting": 1,
+    "targetAnalyzerErrors": 0,
+    "targetAnalyzerWarnings": 0
+  },
+  "simulator": {
+    "build": 320,
+    "device": "iPhone16Pro",
+    "dataPreserved": true
+  },
+  "pending": "Human visual acceptance and final invoice replacement"
+}

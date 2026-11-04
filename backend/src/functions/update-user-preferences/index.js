@@ -1,11 +1,12 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const {writeContext}=require('../create-order/guarded-write');
 
 const client = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(client);
 
 exports.handler = async (event) => {
-    console.log('Update User Preferences Event:', JSON.stringify(event, null, 2));
+    console.log('Update preferences request', {requestId:event.requestContext?.requestId});
     
     const headers = {
         'Content-Type': 'application/json',
@@ -36,6 +37,7 @@ exports.handler = async (event) => {
             };
         }
 
+        const write = await writeContext(dynamodb,event,userId);
         // Parse request body
         let requestBody;
         try {
@@ -127,7 +129,7 @@ exports.handler = async (event) => {
         console.log('DynamoDB Update Params:', JSON.stringify(updateParams, null, 2));
         
         // Update the user preferences
-        const result = await dynamodb.send(new UpdateCommand(updateParams));
+        const result = await write('Update',updateParams);
         
         // Format the response data
         const updatedUser = {
@@ -152,7 +154,7 @@ exports.handler = async (event) => {
         console.error('Error updating user preferences:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='ConditionalCheckFailedException'?409:500),
             headers,
             body: JSON.stringify({
                 error: 'Internal server error',

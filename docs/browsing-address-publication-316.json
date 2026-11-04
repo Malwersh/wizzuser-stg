@@ -1,0 +1,66 @@
+{
+  "status": "PUBLISHED_VERIFIED",
+  "publishedAt": "2026-10-26T23:54:32.123068+00:00",
+  "functions": [
+    {
+      "name": "WizzUser-CreateAddress-staging",
+      "beforeHash": "3A/tDzFK2fvHJne8hCCSnforsZGrj8lBak+dyStuL/I=",
+      "hash": "U/COvOinUMxweRq3oPfLY1lnQZXmjuqBJ2qwNle91rY=",
+      "changedFiles": [
+        "functions/create-address/index.js",
+        "functions/create-address/idempotency-315.js"
+      ],
+      "unrelatedZipEntriesPreserved": true,
+      "environmentUnchanged": true
+    },
+    {
+      "name": "WizzUser-GetUserAddresses-staging",
+      "beforeHash": "n6Jv0FCTV7tGKEIbcaFdTXC8TnQ/hx6hpU6HJRNk/Ic=",
+      "hash": "f+Gri4g8ovxPftVH72FBtagVt9UJi9IeY3EPeyqoBi0=",
+      "changedFiles": [
+        "index.js"
+      ],
+      "unrelatedZipEntriesPreserved": true,
+      "environmentUnchanged": true
+    }
+  ],
+  "readerPolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "dynamodb:GetItem"
+        ],
+        "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+      }
+    ]
+  },
+  "ttl": {
+    "TimeToLiveStatus": "ENABLED",
+    "AttributeName": "checkoutExpiresAt"
+  },
+  "checkoutAddressLifetimeDays": 7,
+  "savedAddressLimitUnchanged": 10,
+  "unauthenticatedStatuses": {
+    "GET": 401,
+    "POST": 401
+  },
+  "businessDataMutated": false,
+  "existingAddressesDeleted": false,
+  "tests": {
+    "backend": 21,
+    "flutterCurrent": 87,
+    "legacyDeliveryQuoteSuite": "Pre-existing tests omit current mandatory approved confirmation; not counted as passing. See checkpoint.",
+    "flutterSkipped": 1
+  },
+  "simulator": {
+    "device": "iPhone 16 Pro",
+    "udid": "09DA4C20-FD4B-446E-8C2F-9D04E5CFC206",
+    "build": 316,
+    "installed": true,
+    "launched": true,
+    "existingDataPreserved": true,
+    "nativeFlowAcceptance": "PENDING_USER"
+  }
+}

@@ -1,3 +1,11 @@
+import '../models/interface_layout.dart';
+import '../services/interface_layout_service.dart';
+import '../services/discovery_history.dart';
+import '../services/session_service.dart';
+import '../widgets/interface_product_section.dart';
+import '../services/menu_offer_pricing.dart';
+import '../widgets/menu_item_price.dart';
+import '../utils/currency_format.dart';
 import 'dart:developer' as developer;
 // lib/screens/dish_detail_screen.dart
 
@@ -6,19 +14,59 @@ import 'dart:ui' as ui;
 // lib/screens/dish_detail_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/app_colors.dart';
+import '../widgets/discovery/customer_components.dart';
 import '../models/dish.dart';
 import '../models/favorites_model.dart';
 import '../models/product_model.dart';
 import '../services/business_service.dart';
 import '../services/restaurant_availability_service.dart';
 import '../providers/app_state_provider.dart';
-import '../widgets/modern_cart_icon.dart';
-// import '../widgets/product_image.dart';  // استبدال مؤقت
-import 'cart_screen.dart';
+import '../widgets/clear_cart_sheet.dart';
+
+Future<bool?> showDishDetailBottomSheet(
+  BuildContext context, {
+  required Dish dish,
+  required String storeId,
+  String? storeName,
+  String? storeAddress,
+  bool isInitiallyFav = false,
+  ProductModel? productData,
+}) {
+  final mediaQuery = MediaQuery.of(context);
+  final availableHeight = mediaQuery.size.height - mediaQuery.padding.top;
+
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: false,
+    backgroundColor: Colors.white,
+    barrierColor: Colors.black.withValues(alpha: 0.45),
+    clipBehavior: Clip.antiAlias,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder:
+        (sheetContext) => SizedBox(
+          height: availableHeight * 0.94,
+          child: MediaQuery.removePadding(
+            context: sheetContext,
+            removeTop: true,
+            child: DishDetailScreen(
+              dish: dish,
+              storeId: storeId,
+              storeName: storeName,
+              storeAddress: storeAddress,
+              isInitiallyFav: isInitiallyFav,
+              productData: productData,
+              isBottomSheet: true,
+            ),
+          ),
+        ),
+  );
+}
 
 class DishDetailScreen extends StatefulWidget {
   final Dish dish;
@@ -27,6 +75,7 @@ class DishDetailScreen extends StatefulWidget {
   final String? storeAddress; // إضافة عنوان المتجر للسائقين
   final bool isInitiallyFav;
   final ProductModel? productData; // إضافة بيانات المنتج الجاهزة
+  final bool isBottomSheet;
 
   const DishDetailScreen({
     super.key,
@@ -36,6 +85,7 @@ class DishDetailScreen extends StatefulWidget {
     this.storeAddress, // إضافة عنوان المتجر كمعطى اختياري
     this.isInitiallyFav = false,
     this.productData, // معطى اختياري
+    this.isBottomSheet = false,
   });
 
   @override
@@ -43,37 +93,44 @@ class DishDetailScreen extends StatefulWidget {
 }
 
 class _DishDetailScreenState extends State<DishDetailScreen>
-    with SingleTickerProviderStateMixin {
-  static const _primaryPink = AppColors.primary;
-
-  late TabController _tabController;
+    with WidgetsBindingObserver {
   final Map<String, Set<String>> _selectedOptions = {};
   int _quantity = 1;
+  final _interfaceSession = InterfaceScreenSession();
+  InterfaceLayout? get _interfaceLayout =>
+      _interfaceSession.current(InterfaceLayoutService.instance.scope);
+  List<ProductModel> _relatedCatalog = [];
+  DateTime? _relatedCatalogLoadedAt;
+  String? _relatedCatalogScope;
   String? _specialInstructions;
-  final _arabicNumber = NumberFormat.decimalPattern('ar');
 
   // بيانات حقيقية من الباك إند
   ProductModel? _productData;
   bool _isLoadingProduct = false;
+  bool _productLoadFailed = false;
+  bool _addingToCart = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    for (var g in widget.dish.optionGroups) {
-      _selectedOptions[g.id] = <String>{};
-    }
-    
+    WidgetsBinding.instance.addObserver(this);
+
     // استخدام البيانات الممررة إذا كانت متوفرة، وإلا جلبها من API
     developer.log('🔍 DishDetailScreen.initState:');
-    developer.log('  widget.productData != null: ${widget.productData != null}');
+    developer.log(
+      '  widget.productData != null: ${widget.productData != null}',
+    );
     if (widget.productData != null) {
       developer.log('  widget.productData.name: "${widget.productData!.name}"');
-      developer.log('  widget.productData.imageUrl: "${widget.productData!.imageUrl}"');
-      developer.log('  widget.productData.imageUrl.isNotEmpty: ${widget.productData!.imageUrl.isNotEmpty}');
+      developer.log(
+        '  widget.productData.imageUrl: "${widget.productData!.imageUrl}"',
+      );
+      developer.log(
+        '  widget.productData.imageUrl.isNotEmpty: ${widget.productData!.imageUrl.isNotEmpty}',
+      );
     }
     developer.log('  widget.dish.imageUrls: ${widget.dish.imageUrls}');
-    
+
     if (widget.productData != null) {
       developer.log('✅ استخدام بيانات المنتج الممررة مباشرة');
       _productData = widget.productData;
@@ -81,39 +138,82 @@ class _DishDetailScreenState extends State<DishDetailScreen>
       developer.log('🔄 جلب تفاصيل المنتج من API');
       _loadProductDetails();
     }
+
+    _ensureOptionKeys();
+    _loadInterface(force: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted)
+        DiscoveryHistory.instance.viewedProduct(widget.storeId, widget.dish.id);
+    });
+  }
+
+  /// 🔥 مجموعات الخيارات الفعّالة: الخيارات المضمنة في Dish أولاً،
+  /// وإلا تُشتق من بيانات الإضافات/المتغيرات الخام القادمة من الباك إند
+  List<OptionGroup> get _optionGroups {
+    if (_productData?.optionGroups != null) return _productData!.optionGroups!;
+    if (widget.dish.optionGroups.isNotEmpty) return widget.dish.optionGroups;
+    return OptionGroup.listFromAddons(
+      _productData?.addons ?? _productData?.variations,
+    );
+  }
+
+  OptionGroup? _groupById(String id) {
+    for (final g in _optionGroups) {
+      if (g.id == id) return g;
+    }
+    return null;
+  }
+
+  void _ensureOptionKeys() {
+    final groups = _optionGroups;
+    _selectedOptions.removeWhere((id, _) => !groups.any((g) => g.id == id));
+    for (final g in groups) {
+      final ids = _selectedOptions.putIfAbsent(g.id, () => <String>{});
+      ids.removeWhere(
+        (id) => !g.options.any((o) => o.id == id && o.isAvailable),
+      );
+      if (ids.length > g.maxSelections) ids.clear();
+    }
   }
 
   Future<void> _loadProductDetails() async {
     setState(() {
       _isLoadingProduct = true;
+      _productLoadFailed = false;
     });
 
     try {
       developer.log('🔄 جاري جلب تفاصيل المنتج...');
       developer.log('  storeId: "${widget.storeId}"');
       developer.log('  dishId: "${widget.dish.id}"');
-      
+
       final productData = await BusinessService.getProductDetails(
-        widget.storeId, 
+        widget.storeId,
         widget.dish.id,
       );
-      
+
       developer.log('📦 نتيجة جلب تفاصيل المنتج:');
       developer.log('  productData: ${productData != null ? "موجود" : "null"}');
       if (productData != null) {
         developer.log('  productData.name: "${productData.name}"');
         developer.log('  productData.imageUrl: "${productData.imageUrl}"');
-        developer.log('  productData.imageUrl.isEmpty: ${productData.imageUrl.isEmpty}');
+        developer.log(
+          '  productData.imageUrl.isEmpty: ${productData.imageUrl.isEmpty}',
+        );
       }
-      
+
       if (mounted) {
         setState(() {
           _productData = productData;
+          _productLoadFailed = productData == null;
           _isLoadingProduct = false;
         });
+        // إذا وصلت مجموعات خيارات جديدة من الباك إند، تهيئة مفاتيحها
+        _ensureOptionKeys();
       }
     } catch (e) {
       developer.log('❌ خطأ في جلب تفاصيل المنتج: $e');
+      _productLoadFailed = true;
       if (mounted) {
         setState(() {
           _isLoadingProduct = false;
@@ -124,7 +224,7 @@ class _DishDetailScreenState extends State<DishDetailScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -142,16 +242,19 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   String get _productImageUrl {
     developer.log('🔍 Debug _productImageUrl:');
     developer.log('  _productData: ${_productData != null ? "موجود" : "null"}');
-    
+
     if (_productData?.imageUrl.isNotEmpty == true) {
-      developer.log('  استخدام صورة من _productData: "${_productData!.imageUrl}"');
+      developer.log(
+        '  استخدام صورة من _productData: "${_productData!.imageUrl}"',
+      );
       return _productData!.imageUrl;
     }
-    
-    final fallbackImage = widget.dish.imageUrls.isNotEmpty ? widget.dish.imageUrls.first : '';
+
+    final fallbackImage =
+        widget.dish.imageUrls.isNotEmpty ? widget.dish.imageUrls.first : '';
     developer.log('  استخدام صورة احتياطية من dish: "$fallbackImage"');
     developer.log('  widget.dish.imageUrls: ${widget.dish.imageUrls}');
-    
+
     return fallbackImage;
   }
 
@@ -163,7 +266,8 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   double _calculateTotal() {
     var total = _productPrice;
     _selectedOptions.forEach((gid, opts) {
-      final group = widget.dish.optionGroups.firstWhere((g) => g.id == gid);
+      final group = _groupById(gid);
+      if (group == null) return;
       for (var o in group.options.where((o) => opts.contains(o.id))) {
         total += o.extraPrice;
       }
@@ -174,29 +278,29 @@ class _DishDetailScreenState extends State<DishDetailScreen>
   // دالة للحصول على اسم المتجر الحقيقي
   String _getStoreName() {
     // 1. إذا تم تمرير اسم المتجر مباشرة واسمه ليس عام
-    if (widget.storeName != null && 
-        widget.storeName!.isNotEmpty && 
+    if (widget.storeName != null &&
+        widget.storeName!.isNotEmpty &&
         widget.storeName != 'المطعم' &&
         widget.storeName != 'متجر') {
       return widget.storeName!;
     }
-    
+
     final appState = Provider.of<AppStateProvider>(context, listen: false);
-    
+
     // 2. إذا كان في السلة عناصر من نفس المتجر، استخرج اسم المتجر
     if (appState.cartItems.isNotEmpty) {
       final storeIdInCart = appState.cartItems.first['store_id'] as String?;
       if (storeIdInCart == widget.storeId) {
         final storeName = appState.cartItems.first['store_name'] as String?;
-        if (storeName != null && 
-            storeName.isNotEmpty && 
+        if (storeName != null &&
+            storeName.isNotEmpty &&
             storeName != 'المطعم' &&
             storeName != 'متجر') {
           return storeName;
         }
       }
     }
-    
+
     // 3. محاولة تخمين اسم معقول من storeId إذا أمكن
     if (widget.storeId.isNotEmpty) {
       // إذا كان ID يحتوي على نص مفيد، استخدمه
@@ -204,663 +308,657 @@ class _DishDetailScreenState extends State<DishDetailScreen>
         return 'مطعم ${widget.storeId.substring(0, 8)}...';
       }
     }
-    
+
     // الافتراضي الآمن
     return widget.storeName ?? 'المطعم';
   }
 
-  void _showDifferentStoreDialog() {
-    showDialog(
+  /// بناء عنصر السلة الموحد (يُستخدم في زر الإضافة وفي نافذة تعارض المطاعم)
+  Map<String, dynamic> _buildCartItemMap() {
+    return {
+      'id': widget.dish.id,
+      'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
+      'price': _calculateTotal() / _quantity,
+      'description':
+          _productDescription.isNotEmpty
+              ? _productDescription
+              : 'وصف غير متوفر',
+      'image': _productImageUrl,
+      'quantity': _quantity > 0 ? _quantity : 1,
+      'store_id': widget.storeId,
+      'store_name': _getStoreName(),
+      'store_address':
+          widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
+      'special_instructions': _specialInstructions?.trim(),
+      'base_price': _calculateTotal() / _quantity, // إضافة السعر الأساسي
+      'selected_options': _selectedOptions.map(
+        (k, v) => MapEntry(k, v.toList()),
+      ), // الخيارات المختارة
+      'added_at': DateTime.now().toIso8601String(), // وقت الإضافة
+    };
+  }
+
+  /// 🔥 عرض نافذة تعارض المطاعم (سلة واحدة لكل مطعم) ومعالجة اختيار المستخدم
+  Future<void> _showDifferentStoreDialog() async {
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    final otherStoreName = appState.cartStoreName ?? 'مطعم آخر';
+
+    final clearAndAdd = await showClearCartConflictSheet(
+      context,
+      otherStoreName: otherStoreName,
+    );
+
+    if (clearAndAdd != true || !mounted) return;
+
+    developer.log('🗑️ تفريغ السلة وإضافة المنتج الجديد');
+
+    // تفريغ السلة ثم إضافة العنصر الجديد
+    appState.clearCart();
+    await appState.addToCart(_buildCartItemMap());
+    if (appState.errorMessage == null &&
+        _selectedOptions.values.every((v) => v.isEmpty))
+      MenuOfferPricing.instance.select(
+        widget.storeId,
+        widget.dish.id,
+        _productPrice,
+      );
+
+    if (!mounted) return;
+    final favoritesModel = Provider.of<FavoritesModel>(context, listen: false);
+    Navigator.pop(
+      context,
+      favoritesModel.isDishFavorite(widget.dish.id),
+    ); // يغلق شاشة الطبق
+  }
+
+  bool get _choicesComplete => _optionGroups.every((g) {
+    final ids = _selectedOptions[g.id] ?? <String>{};
+    return (!g.required || ids.isNotEmpty) &&
+        ids.length <= g.maxSelections &&
+        ids.every((id) => g.options.any((o) => o.id == id && o.isAvailable));
+  });
+  String? get _choiceHint {
+    if (_isLoadingProduct) return 'جارٍ تحميل خيارات الوجبة…';
+    if (_productLoadFailed) return 'تعذر تحميل تفاصيل الوجبة؛ أعد المحاولة';
+    if (_productData?.isAvailable == false)
+      return 'هذا المنتج غير متوفر حاليًا';
+    for (final g in _optionGroups) {
+      if (g.required && (_selectedOptions[g.id]?.isEmpty ?? true))
+        return 'اختر ${g.title} لإكمال وجبتك';
+    }
+    return null;
+  }
+
+  Future<void> _editInstructions() async {
+    var draft = _specialInstructions ?? '';
+    final result = await showModalBottomSheet<String>(
       context: context,
-      builder: (dialogContext) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Directionality(
-          textDirection: ui.TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // أيقونة سلة مع علامة إلغاء
-              Stack(alignment: Alignment.center, children: [
-                Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryLight.withOpacity(0.2),
-                    shape: BoxShape.circle,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder:
+          (sheet) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              MediaQuery.viewInsetsOf(sheet).bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ملاحظات للمطعم',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: discoveryInk,
                   ),
                 ),
-                ModernCartIcon(
-                  color: AppColors.primaryDark,
-                  size: 32,
-                  isGlassmorphic: false,
+                const SizedBox(height: 8),
+                const Text(
+                  'اكتب ملاحظات التحضير؛ اختيار الأحجام والإضافات يكون من الخيارات أعلاه.',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF647184)),
                 ),
-                const Positioned(
-                  right: 0, top: 0,
-                  child: Icon(Icons.close, size: 20, color: Colors.redAccent),
-                ),
-              ]),
-              const SizedBox(height: 16),
-              const Text(
-                'لا يمكن إضافة الطلب إلى السلة',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'سلة التسوق تحتوي طلبات من متجر آخر.\n'
-                'هل تريد تفريغ السلة والبدء من المتجر الحالي أم عرض السلة الحالية؟',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.black87),
-              ),
-              const SizedBox(height: 24),
-              Row(children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      developer.log('🗑️ تفريغ السلة وإضافة المنتج الجديد');
-                      
-                      final appState = Provider.of<AppStateProvider>(dialogContext, listen: false);
-                      appState.clearCart();
-                      
-                      // إضافة العنصر للسلة باستخدام AppStateProvider مع تجاهل فحص المطعم
-                      final cartItem = {
-                        'id': widget.dish.id,
-                        'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
-                        'price': _calculateTotal(),
-                        'description': _productDescription.isNotEmpty ? _productDescription : 'وصف غير متوفر',
-                        'image': _productImageUrl,
-                        'quantity': _quantity > 0 ? _quantity : 1,
-                        'store_id': widget.storeId,
-                        'store_name': _getStoreName(),
-                        'store_address': widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
-                        'special_instructions': _specialInstructions?.trim(),
-                        'base_price': _productPrice, // إضافة السعر الأساسي
-                        'selected_options': _selectedOptions.map((k, v) => MapEntry(k, v.toList())), // الخيارات المختارة
-                        'added_at': DateTime.now().toIso8601String(), // وقت الإضافة
-                      };
-                      
-                      developer.log('🛒 إضافة منتج للسلة (من dialog المتجر المختلف)');
-                      developer.log('  التعليمات الخاصة: "${_specialInstructions ?? 'لا توجد ملاحظات'}"');
-                      
-                      final navigator = Navigator.of(dialogContext);
-                      await appState.addToCart(cartItem);
-                      navigator.pop(); // يغلق الـ Dialog فقط
-                      
-                      if (mounted) {
-                        final favoritesModel = Provider.of<FavoritesModel>(context, listen: false);
-                        Navigator.pop(context, favoritesModel.isDishFavorite(widget.dish.id)); // يغلق شاشة الطبق
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryPink,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                const SizedBox(height: 16),
+                TextFormField(
+                  initialValue: draft,
+                  maxLength: 500,
+                  minLines: 2,
+                  maxLines: 4,
+                  onChanged: (value) => draft = value,
+                  decoration: const InputDecoration(
+                    hintText: 'مثال: بدون بصل',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(14)),
                     ),
-                    child: const Text('تفريغ السلة', style: TextStyle(color: AppColors.secondary)),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(dialogContext); // يغلق الـ Dialog فقط
-                      if (mounted) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CartScreen(
-                              storeId: widget.storeId,
-                              stores: null, // لا توجد قائمة متاجر هنا، سيظهر الاسم الافتراضي إذا لم يتم تمريره
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryPink,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: discoveryGold,
+                      foregroundColor: discoveryInk,
                     ),
-                    child: const Text('عرض السلة', style: TextStyle(color: AppColors.secondary)),
+                    onPressed: () => Navigator.pop(sheet, draft.trim()),
+                    child: const Text('حفظ الملاحظة'),
                   ),
                 ),
-              ]),
-            ]),
+              ],
+            ),
           ),
-        ),
+    );
+    if (mounted && result != null)
+      setState(() => _specialInstructions = result);
+  }
+
+  Future<void> _submitDish() async {
+    if (_addingToCart ||
+        !_choicesComplete ||
+        _isLoadingProduct ||
+        _productLoadFailed ||
+        _productData?.isAvailable == false)
+      return;
+    setState(() => _addingToCart = true);
+    try {
+      // أولاً: فحص توفر المطعم وحالة قبول الطلبات
+      developer.log('🔍 فحص توفر المطعم قبل إضافة المنتج للسلة');
+      developer.log('  storeId: ${widget.storeId}');
+
+      final availabilityService = RestaurantAvailabilityService.instance;
+      final availabilityStatus = await availabilityService
+          .checkRestaurantAvailability(
+            widget.storeId,
+            skipCache: true, // فحص حالي للحصول على أحدث البيانات
+          );
+
+      if (!mounted) return;
+      developer.log('📊 نتيجة فحص توفر المطعم:');
+      developer.log('  isAvailable: ${availabilityStatus.isAvailable}');
+      developer.log('  acceptingOrders: ${availabilityStatus.acceptingOrders}');
+      developer.log(
+        '  isWithinWorkingHours: ${availabilityStatus.isWithinWorkingHours}',
+      );
+      developer.log(
+        '  reasonUnavailable: ${availabilityStatus.reasonUnavailable}',
+      );
+
+      // إذا كان المطعم غير متاح، أظهر رسالة مناسبة
+      if (!availabilityStatus.isAvailable) {
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
+        String errorMessage;
+
+        if (!availabilityStatus.acceptingOrders) {
+          errorMessage = 'عذراً، هذا المطعم لا يستقبل طلبات جديدة حالياً';
+        } else if (!availabilityStatus.isWithinWorkingHours) {
+          errorMessage = 'عذراً، هذا المطعم مغلق حالياً';
+        } else {
+          errorMessage =
+              availabilityStatus.reasonUnavailable ??
+              'عذراً، هذا المطعم غير متاح حالياً';
+        }
+
+        developer.log('⚠️ المطعم غير متاح: $errorMessage');
+
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber,
+                    color: const Color(0xFF00296B),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(errorMessage)),
+                ],
+              ),
+              backgroundColor: Colors.orange.shade600,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'حسناً',
+                textColor: Colors.white,
+                onPressed: () {
+                  scaffoldMessenger.hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+        return; // توقف هنا ولا تضيف للسلة
+      }
+
+      // إذا كان المطعم متاحاً، تابع عملية إضافة المنتج للسلة
+      developer.log('✅ المطعم متاح، المتابعة لإضافة المنتج للسلة');
+
+      final appState = Provider.of<AppStateProvider>(context, listen: false);
+
+      developer.log('🛒 محاولة إضافة منتج للسلة');
+      developer.log('  المنتج: $_productName');
+      developer.log('  الوصف: $_productDescription');
+      developer.log('  الصورة: $_productImageUrl');
+      developer.log('  السعر الأساسي: $_productPrice');
+      developer.log('  السعر الإجمالي: ${_calculateTotal()}');
+      developer.log('  الكمية: $_quantity');
+      developer.log('  المطعم: ${widget.storeId}');
+      developer.log(
+        '  التعليمات الخاصة: "${_specialInstructions ?? 'لا توجد ملاحظات'}"',
+      );
+      developer.log(
+        '  طول الملاحظات: ${_specialInstructions?.length ?? 0} حرف',
+      );
+
+      // إنشاء عنصر السلة مع التأكد من صحة جميع البيانات
+      final cartItem = _buildCartItemMap();
+
+      // محاولة إضافة العنصر للسلة
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final favoritesModel = Provider.of<FavoritesModel>(
+        context,
+        listen: false,
+      );
+      final navigator = Navigator.of(context);
+      await appState.addToCart(cartItem);
+      if (appState.errorMessage == null &&
+          _selectedOptions.values.every((v) => v.isEmpty))
+        MenuOfferPricing.instance.select(
+          widget.storeId,
+          widget.dish.id,
+          _productPrice,
+        );
+
+      // التحقق من نوع الخطأ
+      if (appState.errorMessage == 'DIFFERENT_STORE') {
+        // إظهار dialog المطعم المختلف
+        developer.log('⚠️ مطعم مختلف، إظهار dialog');
+        appState.clearError(); // مسح الخطأ
+        _showDifferentStoreDialog();
+        return;
+      } else if (appState.errorMessage != null) {
+        // خطأ آخر
+        developer.log('❌ خطأ في إضافة المنتج: ${appState.errorMessage}');
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text(appState.errorMessage!),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // نجحت العملية - العودة للشاشة السابقة
+      developer.log('✅ تم إضافة المنتج للسلة بنجاح');
+      if (mounted) {
+        // العودة للشاشة السابقة مع حالة المفضلة
+        developer.log(
+          '🔙 العودة لشاشة تفاصيل المطعم مع حالة المفضلة: ${favoritesModel.isDishFavorite(widget.dish.id)}',
+        );
+        navigator.pop(favoritesModel.isDishFavorite(widget.dish.id));
+      }
+    } finally {
+      if (mounted) setState(() => _addingToCart = false);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted)
+      _loadInterface(force: true, apply: false);
+  }
+
+  Future<void> _loadInterface({bool force = false, bool apply = true}) async {
+    final owner = InterfaceLayoutService.instance.scope;
+    try {
+      final layout = await InterfaceLayoutService.instance.load(
+        'product',
+        widget.storeId,
+        force: force,
+      );
+      if (!mounted || owner != InterfaceLayoutService.instance.scope) return;
+      if (!_interfaceSession.accept(owner, layout, apply: apply)) return;
+      setState(() {});
+      if ((_relatedCatalogScope != owner ||
+              _relatedCatalogLoadedAt == null ||
+              DateTime.now().difference(_relatedCatalogLoadedAt!) >=
+                  const Duration(minutes: 1)) &&
+          layout.configured &&
+          layout.sections.any(
+            (s) => !['description', 'choices', 'notes'].contains(s.source),
+          )) {
+        final catalog = await BusinessService.getBusinessCategoriesAndProducts(
+          widget.storeId,
+        );
+        await DiscoveryHistory.instance.load();
+        if (mounted && owner == InterfaceLayoutService.instance.scope)
+          setState(() {
+            _relatedCatalog = catalog.values.expand((p) => p).toList();
+            _relatedCatalogLoadedAt = DateTime.now();
+            _relatedCatalogScope = owner;
+          });
+      }
+    } catch (_) {
+      /* Required options and safe built-in product details remain. */
+    }
+  }
+
+  List<InterfaceSection> _productSections() {
+    if (_interfaceLayout?.configured == true) return _interfaceLayout!.sections;
+    return [
+      {'id': 'description', 'title': 'عن المنتج', 'source': 'description'},
+      {'id': 'choices', 'title': 'خصص طلبك', 'source': 'choices'},
+      {'id': 'notes', 'title': 'ملاحظات التحضير', 'source': 'notes'},
+    ].map((j) => InterfaceSection.fromJson({...j, 'limit': 12})).toList();
+  }
+
+  List<Widget> _buildProductSections() {
+    final output = <Widget>[],
+        seen = <String>{},
+        history = DiscoveryHistory.instance;
+    for (final section in _productSections()) {
+      if (!section.visible(SessionService.instance.isLoggedIn, DateTime.now()))
+        continue;
+      if (section.source == 'description') {
+        if (_productDescription.isNotEmpty)
+          output.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    section.title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: discoveryInk,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _productDescription,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.7,
+                      color: Color(0xFF59687B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+      } else if (section.source == 'choices') {
+        if (_optionGroups.isNotEmpty)
+          output.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                section.title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: discoveryInk,
+                ),
+              ),
+            ),
+          );
+        for (final group in _optionGroups)
+          output.add(
+            MealChoiceGroup(
+              group: group,
+              selected: _selectedOptions[group.id] ?? {},
+              onChanged: (ids) {
+                if (!_addingToCart)
+                  setState(() => _selectedOptions[group.id] = ids);
+              },
+            ),
+          );
+      } else if (section.source == 'notes') {
+        output.add(
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              leading: const Icon(Icons.edit_note_rounded, color: discoveryInk),
+              title: Text(
+                section.title,
+                style: TextStyle(
+                  color: discoveryInk,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              subtitle: Text(
+                _specialInstructions?.isNotEmpty == true
+                    ? _specialInstructions!
+                    : 'اختياري · تعليمات التحضير فقط',
+                style: const TextStyle(color: Color(0xFF647184), fontSize: 13),
+              ),
+              trailing: const Icon(Icons.chevron_left, color: discoveryInk),
+              onTap: _addingToCart ? null : _editInstructions,
+            ),
+          ),
+        );
+      } else {
+        final prices =
+            _relatedCatalog
+                .where(
+                  (p) =>
+                      MenuOfferPricing.instance.price(
+                        widget.storeId,
+                        p.id,
+                        p.price,
+                      ) !=
+                      null,
+                )
+                .map((p) => p.id)
+                .toSet();
+        final products = selectInterfaceProducts(
+          section,
+          _relatedCatalog,
+          discounted: prices,
+          previous: history.products(widget.storeId),
+          recent: history.recentProducts(widget.storeId),
+          current: _productData,
+          counts: _interfaceLayout?.counts ?? {},
+          seen: seen,
+        );
+        seen.addAll(products.map((p) => p.id));
+        output.add(
+          InterfaceProductSection(
+            section: section,
+            products: products,
+            available: (p) => p.isAvailable,
+            reason: (p) => p.isAvailable ? null : 'غير متاح',
+            onOpen: _openRelated,
+            onAdd: _openRelated,
+          ),
+        );
+      }
+    }
+    return output;
+  }
+
+  void _openRelated(ProductModel product) {
+    if (_addingToCart || !product.isAvailable) return;
+    showDishDetailBottomSheet(
+      context,
+      dish: Dish(
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        imageUrls: product.imageUrl.isEmpty ? [] : [product.imageUrl],
+        likesPercent: 0,
+        likesCount: 0,
+        basePrice: product.price,
+        optionGroups: [],
       ),
+      storeId: widget.storeId,
+      storeName: widget.storeName,
+      storeAddress: widget.storeAddress,
+      productData: product,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final photo = _productImageUrl;
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
-        extendBodyBehindAppBar: true,
-        backgroundColor: Colors.white,
-        body: _isLoadingProduct
-            ? const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: AppColors.primary),
-                    SizedBox(height: 16),
-                    Text('جاري تحميل تفاصيل المنتج...'),
-                  ],
-                ),
-              )
-            : ListView(
+        backgroundColor: discoveryCanvas,
+        body: ListView(
           padding: EdgeInsets.zero,
           children: [
-            // صورة الغلاف مع أزرار الخروج والتفضيل
             Stack(
               children: [
-                SizedBox(
-                  height: 240,
-                  width: double.infinity,
-                  child: Builder(
-                    builder: (context) {
-                      // إضافة logging مفصل
-                      final imageUrl = _productImageUrl;
-                      developer.log('🖼️ بناء صورة الطبق:');
-                      developer.log('  imageUrl: "$imageUrl"');
-                      developer.log('  imageUrl.isNotEmpty: ${imageUrl.isNotEmpty}');
-                      developer.log('  imageUrl.length: ${imageUrl.length}');
-                      
-                      return imageUrl.isNotEmpty
-                          ? Image.network(
-                              imageUrl,
-                              height: 240,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) {
-                                  developer.log('✅ تم تحميل صورة الطبق بنجاح');
-                                  return child;
-                                }
-                                developer.log('📥 جاري تحميل صورة الطبق...');
-                                return Container(
-                                  height: 240,
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
+                AspectRatio(
+                  aspectRatio: 1.45,
+                  child:
+                      photo.isEmpty
+                          ? const ColoredBox(
+                            color: Color(0xFFE8EDF4),
+                            child: Icon(
+                              Icons.restaurant_rounded,
+                              size: 64,
+                              color: discoveryInk,
+                            ),
+                          )
+                          : Image.network(
+                            photo,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (_, __, ___) => const ColoredBox(
+                                  color: Color(0xFFE8EDF4),
+                                  child: Icon(
+                                    Icons.restaurant_rounded,
+                                    size: 64,
+                                    color: discoveryInk,
                                   ),
-                                  child: const Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(_primaryPink),
-                                    ),
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                developer.log('❌ خطأ في تحميل صورة الطبق: $error');
-                                developer.log('❌ Stack trace: $stackTrace');
-                                return Container(
-                                  height: 240,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Colors.grey[300]!,
-                                        Colors.grey[200]!,
-                                      ],
-                                    ),
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.fastfood,
-                                      size: 60,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                );
-                              },
-                            )
-                          : Container(
-                              height: 240,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Colors.grey[300]!,
-                                    Colors.grey[200]!,
-                                  ],
                                 ),
-                              ),
-                              child: const Center(
-                                child: Icon(
-                                  Icons.fastfood,
-                                  size: 60,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            );
-                    },
-                  ),
+                          ),
                 ),
-                Positioned(
-                  top: 40, right: 16,
-                  child: CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.secondary),
-                      onPressed: () {
-                        developer.log('❌ إغلاق شاشة تفاصيل الطبق (زر X)');
-                        Navigator.pop(context);
-                      },
+                PositionedDirectional(
+                  top:
+                      widget.isBottomSheet
+                          ? 16
+                          : MediaQuery.paddingOf(context).top + 12,
+                  start: 16,
+                  child: IconButton(
+                    tooltip: 'إغلاق',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: discoveryInk,
+                      elevation: 2,
+                      shadowColor: Colors.black12,
                     ),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
                   ),
                 ),
-                // زر القلب تم إخفاؤه
-                // Positioned(
-                //   top: 24, left: 16,
-                //   child: Consumer<FavoritesModel>(
-                //     builder: (context, favoritesModel, child) {
-                //       final isFavorite = favoritesModel.isDishFavorite(widget.dish.id);
-                //       return CircleAvatar(
-                //         backgroundColor: Colors.white,
-                //         child: IconButton(
-                //           icon: Icon(
-                //             isFavorite ? Icons.favorite : Icons.favorite_border, 
-                //             color: _primaryPink
-                //           ),
-                //           onPressed: () {
-                //             if (isFavorite) {
-                //               favoritesModel.removeDishFavorite(widget.dish.id);
-                //             } else {
-                //               favoritesModel.addDishFavorite(widget.dish.id);
-                //             }
-                //           },
-                //         ),
-                //       );
-                //     },
-                //   ),
-                // ),
               ],
             ),
-            const SizedBox(height: 16),
-            // اسم الطبق
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                _productName,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-            ),
-            // وصف الطبق
-            if (_productDescription.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Text(
-                  _productDescription,
-                  style: const TextStyle(fontSize: 15, color: Colors.grey),
-                ),
-              ),
-            const SizedBox(height: 12),
-            // التحكم في الكمية
-            _buildQuantitySelector(),
-            const SizedBox(height: 16),
-            // الخيارات (نفس منطقك القديم)
-            for (var g in widget.dish.optionGroups) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Text(
-                  '${g.title} • ${g.required ? "مطلوب" : "اختياري"} • '
-                  '${g.required ? "اختر 1" : "حتى ${_arabicNumber.format(g.maxSelections)}"}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-              ),
-              for (var o in g.options)
-                g.required
-                    ? RadioListTile<String>(
-                        title: Text(
-                          '${o.name}${o.extraPrice != 0 ? " (+${_arabicNumber.format(o.extraPrice)})" : ""}',
-                        ),
-                        value: o.id,
-                        groupValue: _selectedOptions[g.id]!.isEmpty
-                            ? null
-                            : _selectedOptions[g.id]!.first,
-                        onChanged: (id) => setState(() => _selectedOptions[g.id] = {id!}),
-                      )
-                    : CheckboxListTile(
-                        title: Text(
-                          '${o.name}${o.extraPrice != 0 ? " (+${_arabicNumber.format(o.extraPrice)})" : ""}',
-                        ),
-                        value: _selectedOptions[g.id]!.contains(o.id),
-                        onChanged: (chk) => setState(() {
-                          if (chk! && _selectedOptions[g.id]!.length < g.maxSelections) {
-                            _selectedOptions[g.id]!.add(o.id);
-                          } else {
-                            _selectedOptions[g.id]!.remove(o.id);
-                          }
-                        }),
-                      ),
-            ],
-            // تعليمات خاصة
-            ListTile(
-              title: Text(_specialInstructions?.isNotEmpty == true 
-                  ? 'تعليمات خاصة' 
-                  : 'إضافة تعليمات خاصة'),
-              subtitle: _specialInstructions?.isNotEmpty == true 
-                  ? Text(
-                      _specialInstructions!,
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _productName,
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: discoveryInk,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_selectedOptions.values.every((v) => v.isEmpty))
+                    MenuItemPrice(
+                      branch: widget.storeId,
+                      product: widget.dish.id,
+                      original: _productPrice,
                     )
-                  : null,
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                final txt = await showModalBottomSheet<String>(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) {
-                    final ctrl = TextEditingController(text: _specialInstructions);
-                    return Directionality(
-                      textDirection: ui.TextDirection.rtl,
-                      child: Container(
-                        margin: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).viewInsets.bottom,
-                        ),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Header
-                              Row(
-                                children: [
-                                  const Icon(Icons.note_add, color: AppColors.primary),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'تعليمات خاصة',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if (_specialInstructions?.isNotEmpty == true)
-                                    TextButton(
-                                      onPressed: () {
-                                        ctrl.clear();
-                                        Navigator.pop(context, '');
-                                      },
-                                      child: const Text(
-                                        'مسح',
-                                        style: TextStyle(color: Colors.red),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              
-                              // Text field
-                              TextField(
-                                controller: ctrl,
-                                maxLines: 4,
-                                textDirection: ui.TextDirection.rtl,
-                                decoration: InputDecoration(
-                                  labelText: 'اكتب ملاحظاتك هنا...',
-                                  hintText: 'مثال: بدون بصل، إضافة صوص، طبخ جيد، إلخ',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              
-                              // Buttons
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () => Navigator.pop(context, null),
-                                      style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      child: const Text('إلغاء'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.primary,
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      onPressed: () {
-                                        developer.log('💾 حفظ الملاحظات: "${ctrl.text.trim()}"');
-                                        Navigator.pop(context, ctrl.text.trim());
-                                      },
-                                      child: const Text(
-                                        'حفظ', 
-                                        style: TextStyle(color: AppColors.secondary),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                          ),
-                        ),
+                  else
+                    Text(
+                      formatIqd(_productPrice),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: discoveryInk,
                       ),
-                    );
-                  },
-                );
-                if (txt != null) {
-                  setState(() {
-                    _specialInstructions = txt.isNotEmpty ? txt : null;
-                  });
-                  developer.log('📝 تم حفظ الملاحظات: "${_specialInstructions ?? 'فارغة'}"');
-                }
-              },
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_isLoadingProduct)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(
+                        child: CircularProgressIndicator(color: discoveryInk),
+                      ),
+                    ),
+                  if (_productLoadFailed)
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: _loadProductDetails,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('إعادة تحميل التفاصيل'),
+                      ),
+                    ),
+                  ..._buildProductSections(),
+                ],
+              ),
+            ),
           ],
         ),
-        bottomNavigationBar: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryPink,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        bottomNavigationBar: ListenableBuilder(
+          listenable: MenuOfferPricing.instance,
+          builder:
+              (context, _) => CustomerOrderActionBar(
+                quantity: _quantity,
+                total:
+                    _selectedOptions.values.every((v) => v.isEmpty)
+                        ? (MenuOfferPricing.instance
+                                    .price(
+                                      widget.storeId,
+                                      widget.dish.id,
+                                      _productPrice,
+                                    )
+                                    ?.unit
+                                    .netFils
+                                    .toDouble() ??
+                                (_productPrice * 1000)) /
+                            1000 *
+                            _quantity
+                        : _calculateTotal(),
+                onQuantity: (q) => setState(() => _quantity = q),
+                busy: _addingToCart,
+                hint: _choiceHint,
+                onAdd:
+                    _choicesComplete &&
+                            !_isLoadingProduct &&
+                            !_productLoadFailed &&
+                            _productData?.isAvailable != false
+                        ? _submitDish
+                        : null,
               ),
-              onPressed: () async {
-                // أولاً: فحص توفر المطعم وحالة قبول الطلبات
-                developer.log('🔍 فحص توفر المطعم قبل إضافة المنتج للسلة');
-                developer.log('  storeId: ${widget.storeId}');
-                
-                final availabilityService = RestaurantAvailabilityService.instance;
-                final availabilityStatus = await availabilityService.checkRestaurantAvailability(
-                  widget.storeId,
-                  skipCache: true, // فحص حالي للحصول على أحدث البيانات
-                );
-                
-                developer.log('📊 نتيجة فحص توفر المطعم:');
-                developer.log('  isAvailable: ${availabilityStatus.isAvailable}');
-                developer.log('  acceptingOrders: ${availabilityStatus.acceptingOrders}');
-                developer.log('  isWithinWorkingHours: ${availabilityStatus.isWithinWorkingHours}');
-                developer.log('  reasonUnavailable: ${availabilityStatus.reasonUnavailable}');
-                
-                // إذا كان المطعم غير متاح، أظهر رسالة مناسبة
-                if (!availabilityStatus.isAvailable) {
-                  final scaffoldMessenger = ScaffoldMessenger.of(context);
-                  String errorMessage;
-                  
-                  if (!availabilityStatus.acceptingOrders) {
-                    errorMessage = 'عذراً، هذا المطعم لا يستقبل طلبات جديدة حالياً';
-                  } else if (!availabilityStatus.isWithinWorkingHours) {
-                    errorMessage = 'عذراً، هذا المطعم مغلق حالياً';
-                  } else {
-                    errorMessage = availabilityStatus.reasonUnavailable ?? 'عذراً، هذا المطعم غير متاح حالياً';
-                  }
-                  
-                  developer.log('⚠️ المطعم غير متاح: $errorMessage');
-                  
-                  if (mounted) {
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.warning_amber, color: Colors.white),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(errorMessage)),
-                          ],
-                        ),
-                        backgroundColor: Colors.orange.shade600,
-                        duration: const Duration(seconds: 4),
-                        action: SnackBarAction(
-                          label: 'حسناً',
-                          textColor: Colors.white,
-                          onPressed: () {
-                            scaffoldMessenger.hideCurrentSnackBar();
-                          },
-                        ),
-                      ),
-                    );
-                  }
-                  return; // توقف هنا ولا تضيف للسلة
-                }
-                
-                // إذا كان المطعم متاحاً، تابع عملية إضافة المنتج للسلة
-                developer.log('✅ المطعم متاح، المتابعة لإضافة المنتج للسلة');
-                
-                final appState = Provider.of<AppStateProvider>(context, listen: false);
-                
-                developer.log('🛒 محاولة إضافة منتج للسلة');
-                developer.log('  المنتج: $_productName');
-                developer.log('  الوصف: $_productDescription');
-                developer.log('  الصورة: $_productImageUrl');
-                developer.log('  السعر الأساسي: $_productPrice');
-                developer.log('  السعر الإجمالي: ${_calculateTotal()}');
-                developer.log('  الكمية: $_quantity');
-                developer.log('  المطعم: ${widget.storeId}');
-                developer.log('  التعليمات الخاصة: "${_specialInstructions ?? 'لا توجد ملاحظات'}"');
-                developer.log('  طول الملاحظات: ${_specialInstructions?.length ?? 0} حرف');
-                
-                // إنشاء عنصر السلة مع التأكد من صحة جميع البيانات
-                final cartItem = {
-                  'id': widget.dish.id,
-                  'name': _productName.isNotEmpty ? _productName : 'منتج غير محدد',
-                  'price': _calculateTotal(),
-                  'description': _productDescription.isNotEmpty ? _productDescription : 'وصف غير متوفر',
-                  'image': _productImageUrl,
-                  'quantity': _quantity > 0 ? _quantity : 1,
-                  'store_id': widget.storeId,
-                  'store_name': _getStoreName(),
-                  'store_address': widget.storeAddress ?? 'العنوان غير محدد', // عنوان المطعم للسائقين
-                  'special_instructions': _specialInstructions?.trim(),
-                  'base_price': _productPrice, // إضافة السعر الأساسي
-                  'selected_options': _selectedOptions.map((k, v) => MapEntry(k, v.toList())), // الخيارات المختارة
-                  'added_at': DateTime.now().toIso8601String(), // وقت الإضافة
-                };
-                
-                // محاولة إضافة العنصر للسلة
-                final scaffoldMessenger = ScaffoldMessenger.of(context);
-                final favoritesModel = Provider.of<FavoritesModel>(context, listen: false);
-                final navigator = Navigator.of(context);
-                await appState.addToCart(cartItem);
-                
-                // التحقق من نوع الخطأ
-                if (appState.errorMessage == 'DIFFERENT_STORE') {
-                  // إظهار dialog المطعم المختلف
-                  developer.log('⚠️ مطعم مختلف، إظهار dialog');
-                  appState.clearError(); // مسح الخطأ
-                  _showDifferentStoreDialog();
-                  return;
-                } else if (appState.errorMessage != null) {                  // خطأ آخر
-                  developer.log('❌ خطأ في إضافة المنتج: ${appState.errorMessage}');
-                  if (mounted) {
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text(appState.errorMessage!),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                  return;
-                }
-                
-                // نجحت العملية - العودة للشاشة السابقة
-                developer.log('✅ تم إضافة المنتج للسلة بنجاح');
-                if (mounted) {
-                  // العودة للشاشة السابقة مع حالة المفضلة
-                  developer.log('🔙 العودة لشاشة تفاصيل المطعم مع حالة المفضلة: ${favoritesModel.isDishFavorite(widget.dish.id)}');
-                  navigator.pop(favoritesModel.isDishFavorite(widget.dish.id));
-                }
-              },
-              child: Text(
-                'إضافة إلى الطلب • ${_calculateTotal().toStringAsFixed(2)} ر.س',
-                style: const TextStyle(fontSize: 18, color: AppColors.secondary),
-              ),
-            ),
-          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildQuantitySelector() {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))],
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          GestureDetector(
-            onTap: () {
-              if (_quantity > 1) setState(() => _quantity--);
-            },
-            child: Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: Colors.grey[200], shape: BoxShape.circle),
-              child: const Center(child: Text('−', style: TextStyle(fontSize: 20))),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(_arabicNumber.format(_quantity),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ),
-          GestureDetector(
-            onTap: () => setState(() => _quantity++),
-            child: Container(
-              width: 36, height: 36,
-              decoration: const BoxDecoration(color: _primaryPink, shape: BoxShape.circle),
-              child: const Center(child: Icon(Icons.add, color: AppColors.secondary)),
-            ),
-          ),
-        ]),
       ),
     );
   }

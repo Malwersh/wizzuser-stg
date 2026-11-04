@@ -1,3 +1,5 @@
+import 'address_save_attempt_319.dart';
+import 'address_book_api_319.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
@@ -18,7 +20,9 @@ class ApiService {
       // await _cache.init();
       // await EnhancedApiService.initialize();
       _isInitialized = true;
-      debugPrint('✅ API Service with optimizations initialized (Frontend-only mode)');
+      debugPrint(
+        '✅ API Service with optimizations initialized (Frontend-only mode)',
+      );
     }
   }
 
@@ -42,56 +46,70 @@ class ApiService {
     return useTestServer ? testServerUrl : baseUrl;
   }
 
-  static Future<Map<String, dynamic>> login(String identifier, String password) async {
+  static Future<Map<String, dynamic>> login(
+    String identifier,
+    String password,
+  ) async {
     final url = Uri.parse("$currentBaseUrl/auth/login");
-// للتشخيص
-// للتشخيص
+    // للتشخيص
+    // للتشخيص
 
     try {
-      final requestBody = jsonEncode({"identifier": identifier, "password": password});
-// للتشخيص
+      final requestBody = jsonEncode({
+        "identifier": identifier,
+        "password": password,
+      });
+      // للتشخيص
 
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: requestBody,
-      ).timeout(const Duration(seconds: 10)); // مهلة زمنية
-// للتشخيص
-// للتشخيص
+      final response = await http
+          .post(
+            url,
+            headers: {"Content-Type": "application/json"},
+            body: requestBody,
+          )
+          .timeout(const Duration(seconds: 10)); // مهلة زمنية
+      // للتشخيص
+      // للتشخيص
 
-      final responseData = jsonDecode(utf8.decode(response.bodyBytes)); // لحل مشكلة الترميز
-// للتشخيص
+      final responseData = jsonDecode(
+        utf8.decode(response.bodyBytes),
+      ); // لحل مشكلة الترميز
+      // للتشخيص
 
       if (response.statusCode == 200) {
         return {"success": true, "data": responseData};
       } else {
-// للتشخيص
-        
+        // للتشخيص
+
         // معالجة محسنة لرسائل الخطأ
         String errorMessage = "فشل تسجيل الدخول";
-        
+
         if (responseData.containsKey("message")) {
           errorMessage = responseData["message"];
         } else if (responseData.containsKey("detail")) {
           errorMessage = responseData["detail"];
         }
-        
+
         // رسائل خاصة لأخطاء تسجيل الدخول
         if (response.statusCode == 401) {
           errorMessage = "المعلومات المدخلة خاطئة، حاول مرة أخرى";
         }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
+
+        return {"success": false, "message": errorMessage};
       }
     } catch (e) {
-// للتشخيص
+      // للتشخيص
       if (e.toString().contains('SocketException')) {
-        return {"success": false, "message": "تعذر الوصول إلى الخادم. تأكد من أن الخادم يعمل على البورت 8080"};
+        return {
+          "success": false,
+          "message":
+              "تعذر الوصول إلى الخادم. تأكد من أن الخادم يعمل على البورت 8080",
+        };
       } else if (e.toString().contains('TimeoutException')) {
-        return {"success": false, "message": "انتهت مهلة الاتصال. تحقق من اتصال الإنترنت"};
+        return {
+          "success": false,
+          "message": "انتهت مهلة الاتصال. تحقق من اتصال الإنترنت",
+        };
       } else {
         return {"success": false, "message": "خطأ في الاتصال: $e"};
       }
@@ -105,60 +123,69 @@ class ApiService {
     required String phone,
   }) async {
     final url = Uri.parse('$currentBaseUrl/auth/register');
-// للتشخيص
-    
+    // للتشخيص
+
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': name,
-          'email': email.isEmpty ? null : email,
-          'password': password,
-          'phone': phone,
-        }),
-      ).timeout(const Duration(seconds: 10)); // مهلة زمنية
-// للتشخيص
-// للتشخيص
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': name,
+              'email': email.isEmpty ? null : email,
+              'password': password,
+              'phone': phone,
+            }),
+          )
+          .timeout(const Duration(seconds: 10)); // مهلة زمنية
+      // للتشخيص
+      // للتشخيص
 
       final responseData = jsonDecode(utf8.decode(response.bodyBytes));
 
-      if (response.statusCode == 201) { // Backend returns 201 for registration
+      if (response.statusCode == 201) {
+        // Backend returns 201 for registration
         return {"success": true, "data": responseData};
       } else {
         // معالجة محسنة لرسائل الخطأ من الخادم
         String errorMessage = "حدث خطأ غير متوقع";
-        
+
         if (responseData.containsKey("message")) {
           errorMessage = responseData["message"];
         } else if (responseData.containsKey("detail")) {
           errorMessage = responseData["detail"];
         }
-        
+
         // رسائل خاصة للأخطاء الشائعة
         if (response.statusCode == 400) {
-          if (errorMessage.contains("البريد الإلكتروني مسجل مسبقاً") || 
-              (errorMessage.contains("email") && errorMessage.contains("already"))) {
+          if (errorMessage.contains("البريد الإلكتروني مسجل مسبقاً") ||
+              (errorMessage.contains("email") &&
+                  errorMessage.contains("already"))) {
             errorMessage = "البريد الإلكتروني مستخدم مسبقاً";
-          } else if (errorMessage.contains("رقم الهاتف مسجل مسبقاً") || 
-                     (errorMessage.contains("phone") && errorMessage.contains("already"))) {
+          } else if (errorMessage.contains("رقم الهاتف مسجل مسبقاً") ||
+              (errorMessage.contains("phone") &&
+                  errorMessage.contains("already"))) {
             errorMessage = "رقم الهاتف مستخدم مسبقاً";
           } else {
             errorMessage = "بيانات غير صحيحة، حاول مرة أخرى";
           }
         }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
+
+        return {"success": false, "message": errorMessage};
       }
     } catch (e) {
-// للتشخيص
+      // للتشخيص
       if (e.toString().contains('SocketException')) {
-        return {"success": false, "message": "تعذر الوصول إلى الخادم. تأكد من أن الخادم يعمل على البورت 8080"};
+        return {
+          "success": false,
+          "message":
+              "تعذر الوصول إلى الخادم. تأكد من أن الخادم يعمل على البورت 8080",
+        };
       } else if (e.toString().contains('TimeoutException')) {
-        return {"success": false, "message": "انتهت مهلة الاتصال. تحقق من اتصال الإنترنت"};
+        return {
+          "success": false,
+          "message": "انتهت مهلة الاتصال. تحقق من اتصال الإنترنت",
+        };
       } else {
         return {"success": false, "message": "خطأ في التسجيل: $e"};
       }
@@ -184,7 +211,7 @@ class ApiService {
       } else {
         return {
           "success": false,
-          "message": responseData["message"] ?? "فشل في جلب الملف الشخصي"
+          "message": responseData["message"] ?? "فشل في جلب الملف الشخصي",
         };
       }
     } catch (e) {
@@ -203,7 +230,7 @@ class ApiService {
     return {"success": false, "message": "تحديث الملف الشخصي غير متاح حالياً"};
   }
 
-  // جلب النقاط والكوبونات - TODO: Implement in backend  
+  // جلب النقاط والكوبونات - TODO: Implement in backend
   static Future<Map<String, dynamic>> getUserRewards(String token) async {
     // TODO: Add user rewards endpoint to backend
     return {"success": false, "message": "نظام المكافآت غير متاح حالياً"};
@@ -227,6 +254,8 @@ class ApiService {
     double? longitude,
     String? addressType,
     // 🆕 Region System Fields
+    String? idempotencyKey,
+    bool saveToAddressBook = true,
     String? regionId,
     String? regionName,
     String? regionNameAr,
@@ -240,19 +269,14 @@ class ApiService {
     print('🌐 بدء إضافة عنوان جديد...');
     print('📝 اسم العنوان: $name');
     print('📍 التفاصيل: $province - $district - $neighborhood');
-    
-    // Get user ID from session service  
+
+    // Get user ID from session service
     final userId = SessionService.instance.currentUserId;
     if (userId == null) {
       print('❌ لم يتم العثور على معرف المستخدم');
       return {"success": false, "message": "لم يتم العثور على معرف المستخدم"};
     }
-    
-    final url = Uri.parse('$currentBaseUrl/users/$userId/addresses'); // Fixed URL to match backend
-    print('📡 URL: $url');
-    print('🔑 Token: ${token.length > 20 ? token.substring(0, 20) + '...' : token}');
-    print('🆔 User ID: $userId');
-    
+
     try {
       final Map<String, dynamic> requestData = {
         'name': name,
@@ -262,7 +286,7 @@ class ApiService {
         'landmark': landmark,
         'is_default': isDefault,
       };
-      
+
       // إضافة الحقول الاختيارية إذا كانت متوفرة
       if (detailedAddress != null && detailedAddress.isNotEmpty) {
         requestData['detailed_address'] = detailedAddress;
@@ -288,7 +312,7 @@ class ApiService {
       if (addressType != null && addressType.isNotEmpty) {
         requestData['address_type'] = addressType;
       }
-      
+
       // 🆕 Region System Fields
       if (regionId != null && regionId.isNotEmpty) {
         requestData['region_id'] = regionId;
@@ -317,47 +341,38 @@ class ApiService {
       if (pricePerKm != null) {
         requestData['price_per_km'] = pricePerKm;
       }
-      
-      final requestBody = jsonEncode(requestData);
-      print('📋 Request Body: $requestBody');
-      
-      final response = await http.post(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: requestBody,
+
+      if (idempotencyKey != null)
+        requestData['idempotency_key'] = idempotencyKey;
+      requestData['save_to_address_book'] = saveToAddressBook;
+      if (detailedAddress?.trim().isNotEmpty == true)
+        requestData['fullAddress'] = detailedAddress!.trim();
+      final key = await AddressSaveAttempt319.key(
+        userId,
+        requestData,
+        suggested: idempotencyKey,
       );
-
-      print('📊 Response Status: ${response.statusCode}');
-      print('📄 Response Body: ${response.body}');
-
-      final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 201) { // Backend returns 201 for creation
-        return {"success": true, "data": responseData};
-      } else {
-        // معالجة محسنة لرسائل الخطأ
-        String errorMessage = "فشل في إضافة العنوان";
-        
-        if (responseData.containsKey("message")) {
-          errorMessage = responseData["message"];
-        } else if (responseData.containsKey("detail")) {
-          errorMessage = responseData["detail"];
-        }
-        
-        print('❌ فشل في إضافة العنوان: $errorMessage');
-        print('📄 تفاصيل الاستجابة: $responseData');
-        
+      requestData['idempotency_key'] = key;
+      final result = await AddressBookApi319.instance.request(
+        method: 'POST',
+        owner: userId,
+        token: token,
+        body: requestData,
+      );
+      if (result['success'] == true)
+        await AddressSaveAttempt319.confirmed(userId, requestData, key);
+      if (SessionService.instance.currentUserId != userId)
         return {
-          "success": false,
-          "message": errorMessage
+          'success': false,
+          'message': 'تغيّرت الجلسة. أعد تسجيل الدخول.',
         };
-      }
+      return result;
     } catch (e) {
       print('💥 خطأ في addUserAddress: $e');
-      return {"success": false, "message": "خطأ في الاتصال: $e"};
+      return {
+        "success": false,
+        "message": "تعذر تأكيد حفظ العنوان. أعد المحاولة للتحقق من النتيجة.",
+      };
     }
   }
 
@@ -380,14 +395,13 @@ class ApiService {
     double? longitude,
     String? addressType,
   }) async {
-    // Get user ID from session service  
+    // Get user ID from session service
     final userId = SessionService.instance.currentUserId;
     if (userId == null) {
       return {"success": false, "message": "لم يتم العثور على معرف المستخدم"};
     }
-    
-    final url = Uri.parse('$currentBaseUrl/users/$userId/addresses/$addressId'); // Fixed URL to match backend
-try {
+
+    try {
       final Map<String, dynamic> requestData = {
         'name': name,
         'province': province, // Fixed field name
@@ -396,7 +410,7 @@ try {
         'landmark': landmark,
         'is_default': isDefault,
       };
-      
+
       // إضافة الحقول الاختيارية إذا كانت متوفرة
       if (detailedAddress != null && detailedAddress.isNotEmpty) {
         requestData['detailed_address'] = detailedAddress;
@@ -422,37 +436,19 @@ try {
       if (addressType != null && addressType.isNotEmpty) {
         requestData['address_type'] = addressType;
       }
-      
-      final requestBody = jsonEncode(requestData);
-final response = await http.put(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: requestBody,
+
+      final result = await AddressBookApi319.instance.request(
+        method: 'PUT',
+        owner: userId,
+        token: token,
+        addressId: addressId,
+        body: requestData,
       );
-
-      final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 200) {
-        return {"success": true, "data": responseData};
-      } else {
-        String errorMessage = "فشل في تحديث العنوان";
-        
-        if (responseData.containsKey("message")) {
-          errorMessage = responseData["message"];
-        } else if (responseData.containsKey("detail")) {
-          errorMessage = responseData["detail"];
-        }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
-      }
+      if (SessionService.instance.currentUserId != userId)
+        return {'success': false, 'message': 'تغيّرت الجلسة.'};
+      return result;
     } catch (e) {
-return {"success": false, "message": "تعذر الاتصال بالخادم"};
+      return {"success": false, "message": "تعذر الاتصال بالخادم"};
     }
   }
 
@@ -461,42 +457,15 @@ return {"success": false, "message": "تعذر الاتصال بالخادم"};
     required String token,
     required String addressId,
   }) async {
-    // Get user ID from session service  
-    final userId = SessionService.instance.currentUserId;
-    if (userId == null) {
-      return {"success": false, "message": "لم يتم العثور على معرف المستخدم"};
-    }
-    
-    final url = Uri.parse('$currentBaseUrl/users/$userId/addresses/$addressId'); // Fixed URL to match backend
-try {
-      final response = await http.delete(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 204) { // Backend returns 204 for successful deletion
-        return {"success": true, "data": {"message": "تم حذف العنوان بنجاح"}};
-      } else {
-        final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-        String errorMessage = "فشل في حذف العنوان";
-        
-        if (responseData.containsKey("message")) {
-          errorMessage = responseData["message"];
-        } else if (responseData.containsKey("detail")) {
-          errorMessage = responseData["detail"];
-        }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
-      }
-    } catch (e) {
-return {"success": false, "message": "تعذر الاتصال بالخادم"};
-    }
+    final id = SessionService.instance.currentUserId;
+    if (id == null)
+      return {'success': false, 'message': 'سجل الدخول لإدارة العناوين.'};
+    return AddressBookApi319.instance.request(
+      method: 'DELETE',
+      owner: id,
+      token: token,
+      addressId: addressId,
+    );
   }
 
   // تحديد عنوان كافتراضي (متوافق مع خادم الإنتاج)
@@ -504,144 +473,42 @@ return {"success": false, "message": "تعذر الاتصال بالخادم"};
     required String token,
     required String addressId,
   }) async {
-    // Get user ID from session service  
-    final userId = SessionService.instance.currentUserId;
-    if (userId == null) {
-      return {"success": false, "message": "لم يتم العثور على معرف المستخدم"};
-    }
-    
-    final url = Uri.parse('$currentBaseUrl/users/$userId/addresses/$addressId/set-default'); // Fixed endpoint to match backend
-try {
-      final response = await http.put( // Backend uses PUT for set-default
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 200) {
-        return {"success": true, "data": responseData};
-      } else {
-        String errorMessage = "فشل في تحديد العنوان الافتراضي";
-        
-        if (responseData.containsKey("message")) {
-          errorMessage = responseData["message"];
-        } else if (responseData.containsKey("detail")) {
-          errorMessage = responseData["detail"];
-        }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
-      }
-    } catch (e) {
-return {"success": false, "message": "تعذر الاتصال بالخادم"};
-    }
+    final id = SessionService.instance.currentUserId;
+    if (id == null)
+      return {'success': false, 'message': 'سجل الدخول لإدارة العناوين.'};
+    return AddressBookApi319.instance.request(
+      method: 'PUT',
+      owner: id,
+      token: token,
+      addressId: addressId,
+      setDefault: true,
+    );
   }
 
   // جلب عناوين المستخدم (متوافق مع خادم الإنتاج)
   static Future<Map<String, dynamic>> getUserAddresses(String token) async {
-    print('🌐 بدء استدعاء getUserAddresses API...');
-    
-    // 🔧 تشخيص شامل لمعرف المستخدم
-    final sessionService = SessionService.instance;
-    print('🔍 Session Service Status:');
-    print('   - isLoggedIn: ${sessionService.isLoggedIn}');
-    print('   - isGuest: ${sessionService.isGuest}');
-    print('   - currentUserId: ${sessionService.currentUserId}');
-    print('   - currentUser: ${sessionService.currentUser}');
-    
-    // محاولة الحصول على userId من مصادر متعددة
-    String? userId = sessionService.currentUserId;
-    
-    if (userId == null || userId.isEmpty) {
-      // محاولة من currentUser
-      final currentUser = sessionService.currentUser;
-      if (currentUser != null) {
-        userId = currentUser['userId'] ?? currentUser['user_id'] ?? currentUser['email'];
-        print('📋 تم استخراج userId من currentUser: $userId');
-      }
-    }
-    
-    if (userId == null || userId.isEmpty) {
-      print('❌ لم يتم العثور على معرف المستخدم في أي مصدر');
-      print('🔍 تفاصيل SessionService للتشخيص:');
-      print('   - AccessToken: ${sessionService.accessToken != null ? "موجود" : "غير موجود"}');
-      print('   - IdToken: ${sessionService.idToken != null ? "موجود" : "غير موجود"}');
-      return {"success": false, "message": "لم يتم العثور على معرف المستخدم - يرجى إعادة تسجيل الدخول"};
-    }
-    
-    final url = Uri.parse('$currentBaseUrl/users/$userId/addresses');
-    print('📡 URL: $url');
-    print('🔑 Token: ${token.length > 20 ? token.substring(0, 20) + '...' : token}');
-    print('🆔 User ID: $userId');
-    
-    try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      print('📊 Response Status: ${response.statusCode}');
-      print('📄 Raw Response: ${response.body}');
-      
-      if (response.statusCode == 200) {
-        final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-        print('📋 تفاصيل الاستجابة: $responseData');
-        
-        // تحديد عدد العناوين بناءً على هيكل البيانات
-        int addressCount = 0;
-        if (responseData['addresses'] != null && responseData['addresses'] is List) {
-          addressCount = (responseData['addresses'] as List).length;
-        } else if (responseData['data'] != null) {
-          if (responseData['data']['addresses'] != null && responseData['data']['addresses'] is List) {
-            addressCount = (responseData['data']['addresses'] as List).length;
-          }
-        }
-        
-        print('📍 عدد العناوين: $addressCount');
-        return {"success": true, "data": responseData};
-      } else {
-        final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-        print('❌ فشل استدعاء API - Status: ${response.statusCode}');
-        print('📝 Response: ${response.body}');
-        
-        // معالجة محسنة لرسائل الخطأ
-        String errorMessage = "فشل في جلب العناوين";
-        
-        if (responseData.containsKey("message")) {
-          errorMessage = responseData["message"];
-        } else if (responseData.containsKey("detail")) {
-          errorMessage = responseData["detail"];
-        }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
-      }
-    } catch (e) {
-      print('💥 خطأ في الاتصال: $e');
-      return {"success": false, "message": "تعذر الاتصال بالخادم"};
-    }
+    final id = SessionService.instance.currentUserId;
+    if (id == null)
+      return {'success': false, 'message': 'سجل الدخول لإدارة العناوين.'};
+    return AddressBookApi319.instance.request(
+      method: 'GET',
+      owner: id,
+      token: token,
+    );
   }
 
   // دالة لاختبار الاتصال بالخادم
   static Future<Map<String, dynamic>> testConnection() async {
     try {
       final url = Uri.parse("$currentBaseUrl/");
-final response = await http.get(url).timeout(const Duration(seconds: 5));
-if (response.statusCode == 200 || response.statusCode == 404) {
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200 || response.statusCode == 404) {
         return {"success": true, "message": "الخادم متصل ✅"};
       } else {
-        return {"success": false, "message": "الخادم غير متاح (رمز: ${response.statusCode})"};
+        return {
+          "success": false,
+          "message": "الخادم غير متاح (رمز: ${response.statusCode})",
+        };
       }
     } catch (e) {
       return {"success": false, "message": "تعذر الوصول إلى الخادم: $e"};
@@ -653,43 +520,15 @@ if (response.statusCode == 200 || response.statusCode == 404) {
     required String token,
     required String addressId,
   }) async {
-    // Get user ID from session service  
-    final userId = SessionService.instance.currentUserId;
-    if (userId == null) {
-      return {"success": false, "message": "لم يتم العثور على معرف المستخدم"};
-    }
-    
-    final url = Uri.parse('$currentBaseUrl/users/$userId/addresses/$addressId'); // Fixed URL to match backend
-    try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      final responseData = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 200) {
-        return {"success": true, "data": responseData};
-      } else {
-        String errorMessage = "فشل في جلب العنوان";
-        
-        if (responseData.containsKey("message")) {
-          errorMessage = responseData["message"];
-        } else if (responseData.containsKey("detail")) {
-          errorMessage = responseData["detail"];
-        }
-        
-        return {
-          "success": false,
-          "message": errorMessage
-        };
-      }
-    } catch (e) {
-      return {"success": false, "message": "تعذر الاتصال بالخادم"};
-    }
+    final owner = SessionService.instance.currentUserId;
+    if (owner == null)
+      return {'success': false, 'message': 'سجل الدخول لإدارة العناوين.'};
+    return AddressBookApi319.instance.request(
+      method: 'GET',
+      owner: owner,
+      token: token,
+      addressId: addressId,
+    );
   }
 
   // Generic POST method for general API calls
@@ -699,22 +538,22 @@ if (response.statusCode == 200 || response.statusCode == 404) {
     String? token,
   }) async {
     final url = Uri.parse('$currentBaseUrl$endpoint');
-    
+
     try {
-      final Map<String, String> headers = {
-        'Content-Type': 'application/json',
-      };
-      
+      final Map<String, String> headers = {'Content-Type': 'application/json'};
+
       if (token != null) {
         headers['Authorization'] = 'Bearer $token';
-        print('📡 POST $endpoint مع مصادقة - Token: ${token.substring(0, 20)}...');
+        print(
+          '📡 POST $endpoint مع مصادقة - Token: ${token.substring(0, 20)}...',
+        );
       } else {
         print('📡 POST $endpoint بدون مصادقة');
       }
-      
+
       print('🌐 URL: $url');
       print('📤 البيانات: $data');
-      
+
       final response = await http.post(
         url,
         headers: headers,
@@ -723,25 +562,22 @@ if (response.statusCode == 200 || response.statusCode == 404) {
 
       print('📊 Response Status: ${response.statusCode}');
       print('📄 Raw Response: ${response.body}');
-      
+
       final responseData = jsonDecode(utf8.decode(response.bodyBytes));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return {"success": true, "data": responseData};
       } else {
         String errorMessage = "Request failed";
-        
+
         if (responseData.containsKey("message")) {
           errorMessage = responseData["message"];
         } else if (responseData.containsKey("detail")) {
           errorMessage = responseData["detail"];
         }
-        
+
         print('❌ فشل الطلب - الخطأ: $errorMessage');
-        return {
-          "success": false,
-          "message": errorMessage
-        };
+        return {"success": false, "message": errorMessage};
       }
     } catch (e) {
       print('🚨 خطأ في الاتصال: $e');

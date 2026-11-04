@@ -1,0 +1,33 @@
+{
+  "part": 375,
+  "status": "IMPLEMENTED_TESTED_SIMULATOR",
+  "customerBuild": 318,
+  "changes": [
+    "RTL search row: fixed icon right, text after icon",
+    "White empty basket with Wizz vector illustration and compact gold browse action",
+    "Soft navy-grey floating navigation shadows",
+    "Home cart circle restored via provider quantity selector, opens existing scoped cart",
+    "Store expanded basket navy with all white icon, label, name and count"
+  ],
+  "validation": {
+    "flutterTests": 20,
+    "targetedAnalysis": "No issues",
+    "smallScreenAndLargeText": true
+  },
+  "backendChanges": false,
+  "emptyCartCorrection": {
+    "fullViewportWidth": true,
+    "headerCentered": true,
+    "noBackArrow": true,
+    "browseDestination": "HomeScreen, clears previous store/cart navigation history",
+    "tests": 3
+  },
+  "homeCartStyle": {
+    "side": "left",
+    "circle": "gold",
+    "icon": "white",
+    "badge": "navy",
+    "count": "white",
+    "pulse": "700ms, scale 1–1.12 every 5 seconds and on quantity changes; pauses in background, reduced motion, hidden tabs and empty basket"
+  }
+}

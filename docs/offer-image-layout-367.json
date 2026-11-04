@@ -1,0 +1,36 @@
+{
+  "status": "INSTALLED_SIMULATOR",
+  "customerBuild": 296,
+  "changes": [
+    "Image spotlight uses a single horizontal rail, not a full-width first card plus separate row",
+    "Artwork constrained to square aspect ratio with contain, no cropping or stretching",
+    "Explicit vertical list configuration still respected",
+    "Missing artwork retains existing readable card fallback"
+  ],
+  "tests": {
+    "flutter": 9,
+    "rtlRailAlignment": true
+  },
+  "campaignDataChanged": false,
+  "textCardStyle": {
+    "background": "AppColors.primary #FDC500",
+    "foreground": "#00296B",
+    "frame": "same square aspect ratio as artwork",
+    "actions": "fixed visible bottom actions, long content scrolls inside card"
+  },
+  "valueCreative": {
+    "numerals": "Bundled Arshila Demo ExtraBold TTF replaces drawn numeral paths; numeric glyph coverage checked",
+    "hierarchy": "Large value + smaller unit above separate scope caption",
+    "fit": "Scale down long amounts without truncation",
+    "scope": "Per item, order or delivery; free delivery has no artificial numeric zero"
+  },
+  "fontAsset": {
+    "path": "frontend/assets/fonts/ArshilaDemo-ExtraBold.ttf",
+    "source": "User supplied Downloads/arshila",
+    "weight": 800,
+    "usage": "Discount numbers only",
+    "licenseFileSupplied": false,
+    "releaseFollowUp": "Confirm licensed font asset for commercial release; supplied family is named Demo"
+  },
+  "cardSize": "232 × 232 logical pixels, reduced from 252 × 252"
+}

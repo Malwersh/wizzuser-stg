@@ -1,0 +1,15 @@
+{
+  "part": 400,
+  "status": "implemented",
+  "customerBuild": 355,
+  "changes": [
+    "RTL left arrow for centrally managed home sections",
+    "Full width section results preserve source ranking and filters; preview limit removed only on expanded screen",
+    "Favorites and history listeners retained"
+  ],
+  "validation": {
+    "tests": 12,
+    "analyzer": "No errors or warnings; existing info-level lint notices",
+    "iosSimulatorBuild": "passed"
+  }
+}

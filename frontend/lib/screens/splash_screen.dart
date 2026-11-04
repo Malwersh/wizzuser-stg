@@ -1,3 +1,6 @@
+import '../services/saved_address_selection_319.dart';
+import '../services/device_location_hint.dart';
+import '../services/browsing_location_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state_provider.dart';
@@ -7,8 +10,6 @@ import 'address_gate_screen.dart';
 import '../services/delivery_address_manager.dart';
 import '../services/guest_cache_service.dart';
 import '../services/address_service.dart';
-import '../services/region_resolver_service.dart';
-import '../models/delivery_address.dart';
 import '../services/push_notifications_service.dart';
 import '../services/session_service.dart';
 import '../services/websocket_service.dart';
@@ -32,36 +33,29 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    
+    DeviceLocationHint.instance.acquire();
+
     // تهيئة الرسوم المتحركة
     _animationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-    
-    _scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.elasticOut,
-    ));
-    
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
+
     // بدء الرسوم المتحركة
     _animationController.forward();
-    
+
     // تأجيل التهيئة لتجنب setState أثناء البناء
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAndNavigate();
-      
+
       // إضافة مراقب لحالة الجلسة للتفاعل مع تغييرات login/logout
       _setupSessionStateListener();
     });
@@ -69,20 +63,30 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _setupSessionStateListener() {
     // مراقبة تغييرات حالة الجلسة
-    final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
+    final appStateProvider = Provider.of<AppStateProvider>(
+      context,
+      listen: false,
+    );
     appStateProvider.addListener(_onAppStateChanged);
   }
 
   void _onAppStateChanged() {
     if (_hasNavigated) return; // تجنب التنقل المتعدد
-    
-    final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
-    developer.log('🔄 SplashScreen: App state changed - isLoggedIn: ${appStateProvider.isLoggedIn}, isGuest: ${appStateProvider.isGuest}');
-    
+
+    final appStateProvider = Provider.of<AppStateProvider>(
+      context,
+      listen: false,
+    );
+    developer.log(
+      '🔄 SplashScreen: App state changed - isLoggedIn: ${appStateProvider.isLoggedIn}, isGuest: ${appStateProvider.isGuest}',
+    );
+
     // إذا تم تسجيل الدخول بنجاح، انتقل عبر فحص العنوان (مع التحميل التلقائي للعنوان الافتراضي)
     if (appStateProvider.isLoggedIn && mounted) {
       _hasNavigated = true;
-      developer.log('✅ User logged in - navigating with address check from splash');
+      developer.log(
+        '✅ User logged in - navigating with address check from splash',
+      );
       _navigateWithAddressCheck(isGuest: false);
     }
   }
@@ -91,7 +95,10 @@ class _SplashScreenState extends State<SplashScreen>
   void dispose() {
     // إزالة المراقب
     try {
-      final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
+      final appStateProvider = Provider.of<AppStateProvider>(
+        context,
+        listen: false,
+      );
       appStateProvider.removeListener(_onAppStateChanged);
     } catch (e) {
       developer.log('⚠️ Error removing listener: $e');
@@ -103,8 +110,11 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _initializeAndNavigate() async {
     try {
       // تهيئة مزود حالة التطبيق
-      final appStateProvider = Provider.of<AppStateProvider>(context, listen: false);
-      
+      final appStateProvider = Provider.of<AppStateProvider>(
+        context,
+        listen: false,
+      );
+
       developer.log('🚀 بدء تهيئة شاشة البداية');
 
       // ✅ تهيئة الخدمات بالتوازي لتسريع التحميل
@@ -123,15 +133,14 @@ class _SplashScreenState extends State<SplashScreen>
 
       // 🌐 تهيئة WebSocket (بدون حجب)
       WebSocketService.instance.enableReconnection();
-      
+
       if (!mounted) return;
-      
+
       // التحقق من حالة التطبيق والتنقل المناسب
       await _navigateToNextScreen(appStateProvider);
-      
     } catch (e) {
       developer.log('❌ خطأ في تهيئة شاشة البداية: $e');
-      
+
       if (mounted) {
         // في حالة الخطأ، انتقل لشاشة المقدمة
         _navigateToIntro();
@@ -152,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen>
         _hasNavigated = true;
         await _navigateWithAddressCheck(isGuest: false);
       } else if (appStateProvider.isGuest) {
-        developer.log('✅ المستخدم ضيف - التحقق من العنوان المحفوظ...');  
+        developer.log('✅ المستخدم ضيف - التحقق من العنوان المحفوظ...');
         _hasNavigated = true;
         await _navigateWithAddressCheck(isGuest: true);
       } else {
@@ -170,12 +179,23 @@ class _SplashScreenState extends State<SplashScreen>
   /// ✅ التحقق من العنوان قبل التنقل للشاشة الرئيسية
   Future<void> _navigateWithAddressCheck({required bool isGuest}) async {
     try {
+      await BrowsingLocationService.instance.restore();
+      final restored = BrowsingLocationService.instance.selection;
+      if (restored != null) {
+        if (!isGuest && restored.source == 'saved') {
+          await context.read<EnhancedAddressService>().fetchAddresses();
+        }
+        if (BrowsingLocationService.instance.selection != null) {
+          _navigateToHome();
+          return;
+        }
+      }
       final addressManager = DeliveryAddressManager.instance;
-      
+
       if (isGuest) {
         // للضيوف: التحقق من الـ cache المحلي
         final hasGuestAddress = await GuestCacheService.hasGuestAddress();
-        
+
         if (hasGuestAddress) {
           final address = await GuestCacheService.getGuestAddress();
           if (address != null) {
@@ -185,14 +205,13 @@ class _SplashScreenState extends State<SplashScreen>
             return;
           }
         }
-        
+
         developer.log('⚠️ لا يوجد عنوان محفوظ للضيف - التوجيه لاختيار العنوان');
         _navigateToAddressGate(isGuest: true);
-        
       } else {
         // للمستخدمين المسجلين: التحقق من العنوان النشط
         final hasAddress = await addressManager.hasActiveAddress();
-        
+
         if (hasAddress) {
           developer.log('📍 يوجد عنوان نشط - التنقل للشاشة الرئيسية');
           _navigateToHome();
@@ -200,15 +219,18 @@ class _SplashScreenState extends State<SplashScreen>
           // 🆕 محاولة تحميل العنوان الافتراضي المحفوظ تلقائياً قبل التوجيه لاختيار العنوان
           final autoLoaded = await _tryAutoLoadDefaultAddress(addressManager);
           if (autoLoaded) {
-            developer.log('✅ تم تحميل العنوان الافتراضي تلقائياً - التنقل للشاشة الرئيسية');
+            developer.log(
+              '✅ تم تحميل العنوان الافتراضي تلقائياً - التنقل للشاشة الرئيسية',
+            );
             _navigateToHome();
           } else {
-            developer.log('⚠️ لا يوجد عنوان افتراضي محفوظ - التوجيه لاختيار العنوان');
+            developer.log(
+              '⚠️ لا يوجد عنوان افتراضي محفوظ - التوجيه لاختيار العنوان',
+            );
             _navigateToAddressGate(isGuest: false);
           }
         }
       }
-      
     } catch (e) {
       developer.log('❌ خطأ في التحقق من العنوان: $e');
       // في حالة الخطأ، اطلب من المستخدم اختيار العنوان
@@ -219,82 +241,17 @@ class _SplashScreenState extends State<SplashScreen>
   /// 🆕 محاولة تحميل العنوان الافتراضي المحفوظ للمستخدم المسجل وتعيينه نشطاً تلقائياً
   /// يُستخدم عند كل إقلاع حتى لا يضطر المستخدم لاختيار العنوان يدوياً في كل مرة.
   /// يُرجع true إذا نجح تعيين عنوان افتراضي صالح (له regionId وإحداثيات).
-  Future<bool> _tryAutoLoadDefaultAddress(DeliveryAddressManager addressManager) async {
+  Future<bool> _tryAutoLoadDefaultAddress(
+    DeliveryAddressManager addressManager,
+  ) async {
     try {
-      final addressService = context.read<EnhancedAddressService>();
-
-      // جلب العناوين المحفوظة للمستخدم (عبر API مع التوكن)
-      await addressService.fetchAddresses();
-
-      final defaultAddr = addressService.defaultAddress;
-      if (defaultAddr == null) {
-        developer.log('ℹ️ لا توجد عناوين محفوظة للمستخدم - لا يمكن التحميل التلقائي');
-        return false;
-      }
-
-      // يجب توفر إحداثيات صالحة
-      if (defaultAddr.latitude == null || defaultAddr.longitude == null) {
-        developer.log('⚠️ العنوان الافتراضي بدون إحداثيات - تخطي التحميل التلقائي');
-        return false;
-      }
-
-      // تحديد regionId: استخدم المحفوظ إن وُجد، وإلا حلّه من الإحداثيات
-      // (عناوين الـ API قد لا تتضمن region_id)
-      String? regionId = defaultAddr.regionId;
-      if (regionId == null || regionId.isEmpty) {
-        developer.log('🗺️ العنوان الافتراضي بدون regionId - جاري حلّه من الإحداثيات...');
-        try {
-          final resolver = RegionResolverService();
-          final result = await resolver.resolvePoint(
-            lat: defaultAddr.latitude!,
-            lng: defaultAddr.longitude!,
-          );
-          if (result != null && result.success && result.effective.isActive) {
-            regionId = result.region.id;
-            developer.log('✅ تم حلّ المنطقة من الإحداثيات: ${result.region.nameAr} ($regionId)');
-          } else {
-            developer.log('⚠️ تعذّر حلّ منطقة مخدومة من إحداثيات العنوان الافتراضي');
-          }
-        } catch (e) {
-          developer.log('⚠️ خطأ أثناء حلّ المنطقة من الإحداثيات: $e');
-        }
-      }
-
-      // يجب توفر regionId صالح (المنطقة مخدومة) لعرض المطاعم
-      if (regionId == null || regionId.isEmpty) {
-        developer.log('⚠️ لا يوجد regionId صالح للعنوان الافتراضي - المنطقة غير مخدومة');
-        return false;
-      }
-
-      // تحويل DetailedAddress إلى DeliveryAddress وتعيينه كعنوان نشط
-      final deliveryAddress = DeliveryAddress(
-        addressId: defaultAddr.id,
-        userId: defaultAddr.userId,
-        label: defaultAddr.name.isNotEmpty
-            ? defaultAddr.name
-            : (defaultAddr.neighborhood.isNotEmpty
-                ? defaultAddr.neighborhood
-                : 'عنوان التوصيل'),
-        formattedAddress: defaultAddr.fullAddress,
-        latitude: defaultAddr.latitude!,
-        longitude: defaultAddr.longitude!,
-        regionId: regionId,
-        regionNameAr: defaultAddr.regionNameAr,
-        neighborhood: defaultAddr.neighborhood,
-        city: defaultAddr.province.isNotEmpty ? defaultAddr.province : 'النجف',
-        source: AddressSource.saved,
-        isDefault: true,
-        timestamp: DateTime.now(),
-      );
-
-      await addressManager.setActiveAddress(deliveryAddress);
-      developer.log(
-        '✅ تم تعيين العنوان الافتراضي كعنوان نشط تلقائياً: '
-        '${deliveryAddress.label} (regionId=${deliveryAddress.regionId})',
-      );
+      final service = context.read<EnhancedAddressService>();
+      await service.fetchAddresses();
+      final address = service.defaultAddress;
+      if (address == null) return false;
+      await SavedAddressSelection319.activate(address);
       return true;
-    } catch (e) {
-      developer.log('❌ خطأ في التحميل التلقائي للعنوان الافتراضي: $e');
+    } catch (_) {
       return false;
     }
   }
@@ -302,12 +259,10 @@ class _SplashScreenState extends State<SplashScreen>
   void _navigateToHome() {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
+        pageBuilder:
+            (context, animation, secondaryAnimation) => const HomeScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 500),
       ),
@@ -317,12 +272,10 @@ class _SplashScreenState extends State<SplashScreen>
   void _navigateToIntro() {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const IntroScreen(),
+        pageBuilder:
+            (context, animation, secondaryAnimation) => const IntroScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 500),
       ),
@@ -332,15 +285,11 @@ class _SplashScreenState extends State<SplashScreen>
   void _navigateToAddressGate({required bool isGuest}) {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => AddressGateScreen(
-          isGuest: isGuest,
-          showBackButton: false,
-        ),
+        pageBuilder:
+            (context, animation, secondaryAnimation) =>
+                AddressGateScreen(isGuest: isGuest, showBackButton: false),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 500),
       ),
@@ -369,9 +318,9 @@ class _SplashScreenState extends State<SplashScreen>
                       height: 200,
                       fit: BoxFit.contain,
                     ),
-                    
+
                     const SizedBox(height: 120),
-                    
+
                     // مؤشر التحميل بالأصفر
                     const SizedBox(
                       width: 50,

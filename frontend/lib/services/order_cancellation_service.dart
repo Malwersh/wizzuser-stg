@@ -42,6 +42,10 @@ class OrderCancellationService extends ChangeNotifier {
       // إلغاء الطلب عبر API
       final success = await _orderService.cancelOrder(orderId, reason);
       
+      if (success && _orderService.lastCancellationPending) {
+        return OrderCancellationResult(success: true, cancelled: false, orderId: orderId,
+          message: _orderService.lastCancellationMessage ?? 'سُجل طلب الإلغاء للمراجعة؛ يستمر الطلب حتى تأكيد الإلغاء');
+      }
       if (success) {
         // إرسال إشعار للواجهة
         final event = OrderCancellationEvent(
@@ -111,11 +115,13 @@ class OrderCancellationService extends ChangeNotifier {
 /// نتيجة عملية إلغاء الطلب
 class OrderCancellationResult {
   final bool success;
+  final bool cancelled;
   final String orderId;
   final String message;
   
   const OrderCancellationResult({
     required this.success,
+    this.cancelled = true,
     required this.orderId,
     required this.message,
   });

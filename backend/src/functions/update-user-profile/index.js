@@ -1,5 +1,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { accountGuard } = require('../create-order/account-guard');
+const cognito = new (require('aws-sdk').CognitoIdentityServiceProvider)();
 
 const client = new DynamoDBClient({ 
     region: 'us-east-1'
@@ -7,7 +9,7 @@ const client = new DynamoDBClient({
 const dynamodb = DynamoDBDocumentClient.from(client);
 
 exports.handler = async (event) => {
-    console.log('Update User Profile Event:', JSON.stringify(event, null, 2));
+    console.log('Update profile request', {requestId:event.requestContext?.requestId});
     
     const headers = {
         'Content-Type': 'application/json',
@@ -37,6 +39,13 @@ exports.handler = async (event) => {
                 })
             };
         }
+
+        const guarded = await accountGuard({event,userId,
+            pool:process.env.USER_POOL_ID,clientId:process.env.USER_POOL_CLIENT_ID,
+            profilesTable:process.env.USERS_TABLE,
+            getUser:token=>cognito.getUser({AccessToken:token}).promise(),
+            getProfile:async id=>(await dynamodb.send(new GetCommand({TableName:process.env.USERS_TABLE,Key:{userId:id},ConsistentRead:true}))).Item});
+        if (!guarded.condition) throw Object.assign(new Error('AUTH_REQUIRED'), {statusCode:401});
 
         // Parse request body
         let requestBody;
@@ -142,6 +151,13 @@ exports.handler = async (event) => {
             ReturnValues: 'ALL_NEW'
         };
 
+        // This condition is evaluated with the update, so a deletion lock acquired
+        // after the earlier read prevents recreating or changing the profile.
+        const fence = guarded.condition.ConditionCheck;
+        updateParams.ConditionExpression = fence.ConditionExpression;
+        Object.assign(expressionAttributeValues, fence.ExpressionAttributeValues);
+        Object.assign(expressionAttributeNames, fence.ExpressionAttributeNames);
+
         // Add ExpressionAttributeNames only if we have any
         if (Object.keys(expressionAttributeNames).length > 0) {
             updateParams.ExpressionAttributeNames = expressionAttributeNames;
@@ -180,7 +196,7 @@ exports.handler = async (event) => {
         console.error('Error updating user profile:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name === 'ConditionalCheckFailedException' ? 409 : 500),
             headers,
             body: JSON.stringify({
                 error: 'Internal server error',

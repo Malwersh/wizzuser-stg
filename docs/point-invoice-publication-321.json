@@ -1,0 +1,60 @@
+{
+  "status": "STAGING_PUBLISHED_SIMULATOR_321_INSTALLED_HUMAN_ACCEPTANCE_PENDING",
+  "publishedAt": "2026-10-27T18:21:28.343507+00:00",
+  "name": "WizzUser-CreateOrder-staging",
+  "beforeHash": "X0t1zsT3QC/hv5dLak5oYAcOoOtJ2euTmyQTpi1jyQc=",
+  "hash": "IW8XisGH1ZVBSViT+Kb2Cfx9FItqlc27eJ/VVTqudqU=",
+  "legacyFinancialBundleAndAllCompanionsUnchanged": true,
+  "memoryMB": 512,
+  "routingReadOnlyPolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "secretsmanager:GetSecretValue"
+        ],
+        "Resource": "arn:aws:secretsmanager:us-east-1:699561669180:secret:staging/finance/mapbox/server-routing-IZJNcs"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "dynamodb:Query"
+        ],
+        "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionIndex_staging/index/h3-index"
+      }
+    ]
+  },
+  "existingEnvPreserved": true,
+  "businessDataMutated": false,
+  "pointAndQuotePersisted": false,
+  "unauthenticatedDirectStatus": 401,
+  "tests": {
+    "readonlyBoundaryNode": 3,
+    "existingPointHandlerNode": 3,
+    "flutter": 45,
+    "preexistingFlutterSkipped": 1,
+    "targetAnalyzerErrors": 0,
+    "targetAnalyzerWarnings": 0,
+    "iosSimulator321Build": "PASS_NOT_INSTALLED"
+  },
+  "userExplicitlyApproved": true,
+  "livePointActionStatusesWithoutToken": {
+    "/orders": 400,
+    "/orders/commercial-preview": 401
+  },
+  "existingGatewayAuthorizationTypesUnchanged": {
+    "/orders": "NONE",
+    "/orders/commercial-preview": "COGNITO_USER_POOLS"
+  },
+  "previewActionLiveCustomerGuardRequired": true,
+  "existingInlinePoliciesPreserved": true,
+  "simulator": {
+    "build": 321,
+    "device": "iPhone16Pro",
+    "installed": true,
+    "launched": true,
+    "dataPreserved": true
+  },
+  "nativeBuildVerified": 321
+}

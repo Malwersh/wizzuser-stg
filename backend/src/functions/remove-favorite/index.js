@@ -6,6 +6,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, DeleteCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
+const {writeContext}=require('../create-order/guarded-write');
 const client = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(client);
 const TABLE_NAME = process.env.FAVORITES_TABLE || 'WizzUser_favorites_dev';
@@ -24,7 +25,7 @@ const CORS_HEADERS = {
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Account mutation request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -55,6 +56,7 @@ exports.handler = async (event) => {
         }
 
         // First, verify that the favorite exists and belongs to the user
+        const write=await writeContext(dynamodb,event,userId);
         const getParams = {
             TableName: TABLE_NAME,
             Key: { favoriteId: favoriteId }
@@ -90,7 +92,7 @@ exports.handler = async (event) => {
             Key: { favoriteId: favoriteId }
         };
 
-        await dynamodb.send(new DeleteCommand(deleteParams));
+        await write('Delete',{...deleteParams,ConditionExpression:'attribute_exists(favoriteId) AND userId = :owner',ExpressionAttributeValues:{':owner':userId}});
 
         console.log(`✅ Removed from favorites successfully: ${favoriteId}`);
 
@@ -107,7 +109,7 @@ exports.handler = async (event) => {
         console.error('💥 Error removing from favorites:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,

@@ -1,3 +1,6 @@
+import '../widgets/wallet_transfer_gate.dart';
+import '../services/wallet_transfer_service.dart';
+import 'wallet_transfer_screen.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../models/wallet_model.dart';
@@ -65,7 +68,6 @@ class _WalletScreenState extends State<WalletScreen> {
 
       // Load recent transactions
       await _loadTransactions();
-
     } catch (e) {
       setState(() {
         _errorMessage = 'حدث خطأ: $e';
@@ -95,7 +97,7 @@ class _WalletScreenState extends State<WalletScreen> {
     }
 
     final result = await WalletService.getWalletBalance(userId);
-    
+
     if (result['success']) {
       setState(() {
         _wallet = WalletModel(
@@ -104,7 +106,9 @@ class _WalletScreenState extends State<WalletScreen> {
           currency: result['currency'] ?? 'IQD',
           isActive: result['isActive'],
           createdAt: DateTime.now(),
-          updatedAt: DateTime.parse(result['updatedAt'] ?? DateTime.now().toIso8601String()),
+          updatedAt: DateTime.parse(
+            result['updatedAt'] ?? DateTime.now().toIso8601String(),
+          ),
         );
         _isLoading = false;
       });
@@ -163,10 +167,11 @@ class _WalletScreenState extends State<WalletScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => WalletTopUpScreen(
-          currentBalance: _wallet?.balance ?? 0,
-          currency: _wallet?.currency ?? 'IQD',
-        ),
+        builder:
+            (context) => WalletTopUpScreen(
+              currentBalance: _wallet?.balance ?? 0,
+              currency: _wallet?.currency ?? 'IQD',
+            ),
       ),
     );
 
@@ -178,46 +183,89 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          'محفظتي',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppColors.primary,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _refreshWallet,
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _errorMessage.isNotEmpty
-              ? _buildErrorWidget()
-              : RefreshIndicator(
-                  onRefresh: _refreshWallet,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildWalletCard(),
-                        const SizedBox(height: 24),
-                        _buildActionButtons(),
-                        const SizedBox(height: 24),
-                        _buildTransactionsSection(),
-                      ],
-                    ),
-                  ),
+    return WalletTransferGate(
+      check:
+          () async =>
+              (await WalletTransferService().call('context'))['canTransfer'] ==
+              true,
+      builder:
+          (transfersEnabled) => Scaffold(
+            backgroundColor: Colors.grey[50],
+            appBar: AppBar(
+              title: const Text(
+                'محفظتي',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF00296B),
                 ),
+              ),
+              backgroundColor: AppColors.primary,
+              elevation: 0,
+              actions: [
+                if (transfersEnabled)
+                  IconButton(
+                    tooltip: 'التحويل بين المحافظ',
+                    icon: const Icon(
+                      Icons.swap_horiz,
+                      color: AppColors.secondary,
+                    ),
+                    onPressed:
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const WalletTransferScreen(),
+                          ),
+                        ),
+                  ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.refresh,
+                    color: const Color(0xFF00296B),
+                  ),
+                  onPressed: _refreshWallet,
+                ),
+              ],
+            ),
+            body:
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage.isNotEmpty
+                    ? _buildErrorWidget()
+                    : RefreshIndicator(
+                      onRefresh: _refreshWallet,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildWalletCard(),
+                            const SizedBox(height: 24),
+                            _buildActionButtons(),
+                            if (transfersEnabled)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => const WalletTransferScreen(),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.swap_horiz),
+                                  label: const Text('التحويل بين المحافظ'),
+                                ),
+                              ),
+                            const SizedBox(height: 24),
+                            _buildTransactionsSection(),
+                          ],
+                        ),
+                      ),
+                    ),
+          ),
     );
   }
 
@@ -268,13 +316,19 @@ class _WalletScreenState extends State<WalletScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.info_outline, color: AppColors.primary, size: 20),
+                        Icon(
+                          Icons.info_outline,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
@@ -290,10 +344,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     const SizedBox(height: 8),
                     const Text(
                       '• دفع آمن وسريع بالدينار العراقي\n• تتبع جميع معاملاتك\n• شحن المحفظة بسهولة\n• استخدام الرصيد في الطلبات',
-                      style: TextStyle(
-                        fontSize: 13,
-                        height: 1.4,
-                      ),
+                      style: TextStyle(fontSize: 13, height: 1.4),
                     ),
                   ],
                 ),
@@ -337,19 +388,12 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Colors.grey,
-          ),
+          const Icon(Icons.error_outline, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
           Text(
             _errorMessage,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
           ),
           const SizedBox(height: 24),
           ElevatedButton(
@@ -383,7 +427,7 @@ class _WalletScreenState extends State<WalletScreen> {
             children: [
               const Icon(
                 Icons.account_balance_wallet,
-                color: Colors.white,
+                color: const Color(0xFF00296B),
                 size: 28,
               ),
               const SizedBox(width: 12),
@@ -398,17 +442,17 @@ class _WalletScreenState extends State<WalletScreen> {
               const Spacer(),
               if (_wallet?.isActive == true)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.green,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(
                     'نشطة',
-                    style: TextStyle(
-                      color: AppColors.secondary,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: AppColors.secondary, fontSize: 12),
                   ),
                 ),
             ],
@@ -488,10 +532,7 @@ class _WalletScreenState extends State<WalletScreen> {
             Text(
               label,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: color, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -508,10 +549,7 @@ class _WalletScreenState extends State<WalletScreen> {
           children: [
             const Text(
               'المعاملات الأخيرة',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             if (_transactions.isNotEmpty)
               TextButton(
@@ -547,26 +585,16 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       child: Column(
         children: [
-          Icon(
-            Icons.receipt_long,
-            size: 48,
-            color: Colors.grey.shade400,
-          ),
+          Icon(Icons.receipt_long, size: 48, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
             'لا توجد معاملات حتى الآن',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 8),
           Text(
             'قم بشحن محفظتك لبدء استخدامها',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade500,
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
           ),
         ],
       ),
@@ -600,18 +628,12 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 4),
                 Text(
                   transaction.description,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   transaction.getRelativeTime(),
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
                 ),
               ],
             ),
@@ -624,9 +646,10 @@ class _WalletScreenState extends State<WalletScreen> {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: transaction.isPositiveTransaction
-                      ? Colors.green
-                      : transaction.isNegativeTransaction
+                  color:
+                      transaction.isPositiveTransaction
+                          ? Colors.green
+                          : transaction.isNegativeTransaction
                           ? Colors.red
                           : Colors.grey,
                 ),
@@ -669,11 +692,7 @@ class _WalletScreenState extends State<WalletScreen> {
         color: iconColor.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
-      child: Icon(
-        iconData,
-        color: iconColor,
-        size: 24,
-      ),
+      child: Icon(iconData, color: iconColor, size: 24),
     );
   }
 
@@ -715,10 +734,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
   String _getFormattedUpdateTime() {
     if (_wallet?.updatedAt == null) return '';
-    
+
     final now = DateTime.now();
     final difference = now.difference(_wallet!.updatedAt);
-    
+
     if (difference.inDays > 0) {
       return 'منذ ${difference.inDays} ${difference.inDays == 1 ? 'يوم' : 'أيام'}';
     } else if (difference.inHours > 0) {

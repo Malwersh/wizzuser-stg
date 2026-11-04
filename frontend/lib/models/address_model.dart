@@ -485,6 +485,8 @@ class AddressCreateRequest {
   final String? phoneNumber;
   
   // 🔥 Region System Fields
+  final String? idempotencyKey;
+  final bool saveToAddressBook;
   final String? regionId;
   final String? regionName;
   final String? regionNameAr;
@@ -511,6 +513,8 @@ class AddressCreateRequest {
     this.apartmentNumber,
     this.phoneNumber,
     // 🔥 Region System
+    this.idempotencyKey,
+    this.saveToAddressBook=true,
     this.regionId,
     this.regionName,
     this.regionNameAr,
@@ -524,6 +528,8 @@ class AddressCreateRequest {
 
   Map<String, dynamic> toJson() {
     return {
+      if(idempotencyKey!=null)'idempotency_key':idempotencyKey,
+      'save_to_address_book':saveToAddressBook,
       'name': name,
       'province': province,
       'district': district,

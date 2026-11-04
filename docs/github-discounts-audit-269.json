@@ -1,0 +1,47 @@
+{
+  "wizzuser-stg": {
+    "colleagueHead": "89bb6204c7e8792930b5b8d041992d33d322f16d",
+    "ourRemoteHead": "1c0c69f9020f2c2c75c0b13b426dcb03d5094a37",
+    "colleagueChanges": [
+      "89bb620 fix(discounts): align customer eligibility and checkout previews",
+      "3ef5afb Merge remote-tracking branch 'origin/feature/malwersh/bootstrap' into feature/ghaythalijarad/bootstrap",
+      "7fc7fea Merge colleague updates from origin/feature/malwersh/bootstrap",
+      "d702337 fix: embed Live Activity extension into app (PlugIns + phase order + appex name)",
+      "14d1c01 fix: richer colored Live Activity UI + guest token persistence for push registration",
+      "15539f8 fix: Live Activity icon rendering + AppDelegate channel registration order",
+      "aa5ca24 fix: wire Live Activity into v1 OrderService (checkout path)",
+      "761511e fix: use contentState and iOS 16.1 end() API",
+      "cf4c161 fix: correct LiveActivityChannel.swift file ref path",
+      "b271f5c fix: remove self-referencing ContentState typealias",
+      "3a87b50 feat: iOS Live Activity for order tracking (Lock Screen + Dynamic Island)",
+      "d37a76d Merge remote-tracking branch 'origin/feature/malwersh/bootstrap' into chore/staging-ios-tooling-20261011",
+      "5ae0ee1 fix(backend): migrate legacy lambdas off aws-sdk v2 to runtime-bundled SDK v3",
+      "1a3d362 feat(promo-codes): platform promo codes from central platform to customer app",
+      "4028373 feat(discounts): link merchant discounts to customer checkout"
+    ],
+    "fundingReaderTouchedByColleague": false
+  },
+  "whizzCentralPlatform-stg": {
+    "colleagueHead": "f80f49a54fb2fb56abbb6945c3f690b350037804",
+    "ourRemoteHead": "47492ec9d3f219e4022eb867f10530f91d1ee002",
+    "colleagueChanges": [
+      "f80f49a fix(promotions): unify discount rules and restore legacy offer management",
+      "66822a4 Merge remote-tracking branch 'origin/feature/malwersh/bootstrap' into feature/ghaythalijarad/bootstrap",
+      "0c77346 Merge remote-tracking branch 'origin/feature/malwersh/bootstrap' into feature/ghaythalijarad/bootstrap",
+      "bc73644 Merge remote-tracking branch 'origin/feature/malwersh/bootstrap' into feature/ghaythalijarad/bootstrap",
+      "b7976f2 fix: avoid double GUEST_ prefix in live activity register",
+      "ade38b6 fix: retry APNS live activity pushes on sandbox host for debug builds",
+      "98bcc21 feat: iOS Live Activity backend (token registry + APNS push updates)"
+    ],
+    "fundingReaderTouchedByColleague": false
+  },
+  "status": "GITHUB_REVIEW_COMPLETE",
+  "githubCodeMerged": false,
+  "githubPushPerformed": false,
+  "awsPublishedDuringThisReview": false,
+  "customerFrontendUnchanged": true,
+  "isolatedColleagueBackendTestsPassed": 24,
+  "directFailure": "Published deliveryFundingPolicy reader rejects the current schemaVersion 2 dated store delivery agreement; latest colleague commits do not modify that reader.",
+  "fixStatus": "NOT_IMPLEMENTED_IN_THIS_REVIEW",
+  "previous267CheckLimitation": "Isolated reader used newer local policy dependency; full published dependency graph reproduces INVALID_DELIVERY_FUNDING_POLICY."
+}
