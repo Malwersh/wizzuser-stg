@@ -1,6 +1,9 @@
 class HomeSlide {
   final String id, title, imageUrl, imageVersion, actionType, targetId;
   final String? merchantId, code, description;
+  final String offerSource, offerType;
+  final num? offerValue;
+  final Map<String, dynamic>? scene;
   final DateTime endAt;
   final List<Map<String, String>> merchants;
   final bool allMerchants;
@@ -19,6 +22,10 @@ class HomeSlide {
     this.merchants = const [],
     this.allMerchants = false,
     this.standalone = false,
+    this.offerSource = 'platform',
+    this.offerType = '',
+    this.offerValue,
+    this.scene,
   });
   factory HomeSlide.fromJson(Map<String, dynamic> json) {
     final action = Map<String, dynamic>.from(json['action'] as Map);
@@ -30,6 +37,13 @@ class HomeSlide {
     }
     return HomeSlide(
       standalone: json['standalone'] == true,
+      offerSource: action['offerSource'] as String? ?? 'platform',
+      offerType: action['offerType'] as String? ?? '',
+      offerValue: action['offerValue'] as num?,
+      scene:
+          json['scene'] is Map
+              ? Map<String, dynamic>.from(json['scene'])
+              : null,
       id: json['id'] as String,
       title: json['title'] as String,
       imageUrl: uri.toString(),

@@ -1,4 +1,5 @@
 import '../models/home_layout.dart';
+import '../models/home_promotion.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/home_slide.dart';
@@ -27,7 +28,10 @@ class HomeSlideshowService {
         'https://7oum9md7v6.execute-api.us-east-1.amazonaws.com/staging/staff/public/home-slideshow',
   );
   static final _sessionId = const Uuid().v4();
-  Future<HomeSlideshowFeed> load({String? regionId}) async {
+  Future<HomeSlideshowFeed> load({
+    String? regionId,
+    List<String>? priceBusinessIds,
+  }) async {
     final region = regionId ?? _regionId;
     final session = SessionService();
     final token = session.isLoggedIn ? await session.getToken() : null;
@@ -36,7 +40,9 @@ class HomeSlideshowService {
     final response = await (_client?.get ?? http.get)(
           Uri.parse(baseUrl).replace(
             queryParameters: {
-              'layoutVersion': '2',
+              'layoutVersion': '3',
+              if (priceBusinessIds != null)
+                'priceBusinessIds': priceBusinessIds.join(','),
               if (region != null && region.isNotEmpty) 'regionId': region,
               if (session.isLoggedIn && session.currentUserId != null)
                 'userId': session.currentUserId!,
@@ -60,6 +66,20 @@ class HomeSlideshowService {
     );
   }
 
+  Future<({HomePromotionSettings settings, List<HomeSlide> offers})>
+  headerFeed() async {
+    final data = await _request('home-slideshow', query: {'headerOffers': '1'});
+    return (
+      settings: HomePromotionSettings.fromJson(
+        Map<String, dynamic>.from(data['settings'] ?? {}),
+      ),
+      offers:
+          (data['campaigns'] as List)
+              .map((row) => HomeSlide.fromJson(Map<String, dynamic>.from(row)))
+              .toList(),
+    );
+  }
+
   Future<List<HomeSlide>> campaigns() async {
     final data = await _request('home-slideshow', query: {'campaigns': '1'});
     return (data['campaigns'] as List)
@@ -76,11 +96,13 @@ class HomeSlideshowService {
     String slideId, {
     String? merchantId,
     bool standalone = false,
+    String? offerSource,
   }) async {
     return _request(
       'home-offer',
       query: {
         if (standalone) 'campaignId': slideId else 'slideId': slideId,
+        if (standalone && offerSource == 'merchant') 'offerSource': 'merchant',
         if (merchantId != null) 'merchantId': merchantId,
       },
     );

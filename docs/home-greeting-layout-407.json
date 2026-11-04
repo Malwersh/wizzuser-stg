@@ -1,0 +1,24 @@
+{
+  "part": 407,
+  "build": 365,
+  "status": "installed-simulator",
+  "fix": "Natural-height header above expanded home scroll content; no duplicated fixed top inset",
+  "greetingFontSize": 18,
+  "verification": {
+    "tests": 17,
+    "widths": [
+      320,
+      390
+    ],
+    "textScales": [
+      1,
+      1.8,
+      2
+    ],
+    "greetingStates": [
+      "shown",
+      "hidden"
+    ],
+    "iosBuild": "passed"
+  }
+}

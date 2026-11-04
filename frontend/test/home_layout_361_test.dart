@@ -2,6 +2,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:foodapp_user/models/home_layout.dart';
 
 void main() {
+  test(
+    'central placement preserves old sections and supports both slideshow slots',
+    () {
+      final base = <String, dynamic>{
+        'id': 'slot',
+        'title': 'عنوان من المنصة',
+        'source': 'pastOrders',
+        'limit': 6,
+      };
+      expect(HomeSection.fromJson(base).placement, 'afterSlideshow');
+      expect(
+        HomeSection.fromJson({
+          ...base,
+          'placement': 'beforeSlideshow',
+        }).placement,
+        'beforeSlideshow',
+      );
+      expect(
+        () => HomeSection.fromJson({...base, 'placement': 'invalid'}),
+        throwsFormatException,
+      );
+    },
+  );
+
   Map<String, dynamic> section({String source = 'curated', int limit = 6}) => {
     'id': 'one',
     'title': 'مختارات ويز',

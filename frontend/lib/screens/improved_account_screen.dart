@@ -1,3 +1,5 @@
+import 'orders_screen.dart';
+import 'wallet_transfer_screen.dart';
 import 'customer_legal_screen.dart';
 import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
@@ -19,8 +21,9 @@ import 'personal_info_screen.dart';
 
 class ImprovedAccountScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final WidgetBuilder? favoritesBuilder;
 
-  const ImprovedAccountScreen({super.key, this.onBack});
+  const ImprovedAccountScreen({super.key, this.onBack, this.favoritesBuilder});
 
   @override
   State<ImprovedAccountScreen> createState() => _ImprovedAccountScreenState();
@@ -399,6 +402,40 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             _buildDivider(),
           ],
 
+          _buildMenuItem(
+            icon: Icons.receipt_long_outlined,
+            title: 'طلباتي',
+            onTap:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OrdersScreen()),
+                ),
+          ),
+          _buildDivider(),
+          _buildMenuItem(
+            icon: Icons.account_balance_wallet_outlined,
+            title: 'المحفظة',
+            onTap:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const WalletTransferScreen(),
+                  ),
+                ),
+          ),
+          _buildDivider(),
+          if (widget.favoritesBuilder != null) ...[
+            _buildMenuItem(
+              icon: Icons.favorite_border_rounded,
+              title: 'المفضلة',
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: widget.favoritesBuilder!),
+                  ),
+            ),
+            _buildDivider(),
+          ],
           _buildMenuItem(
             icon: Icons.notifications,
             title: 'إعدادات الإشعارات',

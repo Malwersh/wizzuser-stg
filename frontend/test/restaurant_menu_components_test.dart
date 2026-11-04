@@ -87,7 +87,7 @@ void main() {
         ),
       );
       await mount(true);
-      expect(find.text('3500 د.ع'), findsOneWidget);
+      expect(find.text('3,500 د.ع'), findsOneWidget);
       await tester.tap(find.byTooltip('إضافة إلى السلة'));
       await tester.tap(find.text('كباب'));
       expect(added, 1);

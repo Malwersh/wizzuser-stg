@@ -1,8 +1,11 @@
+import 'home_filters.dart';
+import 'home_promotion.dart';
+import 'home_navigation.dart';
 import 'business_model.dart';
 import 'browsing_location.dart';
 
 class HomeSection {
-  final String id, title, source, ranking, layout;
+  final String id, title, source, ranking, layout, placement;
   final List<String> merchantIds, cuisineIds, brandIds;
   final int limit, windowDays;
   final bool openNow, offersOnly;
@@ -21,6 +24,7 @@ class HomeSection {
               }[json['source']] ??
               'default'),
       layout = json['layout'] as String? ?? 'carousel',
+      placement = json['placement'] as String? ?? 'afterSlideshow',
       merchantIds = List<String>.from(json['merchantIds'] ?? []),
       cuisineIds = List<String>.from(json['filters']?['cuisineIds'] ?? []),
       brandIds = List<String>.from(json['filters']?['brandIds'] ?? []),
@@ -32,7 +36,15 @@ class HomeSection {
       windowDays = json['windowDays'] as int? ?? 30,
       startAt = DateTime.tryParse(json['startAt'] ?? ''),
       endAt = DateTime.tryParse(json['endAt'] ?? '') {
-    if (!['region', 'rating', 'new', 'curated', 'favorites'].contains(source) ||
+    if (![
+          'region',
+          'rating',
+          'new',
+          'curated',
+          'favorites',
+          'pastOrders',
+          'recent',
+        ].contains(source) ||
         ![
           'default',
           'manual',
@@ -42,6 +54,7 @@ class HomeSection {
           'orders',
         ].contains(ranking) ||
         !['carousel', 'compactList'].contains(layout) ||
+        !['beforeSlideshow', 'afterSlideshow'].contains(placement) ||
         ![7, 30].contains(windowDays) ||
         limit < 1 ||
         limit > 12 ||
@@ -54,11 +67,31 @@ class HomeSection {
 }
 
 class HomeLayout {
+  final HomePromotionSettings promotionHeader;
+  final HomeFilters filters;
+  final Map<String, dynamic> menuPrices;
+  final HomeNavigation? navigation;
   final bool configured;
+  final Map<String, dynamic> welcome;
   final List<HomeSection> sections;
   final Map<String, dynamic> discovery;
   HomeLayout.fromJson(Map<String, dynamic> json)
-    : configured = json['configured'] == true,
+    : promotionHeader = HomePromotionSettings.fromJson(
+        Map<String, dynamic>.from(json['promotionHeader'] ?? {}),
+      ),
+      filters =
+          json['filters'] is Map
+              ? HomeFilters.fromJson(Map<String, dynamic>.from(json['filters']))
+              : HomeFilters.defaults(),
+      menuPrices = Map<String, dynamic>.from(json['menuPrices'] ?? {}),
+      navigation =
+          json['navigation'] is Map
+              ? HomeNavigation.fromJson(
+                Map<String, dynamic>.from(json['navigation']),
+              )
+              : null,
+      welcome = Map<String, dynamic>.from(json['welcome'] ?? {}),
+      configured = json['configured'] == true,
       discovery = Map<String, dynamic>.from(json['discovery'] ?? {}),
       sections =
           (json['sections'] as List? ?? [])
@@ -74,6 +107,9 @@ List<BusinessModel> selectHomeBusinesses(
   required bool Function(String) isFavorite,
   required BrowsingLocation? point,
   required DateTime now,
+  List<String> pastStores = const [],
+  List<String> recentStores = const [],
+  bool applyLimit = true,
 }) {
   final profiles = facts['catalog']?['profiles'] as Map? ?? {};
   final stats = facts['stats'] as Map?;
@@ -96,6 +132,10 @@ List<BusinessModel> selectHomeBusinesses(
   final result =
       available.where((b) {
         if (!b.isActive) return false;
+        if (section.source == 'pastOrders' && !pastStores.contains(b.id))
+          return false;
+        if (section.source == 'recent' && !recentStores.contains(b.id))
+          return false;
         if (section.source == 'curated' && !section.merchantIds.contains(b.id))
           return false;
         if (section.source == 'favorites' && !isFavorite(b.id)) return false;
@@ -106,7 +146,11 @@ List<BusinessModel> selectHomeBusinesses(
         final profile = profiles[b.id] as Map? ?? {};
         if (section.cuisineIds.isNotEmpty &&
             !section.cuisineIds.any(
-              (id) => (profile['cuisineIds'] as List? ?? []).contains(id),
+              (id) =>
+                  (profile['cuisineIds'] as List? ?? []).contains(id) ||
+                  (b.metadata?['publishedCuisineIds'] as List? ?? []).contains(
+                    id,
+                  ),
             ))
           return false;
         if (section.brandIds.isNotEmpty &&
@@ -127,7 +171,10 @@ List<BusinessModel> selectHomeBusinesses(
             ((b.reviewCount ?? 0) <= 0 || b.rating < section.minimumRating!))
           return false;
         if (section.ranking == 'rating' &&
-            ((b.reviewCount ?? 0) <= 0 || b.rating <= 0 || b.rating > 5 || !b.rating.isFinite))
+            ((b.reviewCount ?? 0) <= 0 ||
+                b.rating <= 0 ||
+                b.rating > 5 ||
+                !b.rating.isFinite))
           return false;
         if ((section.ranking == 'distance' || section.maxDistanceKm != null) &&
             distance(b) == null)
@@ -154,6 +201,10 @@ List<BusinessModel> selectHomeBusinesses(
     return primary != 0 ? primary : a.id.compareTo(b.id);
   }
 
-  if (section.ranking != 'default') result.sort(compare);
-  return result.take(section.limit).toList();
+  if (section.source == 'pastOrders' || section.source == 'recent') {
+    final ids = section.source == 'pastOrders' ? pastStores : recentStores;
+    result.sort((a, b) => ids.indexOf(a.id).compareTo(ids.indexOf(b.id)));
+  } else if (section.ranking != 'default')
+    result.sort(compare);
+  return applyLimit ? result.take(section.limit).toList() : result;
 }

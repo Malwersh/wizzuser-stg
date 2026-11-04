@@ -22,7 +22,7 @@ class _HomeSlideshowState extends State<HomeSlideshow>
   static const _initialPage = 10000;
   final _controller = PageController(
     initialPage: _initialPage,
-    viewportFraction: 0.90,
+    viewportFraction: 1,
   );
   final _service = HomeSlideshowService();
   final _session = SessionService();
@@ -31,6 +31,8 @@ class _HomeSlideshowState extends State<HomeSlideshow>
   List<HomeSlide> _slides = [];
   HomeLayout? _layout;
   int _page = _initialPage, _request = 0;
+  bool _dragging = false;
+  DateTime? _lastSwipe;
   @override
   void initState() {
     super.initState();
@@ -43,7 +45,12 @@ class _HomeSlideshowState extends State<HomeSlideshow>
     _load();
     _rotation = Timer.periodic(const Duration(seconds: 3), (_) {
       if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-          !_controller.hasClients)
+          !_controller.hasClients ||
+          _dragging ||
+          (_lastSwipe != null &&
+              DateTime.now().difference(_lastSwipe!) <
+                  const Duration(seconds: 6)) ||
+          MediaQuery.of(context).disableAnimations)
         return;
       _recordView();
       final count = _slides.length;
@@ -92,7 +99,7 @@ class _HomeSlideshowState extends State<HomeSlideshow>
       setState(() {
         _slides =
             feed.slides.where((s) => s.endAt.isAfter(DateTime.now())).toList();
-        // Start on the first slide with preceding pages available for a preview.
+        // Start on the first slide; each viewport contains exactly one banner.
         _page =
             _slides.length > 1
                 ? _initialPage - (_initialPage % _slides.length)
@@ -136,45 +143,77 @@ class _HomeSlideshowState extends State<HomeSlideshow>
   Widget build(BuildContext context) {
     if (_slides.isEmpty) return const SizedBox.shrink();
     final count = _slides.length;
-    return SizedBox(
-      height: 180,
-      child: PageView.builder(
-        controller: _controller,
-        itemCount: count > 1 ? null : 1,
-        onPageChanged: (i) {
-          _page = i;
-          _recordView();
-        },
-        itemBuilder: (context, index) {
-          final slide = _slides[index % count];
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Semantics(
-              label: slide.title,
-              button: true,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Material(
-                  child: InkWell(
-                    onTap: () {
-                      _service.track(slide.id, 'tap');
-                      widget.onTap(slide);
-                    },
-                    child: CachedNetworkImage(
-                      imageUrl: slide.imageUrl,
-                      cacheKey: 'home-slide-${slide.id}-${slide.imageVersion}',
-                      fit: BoxFit.cover,
-                      placeholder:
-                          (_, _) => const ColoredBox(color: Color(0xffedf1f5)),
-                      errorWidget:
-                          (_, _, _) => Center(child: Text(slide.title)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 180,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollStartNotification &&
+                  notification.dragDetails != null)
+                _dragging = true;
+              if (notification is ScrollEndNotification && _dragging) {
+                _dragging = false;
+                _lastSwipe = DateTime.now();
+              }
+              return false;
+            },
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: count > 1 ? null : 1,
+              onPageChanged: (i) {
+                _page = i;
+                _recordView();
+              },
+              itemBuilder: (context, index) {
+                final slide = _slides[index % count];
+                return AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    final page =
+                        _controller.hasClients &&
+                                _controller.position.hasContentDimensions
+                            ? (_controller.page ?? _page.toDouble())
+                            : _page.toDouble();
+                    final opacity =
+                        MediaQuery.of(context).disableAnimations
+                            ? 1.0
+                            : (1 - (page - index).abs()).clamp(0.0, 1.0);
+                    return Opacity(opacity: opacity, child: child);
+                  },
+                  child: Semantics(
+                    label: slide.title,
+                    button: true,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Material(
+                        child: InkWell(
+                          onTap: () {
+                            _service.track(slide.id, 'tap');
+                            widget.onTap(slide);
+                          },
+                          child: CachedNetworkImage(
+                            imageUrl: slide.imageUrl,
+                            cacheKey:
+                                'home-slide-${slide.id}-${slide.imageVersion}',
+                            fit: BoxFit.cover,
+                            placeholder:
+                                (_, _) =>
+                                    const ColoredBox(color: Color(0xffedf1f5)),
+                            errorWidget:
+                                (_, _, _) => Center(child: Text(slide.title)),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }

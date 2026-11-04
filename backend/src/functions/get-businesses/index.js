@@ -130,6 +130,8 @@ const handler = async (event) => {
                     address: item.address || 'العنوان غير متوفر',
                     business_photo_url: item.businessPhotoUrl || item.business_photo_url,
                     business_type: item.businessType || item.business_type,
+                    businessTypeId: item.businessTypeId || item.business_type_id || null,
+                    publishedCuisineIds: item.publishedCuisineIds || [],
                     phone: item.phoneNumber || item.phone_number,
                     email: item.email,
                     ...storefrontFacts(item),

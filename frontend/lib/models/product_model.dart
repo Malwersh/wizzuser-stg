@@ -6,6 +6,7 @@ class ProductModel {
   final String id;
   final String businessId;
   final String categoryId;
+  final List<String> cuisineIds;
   final String? categoryName; // 🔥 إضافة اسم الفئة
   final String name;
   final String description;
@@ -29,6 +30,7 @@ class ProductModel {
     required this.id,
     required this.businessId,
     required this.categoryId,
+    this.cuisineIds = const [],
     this.categoryName, // 🔥 إضافة
     required this.name,
     required this.description,
@@ -60,6 +62,7 @@ class ProductModel {
           json['businessId']?.toString() ??
           json['business_id']?.toString() ??
           '',
+      cuisineIds: List<String>.from(json['cuisineIds'] ?? []),
       categoryId:
           json['categoryId']?.toString() ??
           json['category_id']?.toString() ??
@@ -114,6 +117,7 @@ class ProductModel {
       'id': id,
       'business_id': businessId,
       'category_id': categoryId,
+      'cuisineIds': cuisineIds,
       'name': name,
       'description': description,
       'imageUrl': imageUrl,

@@ -8,6 +8,7 @@ enum StorefrontField { fee, preparation, arrival, distance }
 
 class StorefrontValue extends StatefulWidget {
   final String branchId;
+  final bool compact;
   final StorefrontField field;
   final List<dynamic>? items;
   final TextStyle? style;
@@ -18,6 +19,7 @@ class StorefrontValue extends StatefulWidget {
   const StorefrontValue({
     super.key,
     required this.branchId,
+    this.compact = false,
     required this.field,
     this.items,
     this.style,
@@ -108,20 +110,27 @@ class _StorefrontValueState extends State<StorefrontValue> {
     if (widget.field == StorefrontField.preparation &&
         widget.initialPreparationMinutes != null)
       text = 'نحو ${widget.initialPreparationMinutes} دقيقة';
-    final display = p ?? pricing.peekRoute(widget.branchId);
+    final retained = pricing.peekDisplay(
+      widget.branchId,
+      items,
+      hasGoodsDiscount: widget.hasGoodsDiscount,
+    );
+    final display = p ?? retained ?? pricing.peekRoute(widget.branchId);
     if (display != null) {
       text = switch (widget.field) {
-        StorefrontField.fee => p?.feeText ?? text,
+        StorefrontField.fee => (p ?? retained)?.feeText ?? text,
         StorefrontField.preparation => display.preparationText,
         StorefrontField.arrival => display.arrivalText,
         StorefrontField.distance => display.distanceText,
       };
     }
-    final fee = pricing.feeIqd(
-      widget.branchId,
-      items,
-      hasGoodsDiscount: widget.hasGoodsDiscount,
-    );
+    final fee =
+        pricing.feeIqd(
+          widget.branchId,
+          items,
+          hasGoodsDiscount: widget.hasGoodsDiscount,
+        ) ??
+        retained?.fee;
     if (widget.field == StorefrontField.fee && fee != null)
       text =
           fee == 0
@@ -132,6 +141,15 @@ class _StorefrontValueState extends State<StorefrontValue> {
         !(display != null && widget.field != StorefrontField.fee) &&
         !(widget.field == StorefrontField.fee && fee != null))
       return TextButton(
+        style:
+            widget.compact
+                ? TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                )
+                : null,
         onPressed:
             () => pricing.load(
               widget.branchId,
@@ -139,7 +157,12 @@ class _StorefrontValueState extends State<StorefrontValue> {
               hasGoodsDiscount: widget.hasGoodsDiscount,
               force: true,
             ),
-        child: Text('إعادة حساب التوصيل', style: widget.style),
+        child: Text(
+          widget.compact ? 'إعادة المحاولة' : 'إعادة حساب التوصيل',
+          style: widget.style,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       );
     if (widget.field == StorefrontField.fee &&
         key != null &&
@@ -175,7 +198,7 @@ class _StorefrontValueState extends State<StorefrontValue> {
     return Text(
       text,
       style: widget.style,
-      maxLines: 2,
+      maxLines: widget.compact ? 1 : 2,
       overflow: TextOverflow.ellipsis,
     );
   }

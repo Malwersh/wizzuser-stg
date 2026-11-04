@@ -1,0 +1,19 @@
+{
+  "status": "installed_customer_simulator_354",
+  "cause": "DiscoveryHistory used obsolete guest /orders route and data envelope; OrderServiceV2 uses authenticated /users/{id}/orders with orders envelope",
+  "fix": "Use current authenticated completed history endpoint, historyDays=30, orders response; retain delivered-only filtering, account scope fencing and bounded cache",
+  "verifiedPublishedSection": {
+    "revision": 40,
+    "source": "pastOrders",
+    "placement": "afterSlideshow",
+    "audience": "signedIn",
+    "enabled": true
+  },
+  "validation": {
+    "flutterTests": 9,
+    "result": "passed",
+    "analyzer": "info lints only; no errors or warnings",
+    "iosBuild": "passed"
+  },
+  "manualCheck": "Verify current account sees Frouj in previous-orders section after reopening home"
+}

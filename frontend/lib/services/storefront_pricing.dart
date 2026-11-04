@@ -346,6 +346,21 @@ class StorefrontPricing extends ChangeNotifier {
     return p != null && now().isBefore(p.expiresAt) ? p : null;
   }
 
+  /// Display-only grace while revalidating the exact same pricing context.
+  /// Checkout and eligibility continue to use the strictly fresh peek().
+  StorefrontPreview? peekDisplay(
+    String branch,
+    List<dynamic> items, {
+    bool hasGoodsDiscount = false,
+  }) {
+    final preview =
+        _cache[key(branch, items, hasGoodsDiscount: hasGoodsDiscount)];
+    return preview != null &&
+            now().isBefore(preview.expiresAt.add(const Duration(minutes: 5)))
+        ? preview
+        : null;
+  }
+
   String? _routeKey(String branch) {
     if (key(branch, const []) == null) return null;
     return jsonEncode([

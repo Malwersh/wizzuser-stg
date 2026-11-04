@@ -121,6 +121,11 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+  fonts:
+    - family: ArshilaOffer
+      fonts:
+        - asset: assets/fonts/ArshilaDemo-ExtraBold.ttf
+          weight: 800
   assets:
     - assets/
     - assets/images/

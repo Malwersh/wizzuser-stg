@@ -14,29 +14,7 @@ class FavoritesService {
     return url;
   }
 
-  static Future<String?> _getAuthToken() async {
-    try {
-      final accessToken = SessionService.instance.accessToken;
-      if (accessToken != null &&
-          accessToken.isNotEmpty &&
-          accessToken != 'placeholder_access_token') {
-        return accessToken;
-      }
-    } catch (_) {
-      // Ignore and fall back to idToken
-    }
-
-    try {
-      final idToken = await SessionService.instance.idToken;
-      if (idToken != null && idToken.isNotEmpty && idToken != 'temp_token') {
-        return idToken;
-      }
-    } catch (_) {
-      // Ignore
-    }
-
-    return null;
-  }
+  static Future<String?> _getAuthToken() => SessionService.instance.getToken();
 
   /// إضافة مطعم للمفضلة
   static Future<Map<String, dynamic>> addToFavorites({
@@ -52,15 +30,14 @@ class FavoritesService {
       );
 
       // الحصول على معلومات المستخدم
-      final userData = await SessionService.instance.currentUser;
+      final userData = SessionService.instance.currentUser;
       final token = await _getAuthToken();
 
       if (userData == null || token == null) {
         return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
       }
 
-      final userId =
-          userData['userId'] ?? userData['user_id'] ?? userData['email'];
+      final userId = SessionService.instance.currentUserId;
       if (userId == null) {
         return {'success': false, 'error': 'معرف المستخدم غير موجود'};
       }
@@ -87,7 +64,7 @@ class FavoritesService {
             },
             body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 25));
 
       developer.log(
         '📊 إضافة مفضلة - الحالة: ${response.statusCode}',
@@ -133,15 +110,14 @@ class FavoritesService {
       );
 
       // الحصول على معلومات المستخدم
-      final userData = await SessionService.instance.currentUser;
+      final userData = SessionService.instance.currentUser;
       final token = await _getAuthToken();
 
       if (userData == null || token == null) {
         return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
       }
 
-      final userId =
-          userData['userId'] ?? userData['user_id'] ?? userData['email'];
+      final userId = SessionService.instance.currentUserId;
       if (userId == null) {
         return {'success': false, 'error': 'معرف المستخدم غير موجود'};
       }
@@ -158,7 +134,7 @@ class FavoritesService {
               'Authorization': 'Bearer $token',
             },
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 25));
 
       developer.log(
         '📊 إزالة مفضلة - الحالة: ${response.statusCode}',
@@ -198,15 +174,14 @@ class FavoritesService {
       developer.log('📋 جلب قائمة المفضلة للمستخدم', name: 'FAVORITES_SERVICE');
 
       // الحصول على معلومات المستخدم
-      final userData = await SessionService.instance.currentUser;
+      final userData = SessionService.instance.currentUser;
       final token = await _getAuthToken();
 
       if (userData == null || token == null) {
         return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
       }
 
-      final userId =
-          userData['userId'] ?? userData['user_id'] ?? userData['email'];
+      final userId = SessionService.instance.currentUserId;
       if (userId == null) {
         return {'success': false, 'error': 'معرف المستخدم غير موجود'};
       }
@@ -225,7 +200,7 @@ class FavoritesService {
               'Authorization': 'Bearer $token',
             },
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 25));
 
       developer.log(
         '📊 جلب المفضلة - الحالة: ${response.statusCode}',
@@ -271,15 +246,14 @@ class FavoritesService {
       );
 
       // الحصول على معلومات المستخدم
-      final userData = await SessionService.instance.currentUser;
+      final userData = SessionService.instance.currentUser;
       final token = await _getAuthToken();
 
       if (userData == null || token == null) {
         return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
       }
 
-      final userId =
-          userData['userId'] ?? userData['user_id'] ?? userData['email'];
+      final userId = SessionService.instance.currentUserId;
       if (userId == null) {
         return {'success': false, 'error': 'معرف المستخدم غير موجود'};
       }
@@ -355,8 +329,8 @@ class FavoritesService {
         return statusResult;
       }
 
-      final isFavorite = statusResult['isFavorite'] ?? false;
-      final favoriteId = statusResult['favoriteId'];
+      final isFavorite = statusResult['data']?['is_favorite'] ?? false;
+      final favoriteId = statusResult['data']?['favoriteId'];
 
       if (isFavorite && favoriteId != null) {
         // إزالة من المفضلة

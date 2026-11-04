@@ -3282,6 +3282,12 @@ Resources:
       Policies:
         - Statement:
           - Effect: Allow
+            Action: dynamodb:GetItem
+            Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/staging-PlatformStaff'
+            Condition:
+              ForAllValues:StringEquals:
+                dynamodb:LeadingKeys: [HOME_DISCOVERY]
+          - Effect: Allow
             Action:
               - dynamodb:GetItem
               - dynamodb:Query
@@ -3862,6 +3868,7 @@ Resources:
   AddFavoriteFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/add-favorite/index.handler
       FunctionName: !Sub "WizzUser-AddFavorite-${Environment}"
@@ -3879,6 +3886,7 @@ Resources:
   RemoveFavoriteFunction:
     Type: AWS::Serverless::Function
     Properties:
+      MemorySize: 512
       CodeUri: src/
       Handler: functions/remove-favorite/index.handler
       FunctionName: !Sub "WizzUser-RemoveFavorite-${Environment}"

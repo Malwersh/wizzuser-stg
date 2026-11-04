@@ -39,6 +39,34 @@ void main() {
     'merchantIds': ids,
     'limit': 6,
   });
+  test('view all keeps ranking and eligibility beyond preview limit', () {
+    final rule = HomeSection.fromJson({
+      'id': 'all',
+      'title': 'تجربة',
+      'source': 'region',
+      'ranking': 'rating',
+      'limit': 2,
+      'filters': {'minimumRating': 4.0},
+    });
+    final rows = [
+      business('a', rating: 4.1),
+      business('b', rating: 4.8),
+      business('c', rating: 4.4),
+      business('excluded', rating: 3),
+    ];
+    List<String> run(bool limited) =>
+        selectHomeBusinesses(
+          rule,
+          rows,
+          facts: {},
+          isFavorite: (_) => false,
+          point: null,
+          now: now,
+          applyLimit: limited,
+        ).map((b) => b.id).toList();
+    expect(run(true), ['b', 'c']);
+    expect(run(false), ['b', 'c', 'a']);
+  });
   final facts = <String, dynamic>{
     'catalog': {
       'profiles': {

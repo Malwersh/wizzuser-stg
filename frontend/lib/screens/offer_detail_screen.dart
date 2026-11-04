@@ -72,6 +72,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       final result = await _service.details(
         widget.slide.id,
         standalone: widget.slide.standalone,
+        offerSource: widget.slide.offerSource,
         merchantId: merchantId,
       );
       if (!mounted || n != request) return;

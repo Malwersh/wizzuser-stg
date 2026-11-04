@@ -9,47 +9,42 @@ const docClient = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
 const WORKING_HOURS_TABLE = process.env.WORKING_HOURS_TABLE || 'WhizzMerchants_BusinessWorkingHours';
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'Asia/Baghdad';
-function getTodayWeekday(timezone) {
+function getLocalClock(timezone, now = new Date()) {
+    let parts;
     try {
-        const now = new Date();
-        const local = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-        return local.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone });
+        parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+    } catch (_) {
+        parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Baghdad', weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
     }
-    catch (_a) {
-        return new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    }
+    const value = type => parts.find(p => p.type === type).value;
+    return { weekday: value('weekday'), hm: value('hour') + ':' + value('minute') };
 }
-function getCurrentHM(timezone) {
-    try {
-        const now = new Date();
-        const local = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-        return local.toTimeString().slice(0, 5); // HH:MM
-    }
-    catch (_a) {
-        return new Date().toTimeString().slice(0, 5);
-    }
-}
+function getTodayWeekday(timezone) { return getLocalClock(timezone).weekday; }
+function getCurrentHM(timezone) { return getLocalClock(timezone).hm; }
 async function getTodayWorkingWindow(businessId, timezone) {
+    const clock = getLocalClock(timezone);
     try {
-        const weekday = getTodayWeekday(timezone);
         const query = new lib_dynamodb_1.QueryCommand({
             TableName: WORKING_HOURS_TABLE,
-            KeyConditionExpression: 'business_id = :bid',
-            ExpressionAttributeValues: { ':bid': businessId }
+            KeyConditionExpression: 'businessId = :bid',
+            ExpressionAttributeValues: { ':bid': businessId },
+            ConsistentRead: true
         });
         const result = await docClient.send(query);
-        const items = (result.Items || []);
-        const today = items.find((x) => (x.weekday === weekday) || (x.day === weekday));
-        if (!today || !today.opening || !today.closing) {
-            return { isOpen: false, opening: null, closing: null, weekday };
-        }
-        const nowHM = getCurrentHM(timezone);
-        const isOpen = nowHM >= String(today.opening).slice(0, 5) && nowHM < String(today.closing).slice(0, 5);
-        return { isOpen, opening: today.opening, closing: today.closing, weekday };
-    }
-    catch (e) {
-        console.log('⚠️ Working hours lookup failed', e);
-        return { isOpen: false, opening: null, closing: null, weekday: getTodayWeekday(timezone) };
+        const rows = result.Items || [];
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const previousDay = days[(days.indexOf(clock.weekday) + 6) % 7];
+        const rowFor = day => rows.find(row => String(row.weekday || row.day).toLowerCase() === day.toLowerCase());
+        const valid = row => row && row.isClosed !== true && /^([01]\d|2[0-3]):[0-5]\d$/.test(row.opening) && /^([01]\d|2[0-3]):[0-5]\d$/.test(row.closing) && row.opening !== row.closing;
+        const today = rowFor(clock.weekday), previous = rowFor(previousDay);
+        let active;
+        if (valid(today) && (today.opening < today.closing ? clock.hm >= today.opening && clock.hm < today.closing : clock.hm >= today.opening)) active = today;
+        if (!active && valid(previous) && previous.opening > previous.closing && clock.hm < previous.closing) active = previous;
+        const displayed = active || today;
+        return { isOpen: !!active, opening: displayed?.opening || null, closing: displayed?.closing || null, weekday: active && active === previous ? previousDay : clock.weekday };
+    } catch (e) {
+        console.log('Working hours lookup failed', { name: e.name });
+        return { isOpen: false, opening: null, closing: null, weekday: clock.weekday };
     }
 }
 function deriveStatus(acceptingOrders, withinHours) {
@@ -111,6 +106,8 @@ const handler = async (event) => {
             address: result.Item.address,
             business_photo_url: result.Item.businessPhotoUrl || result.Item.business_photo_url,
             business_type: result.Item.businessType || result.Item.business_type,
+            businessTypeId: result.Item.businessTypeId || null,
+            publishedCuisineIds: result.Item.publishedCuisineIds || [],
             phone: result.Item.phoneNumber || result.Item.phone_number,
             email: result.Item.email,
             ...storefrontFacts(result.Item),

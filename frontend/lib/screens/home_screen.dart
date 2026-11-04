@@ -1,3 +1,12 @@
+import '../models/menu_classification_focus.dart';
+import '../models/home_filters.dart';
+import '../widgets/discovery/home_filter_strip.dart';
+import '../widgets/discovery/home_topic_strip.dart';
+import '../models/home_navigation.dart';
+import '../widgets/home_cart_button.dart';
+import '../services/home_welcome_session.dart';
+import '../widgets/discovery/home_discovery_header.dart';
+import '../services/discovery_history.dart';
 import '../models/home_layout.dart';
 import '../widgets/discovery/customer_components.dart';
 import '../utils/readable_colors.dart';
@@ -33,8 +42,6 @@ import 'package:foodapp_user/screens/cart_screen.dart';
 import 'package:foodapp_user/screens/orders_screen.dart';
 import 'package:foodapp_user/screens/order_tracking_screen.dart';
 import 'package:foodapp_user/screens/improved_account_screen.dart';
-import 'package:foodapp_user/widgets/animated_cart_bar.dart';
-import 'package:foodapp_user/widgets/modern_cart_icon.dart';
 import 'package:foodapp_user/screens/wallet_transfer_screen.dart';
 import 'package:foodapp_user/widgets/enhanced_restaurant_card.dart';
 import 'package:foodapp_user/services/websocket_service.dart';
@@ -51,6 +58,9 @@ import '../widgets/promo_floating_card.dart';
 import '../widgets/home_slideshow.dart';
 import '../models/home_slide.dart';
 import 'offer_detail_screen.dart';
+import '../widgets/discovery/home_promotion_header.dart';
+import '../widgets/discovery/home_discovery_scroll.dart';
+import '../models/home_promotion.dart';
 import '../services/promo_card_session.dart';
 
 // 🆕 Smart Delivery Address System imports
@@ -154,9 +164,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // متغيرات الفلاتر
   String _selectedSortOption = 'رتب حسب';
-  bool _filterOpenNow = false;
-  bool _filterFreeDelivery = false;
-  bool _filterOffers = false;
+  final _welcome = HomeWelcomeSession.instance;
+  String _homeSearch = '';
+  void _consumeWelcome() {
+    final identity = context.read<AppStateProvider>();
+    if (_welcome.visible(
+      identity.isLoggedIn ? 'user:${identity.userId}' : 'guest',
+    )) {
+      _welcome.consume();
+      if (mounted) setState(() {});
+    }
+  }
+
+  String _homeType = 'all';
+  String _homeTopic = 'all';
+  final Set<String> _activeFilterIds = {};
+  String? _priceTier;
+  final Map<String, dynamic> _menuPrices = {};
+  String? _menuPriceScope;
+  bool _filterBusy = false;
+  int _filterRequest = 0;
+  HomeFilters get _filters =>
+      _publishedLayoutScope == _homeLayoutScope
+          ? (_publishedHomeLayout?.filters ?? HomeFilters.defaults())
+          : HomeFilters.defaults();
+  List<HomeFilter> get _selectedFilters =>
+      (_publishedLayoutScope == null ||
+                  _publishedLayoutScope == _homeLayoutScope) &&
+              _filters.enabled
+          ? _filters.items
+              .where((f) => f.enabled && _activeFilterIds.contains(f.id))
+              .toList()
+          : [];
 
   // العنوان المختار حالياً في الشريط العلوي
   DetailedAddress? _selectedAddress;
@@ -1451,6 +1490,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)
+      _welcome.background(DateTime.now());
+    if (state == AppLifecycleState.resumed) {
+      _welcome.resume(DateTime.now());
+      if (mounted) setState(() {});
+    }
     // عند عودة التطبيق للمقدمة، نفذ جلباً فورياً للحالات لتحديث البطاقات مباشرةً
     if (state == AppLifecycleState.resumed) {
       _loadActivePromoCodes();
@@ -1532,6 +1577,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _scrollListener() {
+    if (_storesController.hasClients && _storesController.position.pixels > 48)
+      _consumeWelcome();
     // التحميل عندما يصل المستخدم إلى 80% من المحتوى
     if (_storesController.position.pixels >=
         _storesController.position.maxScrollExtent * 0.8) {
@@ -1580,6 +1627,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _newBusinesses[i] = _newBusinesses[i].copyWith(
                   isAvailable: isAvailable,
                   acceptingOrders: acceptingOrders,
+                  isWithinWorkingHours: isWithinWorkingHours,
+                  metadata: {
+                    'isAvailableNow': update['isAvailableNow'],
+                    'availabilityCheckedAt': update['timestamp'],
+                    'isClosed': update['isClosed'],
+                  },
                 );
                 updated = true;
                 developer.log('   ✅ تم تحديث في قائمة "وصل حديثاً"');
@@ -1593,6 +1646,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _allRealBusinesses[i] = _allRealBusinesses[i].copyWith(
                   isAvailable: isAvailable,
                   acceptingOrders: acceptingOrders,
+                  isWithinWorkingHours: isWithinWorkingHours,
+                  metadata: {
+                    'isAvailableNow': update['isAvailableNow'],
+                    'availabilityCheckedAt': update['timestamp'],
+                    'isClosed': update['isClosed'],
+                  },
                 );
                 updated = true;
                 developer.log('   ✅ تم تحديث في قائمة "جميع المطاعم"');
@@ -1606,6 +1665,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 _nearbyBusinesses[i] = _nearbyBusinesses[i].copyWith(
                   isAvailable: isAvailable,
                   acceptingOrders: acceptingOrders,
+                  isWithinWorkingHours: isWithinWorkingHours,
+                  metadata: {
+                    'isAvailableNow': update['isAvailableNow'],
+                    'availabilityCheckedAt': update['timestamp'],
+                    'isClosed': update['isClosed'],
+                  },
                 );
                 updated = true;
                 developer.log('   ✅ تم تحديث في قائمة "الأقرب إليك"');
@@ -2140,11 +2205,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       },
       child: Scaffold(
+        extendBody: true,
         body:
             _selectedTabIndex == 0
                 ? Stack(
                   children: [
                     _buildHomeContentWithStickySearch(),
+                    Positioned(
+                      left: 20,
+                      bottom: MediaQuery.paddingOf(context).bottom + 92,
+                      child: Selector<AppStateProvider, int>(
+                        selector: (_, state) => state.cartItemsCount,
+                        builder:
+                            (_, count, __) => HomeCartButton(
+                              count: count,
+                              onTap: _openBottomCart,
+                            ),
+                      ),
+                    ),
                     if (_homeCampaigns.isNotEmpty)
                       Positioned(
                         left: 16,
@@ -2184,385 +2262,519 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  bool get _showHomeResults =>
+      _homeSearch.trim().isNotEmpty ||
+      _effectiveHomeCategory != 'all' ||
+      _effectiveTopic != 'all' ||
+      _activeFilterIds.isNotEmpty ||
+      _selectedSortOption != 'رتب حسب';
+
+  void _resetHomeResults() {
+    _filterRequest++;
+    setState(() {
+      _homeType = 'all';
+      _homeTopic = 'all';
+      _homeSearch = '';
+      _activeFilterIds.clear();
+      _priceTier = null;
+      _selectedSortOption = 'رتب حسب';
+      _filterBusy = false;
+    });
+  }
+
   // محتوى الصفحة الرئيسية مع الشريط العلوي الثابت
-  Widget _buildHomeContentWithStickySearch() {
-    return Column(
-      children: [
-        // الشريط العلوي الثابت
-        _buildFixedHeader(),
-        // المحتوى القابل للتمرير
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _storesController,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildFiltersSection(),
+  Widget _buildHomeContentWithStickySearch() => HomePromotionHeader(
+    settings:
+        _publishedHomeLayout?.promotionHeader ??
+        HomePromotionSettings.fromJson({}),
+    onOffer: (offer) {
+      if (offer.slide != null) {
+        _openHomeSlide(offer.slide!);
+      } else {
+        _openPlatformBenefits(benefitId: offer.benefit!.id);
+      }
+    },
+    headerBuilder:
+        (background, promotion) => HomeDiscoveryScroll(
+          header: _buildFixedHeader(background: background),
+          headerBuilder:
+              (visible) => _buildFixedHeader(
+                background: visible ? background : null,
+                showGreeting: promotion == null,
+              ),
+          filters: _buildFiltersSection(),
+          promotion: promotion,
+          promotionBackground: background,
+          controller: _storesController,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHomeCategories(),
+              _buildHomeTopics(),
+              if (!_showHomeResults) ...[
+                _buildManagedPlacement('beforeSlideshow'),
                 _buildBannerSection(),
-                _buildStoresSection(),
               ],
-            ),
+              _buildStoresSection(),
+            ],
+          ),
+        ),
+  );
+
+  String _typeKey(BusinessModel b) => homeActivity(b);
+  String get _effectiveHomeCategory =>
+      _publishedLayoutScope != null && _publishedLayoutScope != _homeLayoutScope
+          ? 'all'
+          : _homeType;
+  HomeNavigation? get _navigation =>
+      _publishedLayoutScope == _homeLayoutScope
+          ? _publishedHomeLayout?.navigation
+          : null;
+
+  String? get _activityValue {
+    if (_effectiveHomeCategory == 'all') return null;
+    final nav = _navigation;
+    if (nav != null && !nav.activitiesEnabled) return null;
+    return nav == null
+        ? _effectiveHomeCategory
+        : nav.items
+            .where(
+              (r) => r.id == _effectiveHomeCategory && r.kind == 'activity',
+            )
+            .firstOrNull
+            ?.value;
+  }
+
+  List<HomeNavigationItem> get _topics =>
+      _navigation?.topicsFor(_activityValue) ?? [];
+  String get _effectiveTopic =>
+      _publishedLayoutScope == _homeLayoutScope &&
+              _topics.any((r) => r.id == _homeTopic)
+          ? _homeTopic
+          : 'all';
+  MenuClassificationFocus? get _selectedMenuClassification =>
+      MenuClassificationFocus.fromNavigation(
+        _navigation,
+        _effectiveTopic,
+        activity: _activityValue,
+      );
+
+  bool _matchesCategory(BusinessModel b) {
+    final nav = _navigation;
+    if (nav != null) {
+      final selected =
+          nav.items
+              .where(
+                (r) => r.kind == 'activity' && r.id == _effectiveHomeCategory,
+              )
+              .firstOrNull;
+      if (nav.enabled &&
+          nav.activitiesEnabled &&
+          selected != null &&
+          !selected.matches(b, _publishedHomeLayout?.discovery ?? {}))
+        return false;
+      final topic = _topics.where((r) => r.id == _effectiveTopic).firstOrNull;
+      if (nav.enabled &&
+          nav.topicsEnabled &&
+          topic != null &&
+          !topic.matches(b, _publishedHomeLayout?.discovery ?? {}))
+        return false;
+    } else if (_effectiveHomeCategory != 'all' &&
+        _typeKey(b) != _effectiveHomeCategory)
+      return false;
+    return true;
+  }
+
+  Future<void> _selectHomeCategory(String value) async {
+    _consumeWelcome();
+    setState(() {
+      _homeType = _effectiveHomeCategory == value ? 'all' : value;
+      _homeTopic = 'all';
+    });
+    await _prepareActiveFilters();
+  }
+
+  Widget _buildHomeTopics() {
+    final nav = _navigation;
+    if (nav == null || !nav.enabled || !nav.topicsEnabled || _topics.isEmpty)
+      return const SizedBox.shrink();
+    return HomeTopicStrip(
+      selected: _effectiveTopic,
+      onChanged: (id) {
+        _consumeWelcome();
+        setState(() => _homeTopic = _effectiveTopic == id ? 'all' : id);
+        _prepareActiveFilters();
+      },
+      categories: [
+        ..._topics.map(
+          (r) => HomeTypeCategory(
+            r.id,
+            r.label,
+            r.asset,
+            imageUrl: r.imageUrl,
+            imageKey: r.imageKey,
           ),
         ),
       ],
     );
   }
 
-  // الشريط العلوي الثابت (بدون SafeArea)
-  Widget _buildFixedHeader() {
-    return Container(
-      color: Colors.white,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // صف واحد: شريط العنوان والأيقونات
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Row(
-                children: [
-                  // الجهة اليمنى: شريط العنوان (مصغر)
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () async {
-                        final appState = Provider.of<AppStateProvider>(
-                          context,
-                          listen: false,
-                        );
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => AddressGateScreen(
-                                  isGuest: appState.isGuest,
-                                  showBackButton: true,
-                                ),
-                          ),
-                        );
+  bool _homeMatches(BusinessModel b) {
+    if (!_matchesCategory(b)) return false;
+    if (_homeSearch.trim().isNotEmpty &&
+        !b.businessName.toLowerCase().contains(
+          _homeSearch.trim().toLowerCase(),
+        ))
+      return false;
+    final pricing = StorefrontPricing.instance;
+    for (final filter in _selectedFilters) {
+      if (!matchesHomeFilter(
+        filter,
+        b,
+        facts: _publishedHomeLayout?.discovery ?? {},
+        route: pricing.peekRoute(b.id)?.data,
+        fee: pricing.feeIqd(b.id, const []),
+        price:
+            _menuPriceScope == _homeLayoutScope
+                ? (_menuPrices[b.id] as Map<String, dynamic>?)
+                : null,
+        priceTier: _priceTier,
+        settings: _filters,
+        now: DateTime.now(),
+      ))
+        return false;
+    }
+    return true;
+  }
 
-                        if (result == true && mounted) {
-                          _reloadBusinessesAfterAddressChange();
-                        }
-                      },
-                      child: ListenableBuilder(
-                        listenable: BrowsingLocationService.instance,
-                        builder: (context, _) {
-                          final address =
-                              DeliveryAddressManager.instance.activeAddress;
-                          final browsing =
-                              BrowsingLocationService.instance.selection;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.grey[300]!),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color: AppColors.primary,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    browsing?.regionName ??
-                                        address?.regionNameAr ??
-                                        'اختر المنطقة',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black87,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.keyboard_arrow_down,
-                                  color: AppColors.primary,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+  Future<void> _prepareActiveFilters() async {
+    final request = ++_filterRequest,
+        scope = _homeLayoutScope,
+        generation = _addressLoadGeneration;
+    final selected = _selectedFilters;
+    setState(() => _filterBusy = true);
+    if (_menuPriceScope != scope) {
+      _menuPrices.clear();
+      _menuPriceScope = scope;
+    }
+    final warmed = <String>{};
+    bool valid() =>
+        mounted &&
+        request == _filterRequest &&
+        scope == _homeLayoutScope &&
+        generation == _addressLoadGeneration;
+    try {
+      if (selected.any((f) => f.kind == 'openNow'))
+        await _statusPolling.refreshForFilters();
+      while (valid()) {
+        final targets =
+            _allRealBusinesses
+                .where((b) => _matchesCategory(b) && !warmed.contains(b.id))
+                .toList();
+        final routeNeeded =
+            selected.any(
+              (f) => [
+                'fastDelivery',
+                'preparation',
+                'freeDelivery',
+                'deliveryFee',
+              ].contains(f.kind),
+            ) ||
+            ['الأقرب', 'الأسرع توصيلاً'].contains(_selectedSortOption);
+        if (routeNeeded)
+          for (var i = 0; i < targets.length && valid(); i += 3) {
+            await Future.wait(
+              targets.skip(i).take(3).map((b) {
+                StorefrontPricing.instance.seedBusiness(
+                  b.id,
+                  b.metadata ?? const {},
+                  onlyIfAbsent: true,
+                );
+                return StorefrontPricing.instance.load(b.id, const []);
+              }),
+            );
+          }
+        if (selected.any((f) => f.kind == 'menuPrice'))
+          for (var i = 0; i < targets.length && valid(); i += 12) {
+            final ids = targets.skip(i).take(12).map((b) => b.id).toList();
+            final feed = await HomeSlideshowService().load(
+              priceBusinessIds: ids,
+            );
+            if (valid()) _menuPrices.addAll(feed.layout?.menuPrices ?? {});
+          }
+        warmed.addAll(targets.map((b) => b.id));
+        if (!valid() ||
+            _allRealBusinesses.where(_homeMatches).length >= 6 ||
+            !_hasMoreRealData ||
+            _isLoadingRealData)
+          break;
+        final page = _realDataPage;
+        await _loadMoreRealBusinesses();
+        if (_realDataPage == page) break;
+      }
+    } catch (e) {
+      developer.log('Discovery filter facts unavailable', error: e);
+    } finally {
+      if (valid()) setState(() => _filterBusy = false);
+    }
+  }
+
+  Widget _buildHomeCategories() {
+    final nav = _navigation;
+    if (nav != null) {
+      if (!nav.enabled || !nav.activitiesEnabled)
+        return const SizedBox.shrink();
+      return HomeTypeCategories(
+        selected: _effectiveHomeCategory,
+        onChanged: _selectHomeCategory,
+        categories:
+            nav.activities
+                .map(
+                  (r) => HomeTypeCategory(
+                    r.id,
+                    r.label,
+                    r.asset,
+                    imageUrl: r.imageUrl,
+                    imageKey: r.imageKey,
                   ),
-                  const SizedBox(width: 12),
-                  // الجهة اليسرى: الأيقونات (المحفظة، الإشعارات، السلة)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const WalletTransferScreen(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          child: Icon(
-                            Icons.account_balance_wallet_outlined,
-                            color: AppColors.primary,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const NotificationsScreen(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          child: ValueListenableBuilder<bool>(
-                            valueListenable: NotificationInboxService.hasUnread,
-                            builder:
-                                (_, unread, __) => Badge(
-                                  isLabelVisible: unread,
-                                  backgroundColor: AppColors.secondary,
-                                  child: const Icon(
-                                    Icons.notifications_outlined,
-                                    color: AppColors.primary,
-                                    size: 24,
-                                  ),
-                                ),
-                          ),
-                        ),
-                      ),
-                      Consumer<AppStateProvider>(
-                        builder: (context, appState, child) {
-                          return ModernCartIcon(
-                            badgeCount: appState.cartItemsCount,
-                            onPressed: () {
-                              Navigator.of(context).push(
+                )
+                .toList(),
+      );
+    }
+    final types = _allRealBusinesses.map(_typeKey).toSet();
+    return HomeTypeCategories(
+      selected: _effectiveHomeCategory,
+      onChanged: _selectHomeCategory,
+      categories: [
+        const HomeTypeCategory('all', 'الكل', 'assets/icons/cat_rest.png'),
+        if (types.contains('restaurant'))
+          const HomeTypeCategory(
+            'restaurant',
+            'مطاعم',
+            'assets/icons/burger.png',
+          ),
+        if (types.contains('cafe'))
+          const HomeTypeCategory('cafe', 'مقاهي', 'assets/icons/cat_juice.png'),
+        if (types.contains('grocery'))
+          const HomeTypeCategory(
+            'grocery',
+            'بقالة',
+            'assets/icons/cat_groce.png',
+          ),
+        if (types.contains('sweets'))
+          const HomeTypeCategory(
+            'sweets',
+            'حلويات',
+            'assets/icons/cat_dessert.png',
+          ),
+        if (types.contains('store'))
+          const HomeTypeCategory(
+            'store',
+            'متاجر',
+            'assets/icons/cat_supermarket.png',
+          ),
+      ],
+    );
+  }
+
+  String? _homeGreeting(AppStateProvider appState) =>
+      !appState.isLoading &&
+              _publishedHomeLayout?.welcome['enabled'] != false &&
+              (!_storesController.hasClients ||
+                  _storesController.offset <= 48) &&
+              _homeSearch.isEmpty &&
+              _welcome.visible(
+                appState.isLoggedIn ? 'user:${appState.userId}' : 'guest',
+              )
+          ? HomeWelcomeSession.greeting(
+            signedIn: appState.isLoggedIn,
+            user: appState.currentUser,
+            settings: _publishedHomeLayout?.welcome ?? const {},
+          )
+          : null;
+
+  Widget _buildFixedHeader({Color? background, bool showGreeting = true}) =>
+      AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: ListenableBuilder(
+          listenable: BrowsingLocationService.instance,
+          builder:
+              (context, _) => ValueListenableBuilder<bool>(
+                valueListenable: NotificationInboxService.hasUnread,
+                builder:
+                    (context, unread, _) => Consumer<AppStateProvider>(
+                      builder:
+                          (context, appState, _) => HomeDiscoveryHeader(
+                            background: background,
+
+                            greeting:
+                                background == null && showGreeting
+                                    ? _homeGreeting(appState)
+                                    : null,
+                            address:
+                                BrowsingLocationService
+                                    .instance
+                                    .selection
+                                    ?.regionName ??
+                                DeliveryAddressManager
+                                    .instance
+                                    .activeAddress
+                                    ?.regionNameAr ??
+                                'اختر المنطقة',
+                            onAddress: () async {
+                              final result = await Navigator.push(
+                                context,
                                 MaterialPageRoute(
                                   builder:
-                                      (_) => CartScreen(
-                                        storeId: _getStoreIdFromCart(appState),
-                                        storeName: _getStoreNameFromCart(
-                                          appState,
-                                        ),
-                                        stores:
-                                            _allRealBusinesses
-                                                .map(
-                                                  (business) =>
-                                                      _businessToStore(
-                                                        business,
-                                                        showDistance: true,
-                                                      ),
-                                                )
-                                                .toList(),
+                                      (_) => AddressGateScreen(
+                                        isGuest: appState.isGuest,
+                                        showBackButton: true,
                                       ),
                                 ),
                               );
+                              if (result == true && mounted)
+                                _reloadBusinessesAfterAddressChange();
                             },
-                            color: AppColors.primary,
-                            size: 24,
-                            isGlassmorphic: false,
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // الصف الثالث: شريط البحث وأيقونة اكتشف (بدون SafeArea)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Row(
-                children: [
-                  // شريط البحث
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder:
-                                (context) => const Scaffold(
-                                  body: Center(
-                                    child: Text(
-                                      'شاشة البحث المحسنة غير متاحة مؤقتاً',
-                                      style: TextStyle(fontSize: 18),
-                                    ),
+                            cartCount: appState.cartItemsCount,
+                            onCart: _openBottomCart,
+                            onAccount:
+                                () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => ImprovedAccountScreen(
+                                          favoritesBuilder:
+                                              (_) => _buildFavoritesTab(),
+                                        ),
+                                  ),
+                                ),
+                            unread: unread,
+                            onNotifications:
+                                () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const NotificationsScreen(),
                                   ),
                                 ),
                           ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.search,
-                              color: Colors.grey[400],
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'ابحث عن مطاعم أو أطباق...',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
+                    ),
+              ),
+        ),
+      );
+
+  Widget _buildFiltersSection() {
+    if (!_filters.enabled) return const SizedBox.shrink();
+    return HomeFilterStrip(
+      items: _filters.items.where((f) => f.enabled && f.kind != 'all').toList(),
+      selected:
+          (f) =>
+              f.kind == 'all'
+                  ? _activeFilterIds.isEmpty && _selectedSortOption == 'رتب حسب'
+                  : f.kind == 'sort'
+                  ? _selectedSortOption != 'رتب حسب'
+                  : _activeFilterIds.contains(f.id),
+      onTap: _tapHomeFilter,
+    );
+  }
+
+  Future<void> _tapHomeFilter(HomeFilter f) async {
+    _consumeWelcome();
+    if (f.kind == 'all') {
+      _filterRequest++;
+      setState(() {
+        _activeFilterIds.clear();
+        _priceTier = null;
+        _selectedSortOption = 'رتب حسب';
+        _filterBusy = false;
+      });
+      return;
+    }
+    if ((f.kind == 'sort' && _selectedSortOption != 'رتب حسب') ||
+        _activeFilterIds.contains(f.id)) {
+      setState(() {
+        _activeFilterIds.remove(f.id);
+        if (f.kind == 'menuPrice') _priceTier = null;
+        if (f.kind == 'sort') _selectedSortOption = 'رتب حسب';
+      });
+      await _prepareActiveFilters();
+      return;
+    }
+    if (f.kind == 'sort') {
+      _showSortOptionsBottomSheet();
+      return;
+    }
+    if (f.kind == 'menuPrice') {
+      final bands = _filters.priceBands,
+          economy = bands['economyMaxIqd'] ?? 7000,
+          medium = bands['mediumMaxIqd'] ?? 15000;
+      final value = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: Colors.white,
+        showDragHandle: true,
+        builder:
+            (ctx) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'مستوى أسعار القائمة',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.secondaryDark,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // أيقونة اكتشف
-                  GestureDetector(
-                    onTap: () {
-                      // تمرير المطاعم المصفاة حسب regionId إلى شاشة الخريطة
-                      // هذه المطاعم تم تصفيتها مسبقاً في _onActiveAddressAvailable
-                      // بناءً على العنوان المختار من قبل الزبون
-                      developer.log(
-                        '🗺️ فتح شاشة الخريطة مع ${_allRealBusinesses.length} مطعم مصفى',
-                      );
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder:
-                              (_) => MapScreenNew(
-                                businesses:
-                                    _allRealBusinesses, // المطاعم المصفاة حسب regionId
-                              ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.grey[200],
-                      ),
-                      child: Icon(
-                        Icons.explore,
-                        size: 24,
-                        color: Colors.grey[700],
-                      ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      'مؤشر من أسعار الأصناف المنشورة قبل الخصومات وبدون الإضافات. لا يشمل رسوم التوصيل.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                   ),
+                  for (final row in [
+                    ('all', 'كل الأسعار'),
+                    ('economy', 'اقتصادي · حتى $economy د.ع'),
+                    ('medium', 'متوسط · أكثر من $economy وحتى $medium د.ع'),
+                    ('premium', 'أعلى سعرًا · أكثر من $medium د.ع'),
+                  ])
+                    ListTile(
+                      title: Text(
+                        row.$2,
+                        style: const TextStyle(
+                          color: AppColors.secondaryDark,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing:
+                          (_priceTier ?? 'all') == row.$1
+                              ? const Icon(
+                                Icons.check,
+                                color: AppColors.secondaryDark,
+                              )
+                              : null,
+                      onTap: () => Navigator.pop(ctx, row.$1),
+                    ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // شريط الفلاتر الأفقي
-  Widget _buildFiltersSection() {
-    return Container(
-      height: 40,
-      margin: const EdgeInsets.only(top: 8, bottom: 8),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          // فلتر "رتب حسب" مع قائمة منسدلة
-          _buildSortFilterButton(),
-          const SizedBox(width: 8),
-          // فلتر "مفتوح الآن"
-          _buildFilterChip(
-            label: 'مفتوح الآن',
-            icon: Icons.access_time,
-            isSelected: _filterOpenNow,
-            onTap: () => setState(() => _filterOpenNow = !_filterOpenNow),
-          ),
-          const SizedBox(width: 8),
-          // فلتر "توصيل مجاني"
-          _buildFilterChip(
-            label: 'توصيل مجاني',
-            icon: Icons.delivery_dining,
-            isSelected: _filterFreeDelivery,
-            onTap:
-                () =>
-                    setState(() => _filterFreeDelivery = !_filterFreeDelivery),
-          ),
-          const SizedBox(width: 8),
-          // فلتر "عروض"
-          _buildFilterChip(
-            label: 'عروض',
-            icon: Icons.local_offer,
-            isSelected: _filterOffers,
-            onTap: () => setState(() => _filterOffers = !_filterOffers),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // زر فلتر "رتب حسب" مع قائمة منسدلة
-  Widget _buildSortFilterButton() {
-    final isSelected = _selectedSortOption != 'رتب حسب';
-    return GestureDetector(
-      onTap: () => _showSortOptionsBottomSheet(),
-      child: Container(
-        // إزالة الارتفاع الثابت واستخدام قيود مرنة بحيث يحتضن النص بدون فراغ زائد
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        constraints: const BoxConstraints(minHeight: 26),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.white,
-          // شكل كبسولة أنحف
-          borderRadius: BorderRadius.circular(50),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              _selectedSortOption,
-              style: TextStyle(
-                fontSize: 12.5,
-                color:
-                    isSelected ? AppColors.secondary : AppColors.textSecondary,
-                fontWeight: FontWeight.w500,
-                height: 1.05, // تقليل الفراغ العلوي والسفلي قدر الإمكان
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.keyboard_arrow_down,
-              size: 16,
-              color: isSelected ? AppColors.secondary : AppColors.textSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
+      );
+      if (!mounted || value == null) return;
+      setState(() {
+        _priceTier = value == 'all' ? null : value;
+        if (_priceTier == null)
+          _activeFilterIds.remove(f.id);
+        else
+          _activeFilterIds.add(f.id);
+      });
+    } else
+      setState(() {
+        if (!_activeFilterIds.add(f.id)) _activeFilterIds.remove(f.id);
+      });
+    await _prepareActiveFilters();
   }
 
   // عرض قائمة خيارات الترتيب
@@ -2615,62 +2827,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onTap: () {
         setState(() => _selectedSortOption = option);
         Navigator.pop(context);
-        // TODO: تطبيق الترتيب على قائمة المطاعم
+        _prepareActiveFilters();
       },
-    );
-  }
-
-  // بناء زر فلتر واحد
-  Widget _buildFilterChip({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-    IconData? icon,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        constraints: const BoxConstraints(minHeight: 22),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(50),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: 1,
-          ),
-        ),
-        child: Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 14,
-                  color:
-                      isSelected
-                          ? AppColors.secondary
-                          : AppColors.textSecondary,
-                ),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  color:
-                      isSelected
-                          ? AppColors.secondary
-                          : AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                  height: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -2680,27 +2838,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       HomeSlideshow(
         onTap: _openHomeSlide,
         onLayout: (layout) {
+          DiscoveryHistory.instance.load();
           if (mounted)
             setState(() {
+              if (_publishedLayoutScope != null &&
+                  _publishedLayoutScope != _homeLayoutScope) {
+                _filterRequest++;
+                _filterBusy = false;
+                _activeFilterIds.clear();
+                _priceTier = null;
+                _homeTopic = 'all';
+                _selectedSortOption = 'رتب حسب';
+              }
               _publishedHomeLayout = layout;
               _publishedLayoutScope = _homeLayoutScope;
+              _activeFilterIds.removeWhere(
+                (id) => !_filters.items.any((f) => f.id == id && f.enabled),
+              );
+              if (!_filters.enabled) {
+                _activeFilterIds.clear();
+                _priceTier = null;
+                _selectedSortOption = 'رتب حسب';
+              }
+              if (!_topics.any((r) => r.id == _homeTopic)) _homeTopic = 'all';
+              final nav = layout?.navigation;
+              if (nav == null
+                  ? ![
+                    'all',
+                    'restaurant',
+                    'store',
+                    'cafe',
+                    'grocery',
+                    'sweets',
+                  ].contains(_homeType)
+                  : !nav.enabled ||
+                      !nav.activitiesEnabled ||
+                      !nav.items.any(
+                        (r) =>
+                            r.id == _homeType &&
+                            ['all', 'activity'].contains(r.kind),
+                      )) {
+                _homeType = 'all';
+              }
             });
         },
       ),
-      TextButton.icon(
-        onPressed: _openPlatformBenefits,
-        icon: const Icon(Icons.card_giftcard),
-        label: Text(
-          Localizations.localeOf(context).languageCode == 'ar'
-              ? 'مزاياي من ويز'
-              : 'My Wizz benefits',
+      if (_publishedHomeLayout?.promotionHeader.enabled != true)
+        TextButton.icon(
+          onPressed: _openPlatformBenefits,
+          icon: const Icon(Icons.card_giftcard),
+          label: Text(
+            Localizations.localeOf(context).languageCode == 'ar'
+                ? 'مزاياي من ويز'
+                : 'My Wizz benefits',
+          ),
         ),
-      ),
     ],
   );
 
-  Future<void> _openPlatformBenefits() async {
-    final selected = await showPlatformBenefitsSheet(context);
+  Future<void> _openPlatformBenefits({String? benefitId}) async {
+    final selected = await showPlatformBenefitsSheet(
+      context,
+      benefitId: benefitId,
+    );
     if (!mounted || selected != true) return;
     final offer = PendingOffer.current;
     if (offer == null) return;
@@ -2782,113 +2982,223 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildManagedSection(HomeSection section) => Consumer<FavoritesModel>(
-    builder: (context, favorites, _) {
-      final stores =
-          selectHomeBusinesses(
-            section,
-            _allRealBusinesses,
-            facts: _publishedHomeLayout?.discovery ?? {},
-            isFavorite: favorites.isStoreFavorite,
-            point: BrowsingLocationService.instance.selection,
-            now: DateTime.now(),
-          ).map((business) => _businessToStore(business)).toList();
-      if (stores.isEmpty) return const SizedBox.shrink();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DiscoverySectionHeading(title: section.title),
-          if (section.layout == 'compactList')
-            for (final store in stores)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 5,
+  Widget _buildManagedPlacement(String placement) {
+    if (_showHomeResults ||
+        _publishedLayoutScope != _homeLayoutScope ||
+        _publishedHomeLayout?.configured != true) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final section in _publishedHomeLayout!.sections)
+          if (section.placement == placement &&
+              section.activeAt(DateTime.now()))
+            _buildManagedSection(section),
+      ],
+    );
+  }
+
+  Widget _buildManagedSection(HomeSection section) => ListenableBuilder(
+    listenable: DiscoveryHistory.instance,
+    builder:
+        (context, _) => Consumer<FavoritesModel>(
+          builder: (context, favorites, _) {
+            final stores =
+                selectHomeBusinesses(
+                  section,
+                  pastStores: DiscoveryHistory.instance.pastStores,
+                  recentStores: DiscoveryHistory.instance.recentStores,
+                  _allRealBusinesses.where(_homeMatches).toList(),
+                  facts: _publishedHomeLayout?.discovery ?? {},
+                  isFavorite: favorites.isStoreFavorite,
+                  point: BrowsingLocationService.instance.selection,
+                  now: DateTime.now(),
+                ).map((business) => _businessToStore(business)).toList();
+            if (stores.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DiscoverySectionHeading(
+                  title: section.title,
+                  onViewAll: () => _openHomeSection(section),
                 ),
-                child: Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(10),
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SizedBox(
-                        width: 66,
-                        height: 66,
-                        child:
-                            store.image.isEmpty
-                                ? const Icon(
-                                  Icons.restaurant_rounded,
-                                  color: discoveryInk,
-                                )
-                                : Image.network(
-                                  store.image,
-                                  fit: BoxFit.cover,
-                                  errorBuilder:
-                                      (_, __, ___) => const Icon(
+                if (section.layout == 'compactList')
+                  for (final store in stores)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 5,
+                      ),
+                      child: Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.all(10),
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: SizedBox(
+                              width: 66,
+                              height: 66,
+                              child:
+                                  store.image.isEmpty
+                                      ? const Icon(
                                         Icons.restaurant_rounded,
                                         color: discoveryInk,
+                                      )
+                                      : Image.network(
+                                        store.image,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (_, __, ___) => const Icon(
+                                              Icons.restaurant_rounded,
+                                              color: discoveryInk,
+                                            ),
+                                      ),
+                            ),
+                          ),
+                          title: Text(
+                            store.name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: discoveryInk,
+                            ),
+                          ),
+                          subtitle: Text(
+                            store.ratingLabel,
+                            style: const TextStyle(color: discoveryInk),
+                          ),
+                          trailing: const Icon(
+                            Icons.chevron_left,
+                            color: discoveryInk,
+                          ),
+                          onTap:
+                              () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) => StoreDetailScreen(
+                                        store: store,
+                                        initialClassification:
+                                            _selectedMenuClassification,
                                       ),
                                 ),
+                              ),
+                        ),
                       ),
                     ),
-                    title: Text(
-                      store.name,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: discoveryInk,
-                      ),
-                    ),
-                    subtitle: Text(
-                      store.ratingLabel,
-                      style: const TextStyle(color: discoveryInk),
-                    ),
-                    trailing: const Icon(
-                      Icons.chevron_left,
-                      color: discoveryInk,
-                    ),
-                    onTap:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => StoreDetailScreen(store: store),
+                if (section.layout != 'compactList')
+                  DiscoveryHorizontalList(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: stores.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder:
+                        (context, index) => SizedBox(
+                          width: 228,
+                          child: EnhancedRestaurantCard(
+                            store: stores[index],
+                            isCompact: true,
+                            onTap:
+                                () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => StoreDetailScreen(
+                                          store: stores[index],
+                                          initialClassification:
+                                              _selectedMenuClassification,
+                                        ),
+                                  ),
+                                ),
                           ),
                         ),
                   ),
+              ],
+            );
+          },
+        ),
+  );
+
+  void _openHomeSection(HomeSection section) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder:
+            (pageContext) => Directionality(
+              textDirection: TextDirection.rtl,
+              child: Scaffold(
+                backgroundColor: Colors.white,
+                appBar: AppBar(
+                  backgroundColor: Colors.white,
+                  foregroundColor: discoveryInk,
+                  title: Text(section.title),
+                  centerTitle: true,
+                ),
+                body: ListenableBuilder(
+                  listenable: DiscoveryHistory.instance,
+                  builder:
+                      (_, __) => Consumer<FavoritesModel>(
+                        builder: (_, favorites, __) {
+                          final stores =
+                              selectHomeBusinesses(
+                                    section,
+                                    _allRealBusinesses
+                                        .where(_homeMatches)
+                                        .toList(),
+                                    facts:
+                                        _publishedHomeLayout?.discovery ?? {},
+                                    isFavorite: favorites.isStoreFavorite,
+                                    point:
+                                        BrowsingLocationService
+                                            .instance
+                                            .selection,
+                                    now: DateTime.now(),
+                                    pastStores:
+                                        DiscoveryHistory.instance.pastStores,
+                                    recentStores:
+                                        DiscoveryHistory.instance.recentStores,
+                                    applyLimit: false,
+                                  )
+                                  .map((business) => _businessToStore(business))
+                                  .toList();
+                          if (stores.isEmpty) {
+                            return const Center(
+                              child: Text('لا توجد نتائج متاحة حاليًا'),
+                            );
+                          }
+                          return ListView.builder(
+                            padding: const EdgeInsets.only(top: 12, bottom: 24),
+                            itemCount: stores.length,
+                            itemBuilder: (_, index) {
+                              final store = stores[index];
+                              return EnhancedRestaurantCard(
+                                key: ValueKey(store.id),
+                                store: store,
+                                isCompact: false,
+                                isFeed: true,
+                                feedImageAspectRatio: 1.55 / .75,
+                                onTap:
+                                    () => Navigator.of(pageContext).push(
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => StoreDetailScreen(
+                                              store: store,
+                                              initialClassification:
+                                                  _selectedMenuClassification,
+                                            ),
+                                      ),
+                                    ),
+                              );
+                            },
+                          );
+                        },
+                      ),
                 ),
               ),
-          if (section.layout != 'compactList')
-            SizedBox(
-              height: 270,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: stores.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder:
-                    (context, index) => SizedBox(
-                      width: 228,
-                      child: EnhancedRestaurantCard(
-                        store: stores[index],
-                        isCompact: true,
-                        onTap:
-                            () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder:
-                                    (_) =>
-                                        StoreDetailScreen(store: stores[index]),
-                              ),
-                            ),
-                      ),
-                    ),
-              ),
             ),
-        ],
-      );
-    },
-  );
+      ),
+    );
+  }
 
   Widget _buildStoresSection() {
     developer.log('🏗️ _buildStoresSection() - بدء بناء قسم المطاعم');
@@ -2911,28 +3221,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_publishedLayoutScope == _homeLayoutScope &&
-            _publishedHomeLayout?.configured == true) ...[
-          for (final section in _publishedHomeLayout!.sections)
-            if (section.activeAt(DateTime.now())) _buildManagedSection(section),
-        ] else ...[
-          _buildNewArrivalsSection(),
-          _buildNearestStoresSection(),
-          _buildPopularStoresSection(),
+        if (!_showHomeResults) ...[
+          if (_publishedLayoutScope == _homeLayoutScope &&
+              _publishedHomeLayout?.configured == true) ...[
+            _buildManagedPlacement('afterSlideshow'),
+          ] else ...[
+            _buildNewArrivalsSection(),
+            _buildNearestStoresSection(),
+            _buildPopularStoresSection(),
+          ],
         ],
-
         // قسم جميع المطاعم
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text(
-            'جميع المطاعم',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-        ),
+        if (!_showHomeResults)
+          const DiscoverySectionHeading(title: 'جميع المطاعم'),
         // ✅ استخدام Builder مباشرة بدون Consumer لأن البيانات تأتي من _allRealBusinesses (state محلي)
         Builder(
           builder: (context) {
@@ -2969,6 +3270,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 for (var i = 0; i < _allRealBusinesses.length; i++) {
                   try {
                     final business = _allRealBusinesses[i];
+                    if (!_homeMatches(business)) continue;
                     developer.log(
                       '🔄 [${i + 1}/${_allRealBusinesses.length}] تحويل: ${business.businessName}',
                     );
@@ -2998,59 +3300,111 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             }
 
+            Widget resultsHeader() => HomeResultsHeading(
+              count:
+                  _filterBusy || _isLoadingRealData ? null : allStores.length,
+              onReset: _resetHomeResults,
+            );
             // إذا لم تكن هناك بيانات حقيقية، عرض رسالة التحميل
-            if (allStores.isEmpty && _isLoadingRealData) {
+            if (allStores.isEmpty && (_isLoadingRealData || _filterBusy)) {
               developer.log('⏳ عرض مؤشر التحميل...');
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text(
-                        'جاري تحميل المطاعم...',
-                        style: TextStyle(color: Colors.grey),
+              return Column(
+                children: [
+                  if (_showHomeResults) resultsHeader(),
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text(
+                            'جاري تحميل المطاعم...',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               );
             }
 
             // إذا لم تكن هناك بيانات حقيقية وانتهى التحميل، عرض رسالة فارغة
-            if (allStores.isEmpty && !_isLoadingRealData) {
+            if (allStores.isEmpty && !_isLoadingRealData && !_filterBusy) {
               developer.log('❌ لا توجد مطاعم لعرضها');
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      Icon(Icons.restaurant, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text(
-                        'لا توجد مطاعم متاحة حالياً',
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
+              return Column(
+                children: [
+                  if (_showHomeResults) resultsHeader(),
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Column(
+                        children: [
+                          Icon(Icons.restaurant, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'لا توجد نتائج تطابق اختياراتك',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'جرّب تعديل الفلاتر أو اختيار تصنيف آخر',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 8),
-                      Text(
-                        'يرجى المحاولة مرة أخرى لاحقاً',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               );
             }
 
+            double routeNumber(Store store, String field) {
+              final data = StorefrontPricing.instance.peekRoute(store.id)?.data;
+              final v = data?[field];
+              if (v is num) return v.toDouble();
+              if (field == 'arrivalMinutes' && v is Map && v['maximum'] is num)
+                return (v['maximum'] as num).toDouble();
+              return double.infinity;
+            }
+
+            switch (_selectedSortOption) {
+              case 'أعلى تقييماً':
+                allStores.sort(
+                  (a, b) => b.ratingValue.compareTo(a.ratingValue),
+                );
+                break;
+              case 'أ-ي':
+                allStores.sort((a, b) => a.name.compareTo(b.name));
+                break;
+              case 'الأقرب':
+                allStores.sort(
+                  (a, b) => routeNumber(
+                    a,
+                    'roadDistanceMeters',
+                  ).compareTo(routeNumber(b, 'roadDistanceMeters')),
+                );
+                break;
+              case 'الأسرع توصيلاً':
+                allStores.sort(
+                  (a, b) => routeNumber(
+                    a,
+                    'arrivalMinutes',
+                  ).compareTo(routeNumber(b, 'arrivalMinutes')),
+                );
+                break;
+            }
             developer.log('✅ عرض ${allStores.length} مطعم في القائمة');
             return Consumer<FavoritesModel>(
               builder: (context, favModel, child) {
                 return Column(
                   children: [
+                    if (_showHomeResults) resultsHeader(),
                     ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
+                      padding: EdgeInsets.zero,
                       itemCount: allStores.length,
                       itemBuilder: (context, index) {
                         final store = allStores[index];
@@ -3058,8 +3412,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           key: ValueKey(store.id),
                           store: store,
                           isCompact: false,
+                          isFeed: true,
+                          feedImageAspectRatio:
+                              _showHomeResults ? 1.55 / .75 : 1.55,
                           heroTag: 'store_image_${store.id}',
                           onTap: () {
+                            _consumeWelcome();
                             developer.log(
                               '🏪 تم النقر على المطعم: ${store.name}',
                             );
@@ -3068,8 +3426,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 context,
                                 MaterialPageRoute(
                                   builder:
-                                      (context) =>
-                                          StoreDetailScreen(store: store),
+                                      (context) => StoreDetailScreen(
+                                        store: store,
+                                        initialClassification:
+                                            _selectedMenuClassification,
+                                      ),
                                 ),
                               );
                             } catch (e) {
@@ -3122,12 +3483,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     switch (_selectedTabIndex) {
       case 1:
         return _buildFavoritesTab();
+      case 2:
+        return const NotificationsScreen();
       case 3:
         return _buildMapScreen();
       case 4:
         return const OrdersScreen();
       case 5:
-        return const ImprovedAccountScreen();
+        return ImprovedAccountScreen(
+          favoritesBuilder: (_) => _buildFavoritesTab(),
+        );
       default:
         return _buildHomeContentWithStickySearch();
     }
@@ -3155,34 +3520,82 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return MapScreenNew(businesses: _allRealBusinesses);
   }
 
-  Widget _buildBottomNavigation() {
-    return Consumer<AppStateProvider>(
-      builder: (context, appState, child) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (appState.cartItemsCount > 0)
-              AnimatedCartBar(
-                storeName: _getStoreNameFromCart(appState),
-                isExpanded: false,
-                storeId: _getStoreIdFromCart(appState),
-                stores:
-                    _allRealBusinesses
-                        .map(
-                          (business) =>
-                              _businessToStore(business, showDistance: true),
-                        )
-                        .toList(),
-              ),
-            CustomBottomNavigation(
-              currentIndex: _selectedTabIndex,
-              onTap: (index) => setState(() => _selectedTabIndex = index),
+  void _openBottomCart() {
+    final appState = context.read<AppStateProvider>();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => CartScreen(
+              storeId: _getStoreIdFromCart(appState),
+              storeName: _getStoreNameFromCart(appState),
+              stores:
+                  _allRealBusinesses
+                      .map((b) => _businessToStore(b, showDistance: true))
+                      .toList(),
             ),
-          ],
-        );
-      },
+      ),
     );
   }
+
+  Future<void> _openBottomSearch() async {
+    _consumeWelcome();
+    final result = await showSearch<BusinessModel?>(
+      context: context,
+      delegate: _RestaurantSearchDelegate(_allRealBusinesses),
+    );
+    if (result != null &&
+        mounted &&
+        _allRealBusinesses.any((b) => b.id == result.id))
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (_) => StoreDetailScreen(
+                store: _businessToStore(result, showDistance: true),
+              ),
+        ),
+      );
+  }
+
+  Widget _buildBottomNavigation() => Consumer<AppStateProvider>(
+    builder:
+        (context, appState, _) => CustomBottomNavigation(
+          currentIndex: _selectedTabIndex,
+          searchHints: List<String>.from(
+            _publishedHomeLayout?.welcome['searchHints'] ??
+                const ['ابحث عن مطعم أو متجر'],
+          ),
+          hintIntervalSeconds:
+              (_publishedHomeLayout?.welcome['intervalSeconds'] as num?)
+                  ?.toInt() ??
+              5,
+          cartCount: appState.cartItemsCount,
+          onTap: (index) {
+            if (index == 6) {
+              _openBottomSearch();
+              return;
+            }
+            if (index == 7) {
+              _openBottomCart();
+              return;
+            }
+            if (index == 5) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (_) => ImprovedAccountScreen(
+                        favoritesBuilder: (_) => _buildFavoritesTab(),
+                      ),
+                ),
+              );
+              return;
+            }
+            setState(() => _selectedTabIndex = index);
+          },
+        ),
+  );
 
   // دوال الأقسام المختلفة
   Widget _buildNewArrivalsSection() {
@@ -3201,44 +3614,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'جديد في ويز',
               subtitle: 'اكتشف مطاعم انضمت حديثًا',
             ),
-            SizedBox(
-              height: 270,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: newStores.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    width: 228,
-                    margin: const EdgeInsets.only(left: 12),
-                    child: EnhancedRestaurantCard(
-                      key: ValueKey(newStores[index].id),
-                      store: newStores[index],
-                      isCompact: true,
-                      onTap: () {
-                        developer.log(
-                          '🏪 تم النقر على المطعم: ${newStores[index].name}',
+            DiscoveryHorizontalList(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: newStores.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  width: 228,
+                  margin: const EdgeInsets.only(left: 12),
+                  child: EnhancedRestaurantCard(
+                    key: ValueKey(newStores[index].id),
+                    store: newStores[index],
+                    isCompact: true,
+                    onTap: () {
+                      developer.log(
+                        '🏪 تم النقر على المطعم: ${newStores[index].name}',
+                      );
+                      try {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) => StoreDetailScreen(
+                                  store: newStores[index],
+                                  initialClassification:
+                                      _selectedMenuClassification,
+                                ),
+                          ),
                         );
-                        try {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => StoreDetailScreen(
-                                    store: newStores[index],
-                                  ),
-                            ),
-                          );
-                        } catch (e) {
-                          developer.log(
-                            '❌ خطأ في التنقل إلى StoreDetailScreen: $e',
-                          );
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
+                      } catch (e) {
+                        developer.log(
+                          '❌ خطأ في التنقل إلى StoreDetailScreen: $e',
+                        );
+                      }
+                    },
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 16),
           ],
@@ -3263,44 +3674,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'مطاعم في منطقتك',
               subtitle: 'خيارات توصل إلى منطقتك',
             ),
-            SizedBox(
-              height: 270,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: nearbyStores.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    width: 228,
-                    margin: const EdgeInsets.only(left: 12),
-                    child: EnhancedRestaurantCard(
-                      key: ValueKey(nearbyStores[index].id),
-                      store: nearbyStores[index],
-                      isCompact: true,
-                      onTap: () {
-                        developer.log(
-                          '🏪 تم النقر على المطعم: ${nearbyStores[index].name}',
+            DiscoveryHorizontalList(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: nearbyStores.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  width: 228,
+                  margin: const EdgeInsets.only(left: 12),
+                  child: EnhancedRestaurantCard(
+                    key: ValueKey(nearbyStores[index].id),
+                    store: nearbyStores[index],
+                    isCompact: true,
+                    onTap: () {
+                      developer.log(
+                        '🏪 تم النقر على المطعم: ${nearbyStores[index].name}',
+                      );
+                      try {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) => StoreDetailScreen(
+                                  store: nearbyStores[index],
+                                  initialClassification:
+                                      _selectedMenuClassification,
+                                ),
+                          ),
                         );
-                        try {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => StoreDetailScreen(
-                                    store: nearbyStores[index],
-                                  ),
-                            ),
-                          );
-                        } catch (e) {
-                          developer.log(
-                            '❌ خطأ في التنقل إلى StoreDetailScreen: $e',
-                          );
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
+                      } catch (e) {
+                        developer.log(
+                          '❌ خطأ في التنقل إلى StoreDetailScreen: $e',
+                        );
+                      }
+                    },
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 16),
           ],
@@ -3325,44 +3734,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'الأعلى تقييمًا',
               subtitle: 'اختيارات حسب تقييمات الزبائن',
             ),
-            SizedBox(
-              height: 270,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: popularStores.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    width: 228,
-                    margin: const EdgeInsets.only(left: 12),
-                    child: EnhancedRestaurantCard(
-                      key: ValueKey(popularStores[index].id),
-                      store: popularStores[index],
-                      isCompact: true,
-                      onTap: () {
-                        developer.log(
-                          '🏪 تم النقر على المطعم: ${popularStores[index].name}',
+            DiscoveryHorizontalList(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: popularStores.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  width: 228,
+                  margin: const EdgeInsets.only(left: 12),
+                  child: EnhancedRestaurantCard(
+                    key: ValueKey(popularStores[index].id),
+                    store: popularStores[index],
+                    isCompact: true,
+                    onTap: () {
+                      developer.log(
+                        '🏪 تم النقر على المطعم: ${popularStores[index].name}',
+                      );
+                      try {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) => StoreDetailScreen(
+                                  store: popularStores[index],
+                                  initialClassification:
+                                      _selectedMenuClassification,
+                                ),
+                          ),
                         );
-                        try {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => StoreDetailScreen(
-                                    store: popularStores[index],
-                                  ),
-                            ),
-                          );
-                        } catch (e) {
-                          developer.log(
-                            '❌ خطأ في التنقل إلى StoreDetailScreen: $e',
-                          );
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
+                      } catch (e) {
+                        developer.log(
+                          '❌ خطأ في التنقل إلى StoreDetailScreen: $e',
+                        );
+                      }
+                    },
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 16),
           ],
@@ -3517,5 +3924,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return appState.cartItems.first['store_id'] as String?;
     }
     return null;
+  }
+}
+
+class _RestaurantSearchDelegate extends SearchDelegate<BusinessModel?> {
+  final List<BusinessModel> businesses;
+  _RestaurantSearchDelegate(this.businesses)
+    : super(searchFieldLabel: 'ابحث عن مطعم أو متجر');
+  @override
+  List<Widget> buildActions(BuildContext context) => [
+    if (query.isNotEmpty)
+      IconButton(
+        tooltip: 'مسح البحث',
+        onPressed: () => query = '',
+        icon: const Icon(Icons.close),
+      ),
+  ];
+  @override
+  Widget buildLeading(BuildContext context) =>
+      BackButton(onPressed: () => close(context, null));
+  @override
+  Widget buildResults(BuildContext context) => buildSuggestions(context);
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final rows =
+        businesses
+            .where(
+              (b) => b.businessName.toLowerCase().contains(
+                query.trim().toLowerCase(),
+              ),
+            )
+            .toList();
+    if (rows.isEmpty)
+      return const Center(child: Text('لا توجد نتائج مطابقة في منطقتك'));
+    return ListView.builder(
+      itemCount: rows.length,
+      itemBuilder:
+          (_, i) => ListTile(
+            leading: const Icon(Icons.storefront_outlined),
+            title: Text(rows[i].businessName),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => close(context, rows[i]),
+          ),
+    );
   }
 }

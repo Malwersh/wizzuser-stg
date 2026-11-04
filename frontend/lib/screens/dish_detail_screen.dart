@@ -1,3 +1,8 @@
+import '../models/interface_layout.dart';
+import '../services/interface_layout_service.dart';
+import '../services/discovery_history.dart';
+import '../services/session_service.dart';
+import '../widgets/interface_product_section.dart';
 import '../services/menu_offer_pricing.dart';
 import '../widgets/menu_item_price.dart';
 import '../utils/currency_format.dart';
@@ -87,9 +92,16 @@ class DishDetailScreen extends StatefulWidget {
   State<DishDetailScreen> createState() => _DishDetailScreenState();
 }
 
-class _DishDetailScreenState extends State<DishDetailScreen> {
+class _DishDetailScreenState extends State<DishDetailScreen>
+    with WidgetsBindingObserver {
   final Map<String, Set<String>> _selectedOptions = {};
   int _quantity = 1;
+  final _interfaceSession = InterfaceScreenSession();
+  InterfaceLayout? get _interfaceLayout =>
+      _interfaceSession.current(InterfaceLayoutService.instance.scope);
+  List<ProductModel> _relatedCatalog = [];
+  DateTime? _relatedCatalogLoadedAt;
+  String? _relatedCatalogScope;
   String? _specialInstructions;
 
   // بيانات حقيقية من الباك إند
@@ -101,6 +113,7 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // استخدام البيانات الممررة إذا كانت متوفرة، وإلا جلبها من API
     developer.log('🔍 DishDetailScreen.initState:');
@@ -127,6 +140,11 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
     }
 
     _ensureOptionKeys();
+    _loadInterface(force: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted)
+        DiscoveryHistory.instance.viewedProduct(widget.storeId, widget.dish.id);
+    });
   }
 
   /// 🔥 مجموعات الخيارات الفعّالة: الخيارات المضمنة في Dish أولاً،
@@ -206,6 +224,7 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -588,6 +607,209 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted)
+      _loadInterface(force: true, apply: false);
+  }
+
+  Future<void> _loadInterface({bool force = false, bool apply = true}) async {
+    final owner = InterfaceLayoutService.instance.scope;
+    try {
+      final layout = await InterfaceLayoutService.instance.load(
+        'product',
+        widget.storeId,
+        force: force,
+      );
+      if (!mounted || owner != InterfaceLayoutService.instance.scope) return;
+      if (!_interfaceSession.accept(owner, layout, apply: apply)) return;
+      setState(() {});
+      if ((_relatedCatalogScope != owner ||
+              _relatedCatalogLoadedAt == null ||
+              DateTime.now().difference(_relatedCatalogLoadedAt!) >=
+                  const Duration(minutes: 1)) &&
+          layout.configured &&
+          layout.sections.any(
+            (s) => !['description', 'choices', 'notes'].contains(s.source),
+          )) {
+        final catalog = await BusinessService.getBusinessCategoriesAndProducts(
+          widget.storeId,
+        );
+        await DiscoveryHistory.instance.load();
+        if (mounted && owner == InterfaceLayoutService.instance.scope)
+          setState(() {
+            _relatedCatalog = catalog.values.expand((p) => p).toList();
+            _relatedCatalogLoadedAt = DateTime.now();
+            _relatedCatalogScope = owner;
+          });
+      }
+    } catch (_) {
+      /* Required options and safe built-in product details remain. */
+    }
+  }
+
+  List<InterfaceSection> _productSections() {
+    if (_interfaceLayout?.configured == true) return _interfaceLayout!.sections;
+    return [
+      {'id': 'description', 'title': 'عن المنتج', 'source': 'description'},
+      {'id': 'choices', 'title': 'خصص طلبك', 'source': 'choices'},
+      {'id': 'notes', 'title': 'ملاحظات التحضير', 'source': 'notes'},
+    ].map((j) => InterfaceSection.fromJson({...j, 'limit': 12})).toList();
+  }
+
+  List<Widget> _buildProductSections() {
+    final output = <Widget>[],
+        seen = <String>{},
+        history = DiscoveryHistory.instance;
+    for (final section in _productSections()) {
+      if (!section.visible(SessionService.instance.isLoggedIn, DateTime.now()))
+        continue;
+      if (section.source == 'description') {
+        if (_productDescription.isNotEmpty)
+          output.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    section.title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: discoveryInk,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _productDescription,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.7,
+                      color: Color(0xFF59687B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+      } else if (section.source == 'choices') {
+        if (_optionGroups.isNotEmpty)
+          output.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                section.title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: discoveryInk,
+                ),
+              ),
+            ),
+          );
+        for (final group in _optionGroups)
+          output.add(
+            MealChoiceGroup(
+              group: group,
+              selected: _selectedOptions[group.id] ?? {},
+              onChanged: (ids) {
+                if (!_addingToCart)
+                  setState(() => _selectedOptions[group.id] = ids);
+              },
+            ),
+          );
+      } else if (section.source == 'notes') {
+        output.add(
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              leading: const Icon(Icons.edit_note_rounded, color: discoveryInk),
+              title: Text(
+                section.title,
+                style: TextStyle(
+                  color: discoveryInk,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              subtitle: Text(
+                _specialInstructions?.isNotEmpty == true
+                    ? _specialInstructions!
+                    : 'اختياري · تعليمات التحضير فقط',
+                style: const TextStyle(color: Color(0xFF647184), fontSize: 13),
+              ),
+              trailing: const Icon(Icons.chevron_left, color: discoveryInk),
+              onTap: _addingToCart ? null : _editInstructions,
+            ),
+          ),
+        );
+      } else {
+        final prices =
+            _relatedCatalog
+                .where(
+                  (p) =>
+                      MenuOfferPricing.instance.price(
+                        widget.storeId,
+                        p.id,
+                        p.price,
+                      ) !=
+                      null,
+                )
+                .map((p) => p.id)
+                .toSet();
+        final products = selectInterfaceProducts(
+          section,
+          _relatedCatalog,
+          discounted: prices,
+          previous: history.products(widget.storeId),
+          recent: history.recentProducts(widget.storeId),
+          current: _productData,
+          counts: _interfaceLayout?.counts ?? {},
+          seen: seen,
+        );
+        seen.addAll(products.map((p) => p.id));
+        output.add(
+          InterfaceProductSection(
+            section: section,
+            products: products,
+            available: (p) => p.isAvailable,
+            reason: (p) => p.isAvailable ? null : 'غير متاح',
+            onOpen: _openRelated,
+            onAdd: _openRelated,
+          ),
+        );
+      }
+    }
+    return output;
+  }
+
+  void _openRelated(ProductModel product) {
+    if (_addingToCart || !product.isAvailable) return;
+    showDishDetailBottomSheet(
+      context,
+      dish: Dish(
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        imageUrls: product.imageUrl.isEmpty ? [] : [product.imageUrl],
+        likesPercent: 0,
+        likesCount: 0,
+        basePrice: product.price,
+        optionGroups: [],
+      ),
+      storeId: widget.storeId,
+      storeName: widget.storeName,
+      storeAddress: widget.storeAddress,
+      productData: product,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final photo = _productImageUrl;
     return Directionality(
@@ -661,33 +883,21 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    formatIqd(_productPrice),
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      color: discoveryInk,
-                    ),
-                  ),
-                  if (_selectedOptions.values.every((v) => v.isEmpty)) ...[
-                    const SizedBox(height: 10),
+                  if (_selectedOptions.values.every((v) => v.isEmpty))
                     MenuItemPrice(
                       branch: widget.storeId,
                       product: widget.dish.id,
                       original: _productPrice,
-                    ),
-                  ],
-                  if (_productDescription.isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                    )
+                  else
                     Text(
-                      _productDescription,
+                      formatIqd(_productPrice),
                       style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF59687B),
-                        height: 1.7,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: discoveryInk,
                       ),
                     ),
-                  ],
                 ],
               ),
             ),
@@ -711,51 +921,7 @@ class _DishDetailScreenState extends State<DishDetailScreen> {
                         label: const Text('إعادة تحميل التفاصيل'),
                       ),
                     ),
-                  for (final group in _optionGroups)
-                    MealChoiceGroup(
-                      group: group,
-                      selected: _selectedOptions[group.id] ?? {},
-                      onChanged: (ids) {
-                        if (_addingToCart) return;
-                        setState(() => _selectedOptions[group.id] = ids);
-                      },
-                    ),
-                  Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      leading: const Icon(
-                        Icons.edit_note_rounded,
-                        color: discoveryInk,
-                      ),
-                      title: const Text(
-                        'ملاحظات للمطعم',
-                        style: TextStyle(
-                          color: discoveryInk,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                      subtitle: Text(
-                        _specialInstructions?.isNotEmpty == true
-                            ? _specialInstructions!
-                            : 'اختياري · تعليمات التحضير فقط',
-                        style: const TextStyle(
-                          color: Color(0xFF647184),
-                          fontSize: 13,
-                        ),
-                      ),
-                      trailing: const Icon(
-                        Icons.chevron_left,
-                        color: discoveryInk,
-                      ),
-                      onTap: _addingToCart ? null : _editInstructions,
-                    ),
-                  ),
+                  ..._buildProductSections(),
                 ],
               ),
             ),

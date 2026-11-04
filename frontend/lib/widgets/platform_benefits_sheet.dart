@@ -8,6 +8,7 @@ import '../services/session_service.dart';
 Future<bool?> showPlatformBenefitsSheet(
   BuildContext context, {
   String? branchId,
+  String? benefitId,
 }) => showModalBottomSheet<bool>(
   context: context,
   isScrollControlled: true,
@@ -25,18 +26,20 @@ Future<bool?> showPlatformBenefitsSheet(
         builder:
             (_, controller) => PlatformBenefitsSheet(
               branchId: branchId,
+              benefitId: benefitId,
               controller: controller,
             ),
       ),
 );
 
 class PlatformBenefitsSheet extends StatefulWidget {
-  final String? branchId;
+  final String? branchId, benefitId;
   final ScrollController? controller;
   final Future<List<PlatformBenefit>> Function()? loader;
   const PlatformBenefitsSheet({
     super.key,
     this.branchId,
+    this.benefitId,
     this.controller,
     this.loader,
   });
@@ -56,7 +59,13 @@ class _PlatformBenefitsSheetState extends State<PlatformBenefitsSheet> {
 
   void reload() {
     account = SessionService.instance.currentUserId;
-    pending = widget.loader?.call() ?? service.load(branchId: widget.branchId);
+    pending = (widget.loader?.call() ?? service.load(branchId: widget.branchId))
+        .then(
+          (rows) =>
+              widget.benefitId == null
+                  ? rows
+                  : rows.where((b) => b.id == widget.benefitId).toList(),
+        );
   }
 
   @override

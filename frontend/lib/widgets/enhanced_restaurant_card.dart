@@ -1,4 +1,5 @@
 import 'storefront_value.dart';
+import 'discovery/restaurant_feed_tile.dart';
 import 'discovery/customer_components.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -16,6 +17,8 @@ class EnhancedRestaurantCard extends StatefulWidget {
   final Store store;
   final Function()? onTap;
   final bool isCompact;
+  final bool isFeed;
+  final double feedImageAspectRatio;
   final bool showFavoriteButton;
   final bool showStatusBadge;
 
@@ -29,6 +32,8 @@ class EnhancedRestaurantCard extends StatefulWidget {
     required this.store,
     this.onTap,
     this.isCompact = false,
+    this.isFeed = false,
+    this.feedImageAspectRatio = 1.55,
     this.showFavoriteButton = true,
     this.showStatusBadge = true,
     this.heroTag,
@@ -44,7 +49,6 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
   late final SubscriptionManager _subscriptionManager;
   String _subscriberId = '';
   RestaurantAvailabilityStatus? _availabilityStatus;
-  bool _isLoadingStatus = true;
   StreamSubscription<Map<String, dynamic>>? _businessStatusSubscription;
   Timer? _statusRefreshTimer; // تحديث صامت دوري من الكاش
   DateTime? _lastUpdateTime; // لمنع التحديثات المتكررة (debouncing)
@@ -119,7 +123,6 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       if (changed && mounted) {
         setState(() {
           _availabilityStatus = newStatus;
-          _isLoadingStatus = false;
           _lastUpdateTime = now; // تسجيل وقت التحديث
         });
       }
@@ -358,7 +361,6 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
         if (mounted) {
           setState(() {
             _availabilityStatus = updatedStatus;
-            _isLoadingStatus = false; // التأكد من عدم وجود حالة تحميل
           });
 
           debugPrint('⚡ تم تحديث فوري للحالة:');
@@ -619,13 +621,11 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       if (mounted) {
         setState(() {
           _availabilityStatus = status;
-          _isLoadingStatus = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isLoadingStatus = false;
           // Default to available status on error - يفضل إظهار المطعم كمتاح بدلاً من مغلق عند فشل التحميل
           _availabilityStatus = RestaurantAvailabilityStatus(
             businessId: widget.store.id,
@@ -647,35 +647,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
   Widget _buildStatusBadge() {
     if (!widget.showStatusBadge) return SizedBox.shrink();
 
-    if (_isLoadingStatus) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.withOpacity(0.3), width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              'يحدث...',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    if (_availabilityStatus == null) return const SizedBox.shrink();
 
     final isWithinWorkingHours =
         _availabilityStatus?.isWithinWorkingHours ?? false;
@@ -692,23 +664,20 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF9800).withOpacity(0.1), // برتقالي
+          color: const Color(0xFFC62828),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: const Color(0xFFFF9800).withOpacity(0.3),
-            width: 1,
-          ),
+          border: Border.all(color: const Color(0xFFC62828), width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.access_time, size: 10, color: const Color(0xFFFF9800)),
+            Icon(Icons.access_time, size: 10, color: Colors.white),
             const SizedBox(width: 4),
             Text(
               'مغلق',
               style: TextStyle(
                 fontSize: 10,
-                color: const Color(0xFFFF9800),
+                color: Colors.white,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -797,6 +766,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isFeed) return _buildFeedCard();
     if (widget.isCompact) {
       return _buildCompactCard();
     } else {
@@ -869,15 +839,23 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.store.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: discoveryInk,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.store.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: discoveryInk,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _buildStatusBadge(),
+                        ],
                       ),
                       const SizedBox(height: 7),
                       Row(
@@ -900,6 +878,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                             child: StorefrontValue(
                               branchId: widget.store.id,
                               field: StorefrontField.arrival,
+                              compact: true,
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF647184),
@@ -921,6 +900,7 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                             child: StorefrontValue(
                               branchId: widget.store.id,
                               field: StorefrontField.fee,
+                              compact: true,
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: discoveryInk,
@@ -929,8 +909,6 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 7),
-                      _buildStatusBadge(),
                     ],
                   ),
                 ),
@@ -938,6 +916,110 @@ class _EnhancedRestaurantCardState extends State<EnhancedRestaurantCard> {
             ),
           ),
         ),
+  );
+
+  Widget _buildFeedCard() => Consumer<FavoritesModel>(
+    builder: (context, favorites, _) {
+      const ink = Color(0xFF00296B), muted = Color(0xFF536175);
+      const metadataStyle = TextStyle(fontSize: 13, color: muted);
+      return RestaurantFeedTile(
+        imageAspectRatio: widget.feedImageAspectRatio,
+        name: widget.store.name,
+        onTap: widget.onTap,
+        photo: _buildCardImage(
+          width: double.infinity,
+          height: double.infinity,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        favorite:
+            !widget.showFavoriteButton
+                ? const SizedBox.shrink()
+                : IconButton(
+                  tooltip:
+                      favorites.isStoreFavorite(widget.store.id)
+                          ? 'إزالة من المحفوظة'
+                          : 'حفظ المطعم',
+                  icon: Icon(
+                    favorites.isStoreFavorite(widget.store.id)
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    size: 24,
+                    color:
+                        favorites.isStoreFavorite(widget.store.id)
+                            ? ink
+                            : muted,
+                  ),
+                  onPressed: () async {
+                    HapticFeedback.lightImpact();
+                    try {
+                      await favorites.toggleStoreFavorite(
+                        widget.store.id,
+                        widget.store.name,
+                        storeImage: widget.store.image,
+                        storeCategory: widget.store.category,
+                      );
+                    } catch (_) {
+                      if (context.mounted)
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('تعذر تحديث المحفوظة. أعد المحاولة.'),
+                          ),
+                        );
+                    }
+                  },
+                ),
+        metadata: Wrap(
+          spacing: 8,
+          runSpacing: 5,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.star_rounded, size: 16, color: ink),
+                const SizedBox(width: 3),
+                Text(widget.store.ratingLabel, style: metadataStyle),
+                if ((int.tryParse(widget.store.reviews) ?? 0) > 0)
+                  Text(' (${widget.store.reviews})', style: metadataStyle),
+              ],
+            ),
+            const Text('·', style: metadataStyle),
+            StorefrontValue(
+              branchId: widget.store.id,
+              field: StorefrontField.arrival,
+              initialPreparationMinutes: widget.store.averagePreparationMinutes,
+              requestDebounce: const Duration(milliseconds: 300),
+              style: metadataStyle,
+            ),
+            if (widget.store.category?.isNotEmpty == true) ...[
+              const Text('·', style: metadataStyle),
+              Text(widget.store.category!, style: metadataStyle),
+            ],
+          ],
+        ),
+        delivery: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.delivery_dining_outlined, size: 17, color: ink),
+            const SizedBox(width: 5),
+            const Text('التوصيل ', style: metadataStyle),
+            Flexible(
+              child: StorefrontValue(
+                branchId: widget.store.id,
+                field: StorefrontField.fee,
+                requestDebounce: const Duration(milliseconds: 300),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+        status: widget.showStatusBadge ? _buildStatusBadge() : null,
+      );
+    },
   );
 
   Widget _buildFullCard() {

@@ -1,5 +1,4 @@
 import 'menu_item_price.dart';
-import '../utils/readable_colors.dart';
 import 'storefront_value.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
@@ -13,6 +12,7 @@ class RestaurantHeroDetails extends StatelessWidget {
   final VoidCallback onDetails;
   final String? ratingOverride;
   final String? reviewsOverride;
+  final bool? acceptingOrders;
   const RestaurantHeroDetails({
     super.key,
     required this.store,
@@ -20,6 +20,7 @@ class RestaurantHeroDetails extends StatelessWidget {
     this.overImage = false,
     this.ratingOverride,
     this.reviewsOverride,
+    this.acceptingOrders,
   });
   @override
   Widget build(BuildContext context) {
@@ -88,24 +89,52 @@ class RestaurantHeroDetails extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          Row(
             children: [
-              Icon(Icons.star_rounded, color: ink, size: 18),
-              Text(
-                rating,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: ink,
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Icon(Icons.star_rounded, color: ink, size: 18),
+                    Text(
+                      rating,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: ink,
+                      ),
+                    ),
+                    if (int.tryParse(reviews) != null && int.parse(reviews) > 0)
+                      Text(
+                        '($reviews تقييم)',
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                  ],
                 ),
               ),
-              if (int.tryParse(reviews) != null && int.parse(reviews) > 0)
-                Text(
-                  '($reviews تقييم)',
-                  style: TextStyle(fontSize: 12, color: muted),
+              if (acceptingOrders != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        acceptingOrders!
+                            ? const Color(0xFF23744C)
+                            : const Color(0xFFC62828),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text(
+                    acceptingOrders! ? 'مفتوح' : 'مغلق',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -256,6 +285,70 @@ class RestaurantSummaryCard extends StatelessWidget {
   );
 }
 
+/// Shared image and add control for both horizontal cards and vertical menu rows.
+class RestaurantProductPhoto extends StatelessWidget {
+  final ProductModel product;
+  final bool available;
+  final VoidCallback onAdd;
+  const RestaurantProductPhoto({
+    super.key,
+    required this.product,
+    required this.available,
+    required this.onAdd,
+  });
+  @override
+  Widget build(BuildContext context) => AspectRatio(
+    aspectRatio: 1.12,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: ColoredBox(
+            color: const Color(0xFFF1F3F6),
+            child:
+                product.imageUrl.isEmpty
+                    ? const Icon(
+                      Icons.restaurant_outlined,
+                      color: Color(0xFF8B97A8),
+                      size: 32,
+                    )
+                    : Image.network(
+                      product.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder:
+                          (_, __, ___) => const Icon(
+                            Icons.restaurant_outlined,
+                            color: Color(0xFF8B97A8),
+                            size: 32,
+                          ),
+                    ),
+          ),
+        ),
+        if (!available) const ColoredBox(color: Color(0x88FFFFFF)),
+        PositionedDirectional(
+          end: 8,
+          bottom: 8,
+          child: Material(
+            color: Colors.white,
+            elevation: 2,
+            shadowColor: const Color(0x3000296B),
+            shape: const CircleBorder(),
+            child: IconButton(
+              tooltip: 'إضافة إلى السلة',
+              onPressed: available ? onAdd : null,
+              icon: const Icon(Icons.add_rounded),
+              color: AppColors.secondary,
+              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Photo-first menu card. All actions use the same availability gates as the list.
 class RestaurantProductCard extends StatelessWidget {
   final ProductModel product;
@@ -278,58 +371,10 @@ class RestaurantProductCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AspectRatio(
-          aspectRatio: 1.12,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: ColoredBox(
-                  color: const Color(0xFFF1F3F6),
-                  child:
-                      product.imageUrl.isEmpty
-                          ? const Icon(
-                            Icons.restaurant_outlined,
-                            color: Color(0xFF8B97A8),
-                            size: 32,
-                          )
-                          : Image.network(
-                            product.imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder:
-                                (_, __, ___) => const Icon(
-                                  Icons.restaurant_outlined,
-                                  color: Color(0xFF8B97A8),
-                                  size: 32,
-                                ),
-                          ),
-                ),
-              ),
-              if (!available) const ColoredBox(color: Color(0x88FFFFFF)),
-              PositionedDirectional(
-                end: 8,
-                bottom: 8,
-                child: Material(
-                  color: Colors.white,
-                  elevation: 2,
-                  shadowColor: const Color(0x3000296B),
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: 'إضافة إلى السلة',
-                    onPressed: available ? onAdd : null,
-                    icon: const Icon(Icons.add_rounded),
-                    color: AppColors.secondary,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 40,
-                      height: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        RestaurantProductPhoto(
+          product: product,
+          available: available,
+          onAdd: onAdd,
         ),
         const SizedBox(height: 9),
         Text(
@@ -387,188 +432,84 @@ class RestaurantMenuTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final imageWidget = ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 84,
-        height: 84,
-        color: const Color(0xffedf1f5),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            InkWell(
-              onTap: available ? onDetails : null,
-              child:
-                  product.imageUrl.isNotEmpty
-                      ? Image.network(
-                        product.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (_, __, ___) => const Center(
-                              child: Icon(
-                                Icons.restaurant_outlined,
-                                color: Colors.black26,
-                                size: 32,
-                              ),
-                            ),
-                      )
-                      : const Center(
-                        child: Icon(
-                          Icons.restaurant_outlined,
-                          color: Colors.black26,
-                          size: 32,
-                        ),
-                      ),
-            ),
-            if (!available)
-              Container(color: Colors.white.withValues(alpha: 0.55)),
-            if (isBestseller && available)
-              PositionedDirectional(
-                start: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xffff7043),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.local_fire_department_rounded,
-                        color: const Color(0xFF00296B),
-                        size: 10,
-                      ),
-                      SizedBox(width: 3),
-                      Text(
-                        'مميز',
-                        style: TextStyle(
-                          color: const Color(0xFF00296B),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-
-    return InkWell(
-      onTap: available ? onDetails : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final imageWidth =
+          constraints.maxWidth >= 330 ? 165.0 : constraints.maxWidth * .47;
+      return InkWell(
+        onTap: available ? onDetails : null,
+        borderRadius: BorderRadius.circular(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            imageWidget,
-            const SizedBox(width: 6),
+            SizedBox(
+              width: imageWidth,
+              child: RestaurantProductPhoto(
+                product: product,
+                available: available,
+                onAdd: onAdd,
+              ),
+            ),
+            const SizedBox(width: 14),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xff1a1a1a),
-                    ),
-                  ),
-                  if (product.description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        product.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                          height: 1.3,
-                        ),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                        color: Color(0xFF172338),
                       ),
                     ),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Flexible(
+                    if (product.description.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
                         child: Text(
-                          '${product.price % 1 == 0 ? product.price.toInt() : product.price} د.ع',
-                          maxLines: 1,
+                          product.description,
+                          maxLines: 3,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color:
-                                available
-                                    ? const Color(0xff1a1a1a)
-                                    : Colors.grey.shade500,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.5,
+                            color: Color(0xFF697587),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        tooltip: 'إضافة إلى السلة',
-                        onPressed: available ? onAdd : null,
-                        icon: const Icon(
-                          Icons.add_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        style: IconButton.styleFrom(
-                          foregroundColor: readableForeground(
-                            available
-                                ? AppColors.primary
-                                : Colors.grey.shade300,
-                          ),
-                          backgroundColor:
-                              available
-                                  ? AppColors.primary
-                                  : Colors.grey.shade300,
-                          shape: const CircleBorder(),
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(30, 30),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        constraints: const BoxConstraints.tightFor(
-                          width: 30,
-                          height: 30,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (!available)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        unavailableReason ?? 'غير متاح حالياً',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                    const SizedBox(height: 8),
+                    MenuItemPrice(
+                      branch: product.businessId,
+                      product: product.id,
+                      original: product.price,
                     ),
-                ],
+                    if (!available)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          unavailableReason ?? 'غير متاح حالياً',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF697587),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
 }
 
 /// بطاقة كوبون / عرض بنمط تذكرة مطابق لتصميم طلبات

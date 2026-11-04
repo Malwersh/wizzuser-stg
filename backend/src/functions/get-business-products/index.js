@@ -184,6 +184,13 @@ const handler = async (event) => {
         
         console.log(`Fetched ${categoriesMap.size} categories, merging all data...`);
         
+        // Administrative discovery metadata applies independently of merchant menu drafts.
+        const discovery = (await docClient.send(new lib_dynamodb_1.GetCommand({
+            TableName: process.env.DISCOVERY_TABLE || 'staging-PlatformStaff',
+            Key: {pk:'HOME_DISCOVERY', sk:'CATALOG'}, ConsistentRead:true
+        }))).Item || {};
+        const profile = discovery.profiles?.[businessId] || {};
+        const classificationIds = new Set((discovery.cuisines || []).map(row => row.id));
         // Step 6: Merge data from all tables (Products + GlobalProducts + Categories)
         // Priority: Use data from Products table first, fallback to GlobalProducts if null/missing
         const products = productItems.map(product => {
@@ -196,6 +203,7 @@ const handler = async (event) => {
             
             return {
                 productId: product.productId,
+                cuisineIds: [...new Set([...(product.cuisineIds||[]),...(category.cuisineIds||[]),...(profile.productCuisineIds?.[product.productId]||[]),...(profile.categoryCuisineIds?.[product.categoryId]||[])])].filter(id=>classificationIds.has(id)),
                 categoryId: product.categoryId || globalProduct.categoryId || '',
                 categoryName: category.name_ar || category.categoryName || category.name || '', // 🔥 إضافة اسم الفئة
                 businessId: product.businessId,
@@ -223,7 +231,8 @@ const handler = async (event) => {
                 products,
                 count: products.length,
                 menuVersion: activeMenu?.menuVersion,
-                publishedVersion
+                publishedVersion,
+                classificationVersion: discovery.version
             }),
         };
     }

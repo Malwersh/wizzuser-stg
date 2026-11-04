@@ -91,7 +91,7 @@
 		<string>_dartobservatory._tcp</string>
 	</array>
 	<key>UIStatusBarHidden</key>
-	<true/>
+	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 	<key>NSSupportsLiveActivities</key>

@@ -6,6 +6,78 @@ const discoveryInk = Color(0xFF00296B);
 const discoveryCanvas = Color(0xFFF5F6F8);
 const discoveryGold = Color(0xFFFDC500);
 
+/// Horizontal sections size themselves to their tallest card, including retry
+/// controls and accessibility text, rather than clipping to a fixed viewport.
+class DiscoveryHorizontalList extends StatelessWidget {
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+  final IndexedWidgetBuilder? separatorBuilder;
+  final EdgeInsetsGeometry padding;
+  const DiscoveryHorizontalList({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+    this.separatorBuilder,
+    this.padding = EdgeInsets.zero,
+  });
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    padding: padding,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < itemCount; i++) ...[
+          if (i > 0 && separatorBuilder != null)
+            separatorBuilder!(context, i - 1),
+          itemBuilder(context, i),
+        ],
+      ],
+    ),
+  );
+}
+
+class HomeResultsHeading extends StatelessWidget {
+  final int? count;
+  final VoidCallback onReset;
+  const HomeResultsHeading({
+    super.key,
+    required this.count,
+    required this.onReset,
+  });
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            count == null
+                ? 'جارٍ تحديث النتائج…'
+                : 'النتائج: ${MaterialLocalizations.of(context).formatDecimal(count!)}',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: discoveryInk,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: discoveryInk,
+            backgroundColor: discoveryCanvas,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape: const StadiumBorder(),
+          ),
+          onPressed: onReset,
+          child: const Text('إعادة ضبط'),
+        ),
+      ],
+    ),
+  );
+}
+
 class DiscoverySectionHeading extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -18,7 +90,7 @@ class DiscoverySectionHeading extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsetsDirectional.fromSTEB(20, 24, 20, 14),
+    padding: const EdgeInsetsDirectional.fromSTEB(20, 12, 20, 10),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -57,7 +129,12 @@ class DiscoverySectionHeading extends StatelessWidget {
               foregroundColor: discoveryInk,
               side: const BorderSide(color: Color(0xFFE3E7EE)),
             ),
-            icon: const Icon(Icons.arrow_forward_rounded),
+            icon: Icon(
+              textDirection: TextDirection.ltr,
+              Directionality.of(context) == TextDirection.rtl
+                  ? Icons.arrow_back_rounded
+                  : Icons.arrow_forward_rounded,
+            ),
           ),
       ],
     ),

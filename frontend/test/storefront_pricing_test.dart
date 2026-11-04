@@ -26,6 +26,31 @@ Map<String, dynamic> result(String address, {int fee = 1500000}) => {
   'arrivalMinutes': {'minimum': 24, 'maximum': 29},
 };
 void main() {
+  test('display retains expired same-context fee only during bounded revalidation', () async {
+    var clock = DateTime.utc(2026, 10, 19);
+    var address = 'a';
+    final p = StorefrontPricing(
+      account: () => 'u', token: () => 't',
+      addressId: () => address, addressRevision: () => address,
+      listenToAddress: false, now: () => clock,
+      client: MockClient((_) async => http.Response(
+        jsonEncode({'success': true, 'preview': result('a')}), 200)),
+    );
+    await p.load('b', []);
+    expect(p.peek('b', []), isNotNull);
+    clock = DateTime.utc(2026, 10, 20, 0, 1);
+    expect(p.peek('b', []), isNull);
+    expect(p.peekDisplay('b', [])?.fee, 1500);
+    expect(p.peekDisplay('other', []), isNull);
+    expect(p.peekDisplay('b', [{'id': 'x', 'quantity': 1}]), isNull);
+    address = 'new';
+    expect(p.peekDisplay('b', []), isNull);
+    address = 'a';
+    clock = DateTime.utc(2026, 10, 20, 0, 6);
+    expect(p.peekDisplay('b', []), isNull);
+    p.dispose();
+  });
+
   test('price failure loads a scoped route without inventing a fee', () async {
     final actions = <String>[];
     final p = StorefrontPricing(

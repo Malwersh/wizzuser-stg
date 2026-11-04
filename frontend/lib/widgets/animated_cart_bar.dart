@@ -239,7 +239,7 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
       constraints: const BoxConstraints(minHeight: 56),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: AppColors.secondaryDark,
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
@@ -255,7 +255,7 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
             width: 32,
             child: Icon(
               Icons.shopping_cart_outlined,
-              color: AppColors.secondary,
+              color: Colors.white,
               size: 24,
             ),
           ),
@@ -269,7 +269,7 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: AppColors.secondary,
+                    color: Colors.white,
                     fontSize: 11,
                     height: 1.2,
                     fontWeight: FontWeight.w600,
@@ -281,7 +281,7 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: AppColors.secondary,
+                    color: Colors.white,
                     fontSize: 15,
                     height: 1.2,
                     fontWeight: FontWeight.bold,
@@ -296,14 +296,14 @@ class _AnimatedCartBarState extends State<AnimatedCartBar>
             height: 32,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.secondary.withValues(alpha: 0.10),
+              color: Colors.white.withValues(alpha: 0.16),
               shape: BoxShape.circle,
             ),
             child: Text(
               count > 99 ? '99+' : '$count',
               maxLines: 1,
               style: const TextStyle(
-                color: AppColors.secondary,
+                color: Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),

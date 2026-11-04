@@ -1,5 +1,17 @@
+import '../widgets/rotating_search_hint.dart';
+import '../models/menu_classification_focus.dart';
+import '../widgets/menu_classification_focus_section.dart';
+import '../widgets/platform_benefits_sheet.dart';
+import '../models/store_offer_slot.dart';
+import '../services/platform_benefits_service.dart';
+import '../widgets/store_offers_section.dart';
+import '../services/pending_offer.dart';
+import '../models/interface_layout.dart';
+import '../services/interface_layout_service.dart';
+import '../services/discovery_history.dart';
+import '../services/session_service.dart';
+import '../widgets/interface_product_section.dart';
 import '../services/menu_offer_pricing.dart';
-import '../widgets/menu_item_price.dart';
 import '../widgets/discovery/customer_components.dart';
 import '../utils/readable_colors.dart';
 import '../services/storefront_pricing.dart';
@@ -19,7 +31,6 @@ import '../models/product_model.dart';
 import '../models/working_hours_model.dart';
 import '../models/favorites_model.dart';
 import '../models/business_suggestion_data.dart';
-import '../models/order_model.dart';
 import '../services/business_service.dart';
 import '../services/working_hours_service.dart';
 import '../services/restaurant_availability_service.dart';
@@ -56,11 +67,13 @@ class DishAvailability {
 class StoreDetailScreen extends StatefulWidget {
   final Store store;
   final String? initialCategoryName;
+  final MenuClassificationFocus? initialClassification;
 
   const StoreDetailScreen({
     super.key,
     required this.store,
     this.initialCategoryName,
+    this.initialClassification,
   });
 
   @override
@@ -77,13 +90,17 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   /// ارتفاع الهيدر الموسع (صورة الغلاف)
   static const double _kExpandedHeight = 218.0;
   List<StoreDiscount> _menuOffers = [];
+  List<StoreOffer> _benefitOfferCards = [];
+  String? _offerCardScope;
   Timer? _menuPriceRefresh;
 
   /// منع تعارض الـ scroll-spy مع التنقل عبر التبويبات
   bool _isTabTapScrolling = false;
 
   /// أطباق سبق طلبها من هذا المطعم (قسم "طلبت من هنا من قبل")
-  List<OrderItem> _previousOrderItems = [];
+  final _interfaceSession = InterfaceScreenSession();
+  InterfaceLayout? get _interfaceLayout =>
+      _interfaceSession.current(InterfaceLayoutService.instance.scope);
 
   // البيانات من الباك إند
   Map<String, List<ProductModel>> _categoryProducts = {};
@@ -91,6 +108,8 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   String? _error;
   final Map<String, GlobalKey> _keys = {};
   bool _openedInitialCategory = false;
+  bool _openedClassification = false, _classificationDismissed = false;
+  final _classificationKey = GlobalKey();
   bool _dataLoaded = false; // إضافة متغير لتتبع حالة التحميل
 
   // ساعات العمل
@@ -180,12 +199,17 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     _loadBusinessStatus();
     _startBusinessStatusUpdates();
     _loadPreviousOrderItems();
+    _loadInterface(force: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) DiscoveryHistory.instance.viewedStore(widget.store.id);
+    });
     _loadMenuOffers();
     _menuPriceRefresh = Timer.periodic(const Duration(seconds: 45), (_) {
       if (mounted &&
           ModalRoute.of(context)?.isCurrent == true &&
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed)
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
         _loadMenuOffers();
+      }
     });
 
     // 🔥 إعداد اشتراك SubscriptionManager (يستقبل تحديثات polling)
@@ -219,6 +243,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       _loadBusinessStatus();
       _refreshRating();
       _loadMenuOffers();
+      _loadInterface(force: true, apply: false);
     }
   }
 
@@ -372,6 +397,22 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       });
 
       _loadMenuOffers();
+      if (!_openedClassification &&
+          widget.initialClassification != null &&
+          widget.initialCategoryName == null) {
+        _openedClassification = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _classificationDismissed) return;
+          final target = _classificationKey.currentContext;
+          if (target != null)
+            Scrollable.ensureVisible(
+              target,
+              alignment: .15,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOut,
+            );
+        });
+      }
       if (!_openedInitialCategory && widget.initialCategoryName != null) {
         _openedInitialCategory = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -529,103 +570,217 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
       _loadWorkingHours(),
       _loadBusinessStatus(skipCache: true),
       _loadMenuOffers(),
+      _loadInterface(force: true),
     ]);
   }
 
   /// 🧾 تحميل أطباق سبق طلبها المستخدم من هذا المطعم (قسم إعادة الطلب)
   Future<void> _loadPreviousOrderItems() async {
+    await DiscoveryHistory.instance.load();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadInterface({bool force = false, bool apply = true}) async {
+    final owner = InterfaceLayoutService.instance.scope;
     try {
-      final orderService = OrderService();
-      // يتجاهل تلقائياً في حالة الضيوف (getOrders تتطلب تسجيل الدخول)
-      await orderService.getOrders(page: 1, limit: 50);
-      if (!mounted) return;
-
-      final orders =
-          orderService.orders
-              .where((o) => o.storeId == widget.store.id)
-              .toList()
-            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-      final seen = <String>{};
-      final items = <OrderItem>[];
-      for (final order in orders) {
-        for (final item in order.items) {
-          final key = item.productId.isNotEmpty ? item.productId : item.dishId;
-          if (key.isEmpty || seen.contains(key)) continue;
-          seen.add(key);
-          items.add(item);
-          if (items.length >= 10) break;
+      final layout = await InterfaceLayoutService.instance.load(
+        'store',
+        widget.store.id,
+        force: force,
+      );
+      if (mounted &&
+          owner == InterfaceLayoutService.instance.scope &&
+          _interfaceSession.accept(owner, layout, apply: apply)) {
+        _benefitOfferCards = [];
+        _offerCardScope = owner;
+        setState(() {});
+        if (SessionService.instance.isLoggedIn &&
+            layout.sections.any(
+              (s) =>
+                  s.source == 'offers' &&
+                  s.offerSlot.sources.contains('platform'),
+            )) {
+          final service = PlatformBenefitsService();
+          try {
+            final benefits = await service.load(branchId: widget.store.id);
+            if (mounted && owner == InterfaceLayoutService.instance.scope)
+              setState(
+                () =>
+                    _benefitOfferCards =
+                        benefits
+                            .where(
+                              (b) =>
+                                  b.eligible &&
+                                  b.remaining > 0 &&
+                                  (b.branchIds.isEmpty ||
+                                      b.branchIds.contains(widget.store.id)),
+                            )
+                            .map(StoreOffer.fromBenefit)
+                            .toList(),
+              );
+          } catch (_) {
+            /* Existing merchant/platform offers remain independent of benefit loading. */
+          } finally {
+            service.dispose();
+          }
         }
-        if (items.length >= 10) break;
       }
+    } catch (_) {
+      /* Built-in safe menu remains available. */
+    }
+  }
 
-      if (items.isNotEmpty && mounted) {
-        setState(() {
-          _previousOrderItems = items;
-        });
-        developer.log(
-          '🧾 تم العثور على ${items.length} طبق سابق في هذا المطعم',
+  List<InterfaceSection> _storeSections() {
+    if (_interfaceLayout?.configured == true) return _interfaceLayout!.sections;
+    return [
+          {'id': 'offers', 'title': 'عروض المطعم', 'source': 'offers'},
+          {
+            'id': 'discounted',
+            'title': 'أسعار تستحق التجربة',
+            'source': 'discounted',
+          },
+          {'id': 'last', 'title': 'طلبك الأخير من هنا', 'source': 'lastOrder'},
+          {
+            'id': 'featured',
+            'title': 'مختارات من القائمة',
+            'source': 'featured',
+          },
+          {
+            'id': 'menu',
+            'title': 'استكشف القائمة',
+            'source': 'menu',
+            'layout': 'vertical',
+          },
+        ]
+        .map(
+          (j) => InterfaceSection.fromJson({
+            ...j,
+            'limit': 12,
+            'deduplicate': true,
+          }),
+        )
+        .toList();
+  }
+
+  List<Widget> _buildStoreSections() {
+    final output = <Widget>[],
+        seen = <String>{},
+        all = _categoryProducts.values.expand((p) => p).toList();
+    final history = DiscoveryHistory.instance, now = DateTime.now();
+    final discounted =
+        all
+            .where(
+              (p) => _menuOffers.any(
+                (o) => o.includesMenuItem(
+                  itemId: p.id,
+                  categoryId: p.categoryId,
+                  branchId: widget.store.id,
+                  now: now,
+                ),
+              ),
+            )
+            .map((p) => p.id)
+            .toSet();
+    for (final section in _storeSections()) {
+      if (!section.visible(SessionService.instance.isLoggedIn, now)) continue;
+      if (section.source == 'menu') {
+        output.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 16, 4),
+              child: Semantics(
+                button: true,
+                label: 'ابحث في قائمة ${widget.store.name}',
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF2F5FA), Color(0xFFE6EDF7)],
+                      begin: Alignment.centerRight,
+                      end: Alignment.centerLeft,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _showSearchDialog,
+                      borderRadius: BorderRadius.circular(18),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 15,
+                        ),
+                        child: Row(
+                          textDirection: TextDirection.rtl,
+                          children: [
+                            const Icon(
+                              Icons.search,
+                              color: Color(0xFF00296B),
+                              size: 24,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: RotatingSearchHint(
+                                hints: [
+                                  'ابحث في قائمة ${widget.store.name}',
+                                  'ابحث عن وجبتك المفضلة',
+                                  'ماذا تشتهي من القائمة؟',
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         );
+        output.add(_buildStickyHeader());
+        output.add(
+          SliverToBoxAdapter(
+            child: Column(
+              children:
+                  _categoryProducts.keys.map(_buildIntegratedSection).toList(),
+            ),
+          ),
+        );
+        continue;
       }
-    } catch (e) {
-      // الضيوف أو أي خطأ: لا نعرض القسم
-      developer.log('ℹ️ تعذر تحميل الطلبات السابقة لهذا المطعم: $e');
-    }
-  }
-
-  ProductModel? _findProductById(String id) {
-    if (id.isEmpty) return null;
-    for (final products in _categoryProducts.values) {
-      for (final product in products) {
-        if (product.id == id) return product;
+      if (section.source == 'offers') {
+        output.add(SliverToBoxAdapter(child: _buildOfferSlot(section)));
+        continue;
       }
-    }
-    return null;
-  }
-
-  /// فتح لوحة الطبق من قسم "طلبت من هنا من قبل"
-  Future<void> _openReorderItem(OrderItem item) async {
-    HapticFeedback.lightImpact();
-    final product = _findProductById(
-      item.productId.isNotEmpty ? item.productId : item.dishId,
-    );
-
-    if (!mounted) return;
-
-    if (product == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('هذا الطبق لم يعد متوفراً في القائمة'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
+      final products = selectInterfaceProducts(
+        section,
+        all,
+        discounted: discounted,
+        previous: history.products(widget.store.id),
+        last: history.products(widget.store.id, last: true),
+        recent: history.recentProducts(widget.store.id),
+        counts: _interfaceLayout?.counts ?? {},
+        seen: seen,
+      );
+      seen.addAll(products.map((p) => p.id));
+      output.add(
+        SliverToBoxAdapter(
+          child: InterfaceProductSection(
+            section: section,
+            products: products,
+            available:
+                (p) =>
+                    _canRestaurantAcceptOrders() &&
+                    _getDishAvailability(p).isAvailable,
+            reason: (p) => _getDishAvailability(p).reasonText,
+            onOpen: _openMenuProduct,
+            onAdd: _addToCart,
+          ),
         ),
       );
-      return;
     }
-
-    try {
-      final dish = Dish(
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        imageUrls: product.imageUrl.isNotEmpty ? [product.imageUrl] : [],
-        likesPercent: 85,
-        likesCount: 120,
-        basePrice: product.price,
-        optionGroups: [],
-      );
-
-      await showDishDetailBottomSheet(
-        context,
-        dish: dish,
-        storeId: widget.store.id,
-        storeName: widget.store.name,
-        storeAddress: widget.store.address,
-        productData: product,
-      );
-    } catch (e) {
-      developer.log('❌ خطأ في فتح اللوحة السفلية من قسم إعادة الطلب: $e');
-    }
+    return output;
   }
 
   @override
@@ -718,14 +873,13 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                     store: widget.store,
                     ratingOverride: _freshRating,
                     reviewsOverride: _freshReviewCount,
+                    acceptingOrders: canAcceptOrders,
                     onDetails: _showStoreInfoBottomSheet,
                   ),
                 ),
               ),
 
               // 2) بانر "مغلق/مشغول" - يبقى الطلب معطلاً لكن الصفحة تظل مفتوحة
-              if (!canAcceptOrders) _buildClosedBanner(),
-
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 3, 16, 0),
@@ -735,61 +889,30 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                   ),
                 ),
               ),
-              if (_menuOffers.isNotEmpty)
-                SliverToBoxAdapter(child: _buildMenuOffers()),
-
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 22, 16, 10),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'استكشف القائمة',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xff171717),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _showSearchDialog,
-                        tooltip: 'ابحث في القائمة',
-                        icon: const Icon(Icons.search_rounded),
-                      ),
-                    ],
+              if (widget.initialClassification != null &&
+                  !_classificationDismissed)
+                SliverToBoxAdapter(
+                  child: MenuClassificationFocusSection(
+                    key: _classificationKey,
+                    focus: widget.initialClassification!,
+                    products: widget.initialClassification!.productsFor(
+                      widget.store.id,
+                      _categoryProducts.values.expand((items) => items),
+                    ),
+                    available:
+                        (product) =>
+                            _canRestaurantAcceptOrders() &&
+                            _getDishAvailability(product).isAvailable,
+                    reason:
+                        (product) => _getDishAvailability(product).reasonText,
+                    onOpen: _openMenuProduct,
+                    onAdd: _addToCart,
+                    onClear:
+                        () => setState(() => _classificationDismissed = true),
                   ),
                 ),
-              ),
-              _buildStickyHeader(),
-              if (_categoryProducts.values
-                  .expand((items) => items)
-                  .any((product) => product.isFeatured))
-                SliverToBoxAdapter(child: _buildFeaturedDishes()),
-
-              // 5) قسم "طلبت من هنا من قبل"
-              if (_previousOrderItems.isNotEmpty)
-                SliverToBoxAdapter(child: _buildReorderSection()),
-
-              // 6) أقسام المنيو
-              SliverToBoxAdapter(
-                child: Container(
-                  color: Colors.white,
-                  child: Column(
-                    children: [
-                      ...(_categoryProducts.keys
-                          .map(
-                            (categoryTitle) =>
-                                _buildIntegratedSection(categoryTitle),
-                          )
-                          .toList()),
-                      // مساحة إضافية للزر العائم للسلة
-                      const SizedBox(height: 110),
-                    ],
-                  ),
-                ),
-              ),
+              ..._buildStoreSections(),
+              const SliverToBoxAdapter(child: SizedBox(height: 110)),
             ],
           ),
         ),
@@ -1075,7 +1198,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'حدث خطأ في تحديث المفضلة: ${e.toString()}',
+                            'تعذر حفظ التغيير في المحفوظة. أعد المحاولة',
                           ),
                           backgroundColor: AppColors.secondary,
                           duration: const Duration(seconds: 3),
@@ -1170,40 +1293,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   }
 
   /// 2) بانر "مغلق/مشغول" — تبقى الصفحة مفتوحة لكن الطلب معطل
-  Widget _buildClosedBanner() {
-    final message = _getRestaurantStatusMessage() ?? 'المطعم غير متاح حالياً';
-    final openingText = _getWorkingHoursStatusText();
-
-    return SliverToBoxAdapter(
-      child: Container(
-        width: double.infinity,
-        color: Colors.red.shade50,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Row(
-          children: [
-            Icon(
-              _getRestaurantStatusIcon(),
-              color: Colors.red.shade700,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '$message • $openingText',
-                style: TextStyle(
-                  color: Colors.red.shade700,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 3) تبويبات الفئات اللاصقة عند التمرير
   Widget _buildStickyHeader() {
     final headerHeight = _tabController != null ? 66.0 : 0.0;
 
@@ -1297,136 +1386,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
   }
 
   /// شريط البحث في المنيو (يفتح لوحة البحث)
-  Widget _buildReorderSection() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-            child: Row(
-              children: [
-                Icon(Icons.history, color: AppColors.secondary, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'طلبت من هنا من قبل',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 96,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              itemCount: _previousOrderItems.length,
-              itemBuilder: (context, index) {
-                return _buildReorderCard(_previousOrderItems[index]);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReorderCard(OrderItem item) {
-    final product = _findProductById(
-      item.productId.isNotEmpty ? item.productId : item.dishId,
-    );
-    final image = item.dishImage ?? '';
-
-    return Container(
-      width: 230,
-      margin: const EdgeInsetsDirectional.only(end: 12),
-      child: Material(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: () => _openReorderItem(item),
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child:
-                        image.isNotEmpty
-                            ? Image.network(
-                              image,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(
-                                    Icons.fastfood,
-                                    color: Colors.grey,
-                                  ),
-                                );
-                              },
-                            )
-                            : Container(
-                              color: Colors.grey.shade200,
-                              child: const Icon(
-                                Icons.fastfood,
-                                color: Colors.grey,
-                              ),
-                            ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        item.dishName,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${item.unitPrice.toStringAsFixed(0)} د.ع',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (product != null)
-                  const Icon(
-                    Icons.add_circle,
-                    color: AppColors.primary,
-                    size: 24,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// خلفية افتراضية للهيدر مع ارتفاع مخصص
   Widget _buildDefaultBackgroundForHeader() {
     return Container(
       width: double.infinity,
@@ -1772,37 +1731,23 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final columns =
-                    constraints.maxWidth >= 600
-                        ? 3
-                        : constraints.maxWidth < 260
-                        ? 1
-                        : 2;
-                final width =
-                    (constraints.maxWidth - 14 * (columns - 1)) / columns;
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 24,
-                  children:
-                      products.map((product) {
-                        final availability = _getDishAvailability(product);
-                        return SizedBox(
-                          width: width,
-                          child: RestaurantProductCard(
-                            product: product,
-                            available:
-                                availability.isAvailable &&
-                                _canRestaurantAcceptOrders(),
-                            unavailableReason: availability.reasonText,
-                            onDetails: () => _openMenuProduct(product),
-                            onAdd: () => _addToCart(product),
-                          ),
-                        );
-                      }).toList(),
-                );
-              },
+            child: Column(
+              children: [
+                for (final product in products)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: RestaurantMenuTile(
+                      product: product,
+                      available:
+                          _getDishAvailability(product).isAvailable &&
+                          _canRestaurantAcceptOrders(),
+                      unavailableReason:
+                          _getDishAvailability(product).reasonText,
+                      onDetails: () => _openMenuProduct(product),
+                      onAdd: () => _addToCart(product),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -1883,39 +1828,54 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     }
   }
 
-  void _showMenuOfferTerms(StoreDiscount offer) {
+  List<StoreOffer> get _presentationOffers => [
+    ...?_interfaceLayout?.offers,
+    if (_offerCardScope == InterfaceLayoutService.instance.scope)
+      ..._benefitOfferCards,
+  ];
+  Widget _buildOfferSlot(InterfaceSection section) {
+    final oldTitle = [
+      'عروض الطلب',
+      'عروض على طلبك',
+      'عروض المطعم',
+    ].contains(section.title);
+    final title =
+        oldTitle
+            ? (widget.store.businessType == null ||
+                    widget.store.businessType == 'restaurant'
+                ? 'عروض المطعم'
+                : 'عروض المتجر')
+            : section.title;
+    return StoreOffersSection(
+      title: title,
+      description: section.description,
+      config: section.offerSlot,
+      offers: _presentationOffers,
+      onDetails: _showSlotOfferDetails,
+      onBrowse: _browseSlotOffer,
+    );
+  }
+
+  void _showSlotOfferDetails(StoreOffer offer) {
+    if (!offer.live(DateTime.now())) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
       showDragHandle: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder:
-          (context) => SafeArea(
+          (sheetContext) => SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (offer.imageUrl?.isNotEmpty == true) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        offer.imageUrl!,
-                        height: 160,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
                   Text(
-                    offer.displayValue,
+                    offer.headline,
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
@@ -1926,18 +1886,17 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                   Text(
                     offer.title,
                     style: const TextStyle(
-                      fontSize: 18,
+                      fontSize: 17,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (offer.description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(offer.description),
-                    ),
+                  if (offer.description.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(offer.description),
+                  ],
                   const SizedBox(height: 16),
                   Text(
-                    offer.termsSummary,
+                    offer.fullTerms,
                     style: const TextStyle(
                       fontSize: 14,
                       height: 1.8,
@@ -1946,19 +1905,35 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'تُراجع أهلية العرض وقيمته عند تطبيقه في السلة.',
+                    'تُراجع الأهلية والسعر النهائي عند التطبيق في السلة.',
                     style: TextStyle(fontSize: 12, color: Color(0xFF647184)),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
+                  if (offer.kind == 'items')
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _browseSlotOffer(offer);
+                      },
+                      icon: const Icon(Icons.restaurant_menu),
+                      label: const Text('شاهد الأصناف المشمولة'),
+                    ),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _selectSlotOffer(offer);
+                      },
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.secondary,
                         foregroundColor: Colors.white,
                       ),
-                      child: const Text('حسنًا'),
+                      child: Text(
+                        offer.source == 'benefit'
+                            ? 'استعرض الميزة واستخدمها'
+                            : 'اختيار هذا العرض',
+                      ),
                     ),
                   ),
                 ],
@@ -1968,244 +1943,130 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     );
   }
 
-  Widget _buildMenuOffers() {
-    final now = DateTime.now();
-    final discounted =
+  Future<void> _selectSlotOffer(StoreOffer offer) async {
+    if (!offer.live(DateTime.now())) return;
+    if (offer.source == 'benefit') {
+      await showPlatformBenefitsSheet(context, branchId: widget.store.id);
+      return;
+    }
+    final current = PendingOffer.current;
+    if (current != null &&
+        (current.offer['id'] != offer.id ||
+            current.offer['source'] != offer.source)) {
+      final replace = await showDialog<bool>(
+        context: context,
+        builder:
+            (c) => AlertDialog(
+              title: const Text('استبدال العرض المختار؟'),
+              content: const Text(
+                'سيحل هذا العرض محل العرض السابق. يُطبق عرض بضاعة واحد لكل طلب.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('رجوع'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(c, true),
+                  child: const Text('استبدال'),
+                ),
+              ],
+            ),
+      );
+      if (replace != true || !mounted) return;
+    }
+    if (offer.source == 'platform' && offer.code?.isNotEmpty == true)
+      PendingOffer.selectCode(offer.code!, offer.endAt);
+    else if (offer.source == 'merchant')
+      PendingOffer.select(
+        PendingOffer(
+          '',
+          widget.store.id,
+          {
+            'source': 'merchant',
+            'id': offer.id,
+            'title': offer.title,
+            'type': offer.type,
+            'value': offer.value,
+          },
+          offer.endAt ?? DateTime.now().add(const Duration(hours: 1)),
+        ),
+      );
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم اختيار العرض؛ تُراجع شروطه في السلة.'),
+        ),
+      );
+  }
+
+  void _browseSlotOffer(StoreOffer offer) {
+    final all =
         _categoryProducts.values
             .expand((p) => p)
-            .where(
-              (product) => _menuOffers.any(
-                (offer) => offer.includesMenuItem(
-                  itemId: product.id,
-                  categoryId: product.categoryId,
-                  branchId: widget.store.id,
-                  now: now,
-                ),
-              ),
-            )
+            .where((p) => offer.includes(p.id, p.categoryId))
             .toList();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'عروض على طلبك',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w700,
-              color: discoveryInk,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ..._menuOffers.map(
-            (offer) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: const Color(0xFFF5F7FB),
-                borderRadius: BorderRadius.circular(16),
-                child: InkWell(
-                  onTap: () => _showMenuOfferTerms(offer),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.local_offer_outlined,
-                            color: AppColors.secondary,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                offer.displayValue,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.secondary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                offer.calculationMode == 'perItem'
-                                    ? 'على الوجبات المحددة • عرض واحد لكل طلب'
-                                    : offer.minimumOrderAmount > 0
-                                    ? 'للطلبات من ${offer.minimumOrderAmount.toStringAsFixed(0)} د.ع • الشروط والتفاصيل'
-                                    : 'اطّلع على شروط العرض',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF647184),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.chevron_left_rounded,
-                          color: Color(0xFF647184),
-                          size: 20,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (discounted.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const Text(
-              'وجبات مشمولة بالعروض',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: discoveryInk,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'تُطبق شروط العرض في السلة • عرض واحد لكل طلب',
-              style: TextStyle(fontSize: 12, color: Color(0xFF647184)),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 266,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: discounted.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
-                itemBuilder: (_, i) {
-                  final product = discounted[i];
-                  final availability = _getDishAvailability(product);
-                  return SizedBox(
-                    width: 165,
-                    child: RestaurantProductCard(
-                      product: product,
-                      available:
-                          availability.isAvailable &&
-                          _canRestaurantAcceptOrders(),
-                      unavailableReason: availability.reasonText,
-                      onDetails: () => _openMenuProduct(product),
-                      onAdd: () => _addToCart(product),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFeaturedDishes() {
-    final all = _categoryProducts.values.expand((items) => items).toList();
-    final featured = all.where((p) => p.isFeatured).toList();
-    final products = featured.take(8).toList();
-    return SizedBox(
-      height: 265,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-        scrollDirection: Axis.horizontal,
-        itemCount: products.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final product = products[index];
-          final available =
-              _getDishAvailability(product).isAvailable &&
-              _canRestaurantAcceptOrders();
-          return SizedBox(
-            width: 195,
-            child: InkWell(
-              onTap: available ? () => _openMenuProduct(product) : null,
-              borderRadius: BorderRadius.circular(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder:
+          (sheetContext) => SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * .72,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
                 children: [
-                  Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: SizedBox(
-                          width: 195,
-                          height: 158,
-                          child:
-                              product.imageUrl.isNotEmpty
-                                  ? Image.network(
-                                    product.imageUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (_, __, ___) => const ColoredBox(
-                                          color: Color(0xfff2f2f2),
-                                          child: Icon(
-                                            Icons.restaurant,
-                                            color: Colors.black26,
-                                          ),
-                                        ),
-                                  )
-                                  : const ColoredBox(
-                                    color: Color(0xfff2f2f2),
-                                    child: Icon(
-                                      Icons.restaurant,
-                                      color: Colors.black26,
-                                    ),
-                                  ),
-                        ),
-                      ),
-                      PositionedDirectional(
-                        end: 9,
-                        bottom: 9,
-                        child: Material(
-                          color: Colors.white,
-                          shape: const CircleBorder(),
-                          elevation: 2,
-                          child: IconButton(
-                            tooltip: 'إضافة ${product.name}',
-                            onPressed:
-                                available ? () => _addToCart(product) : null,
-                            icon: const Icon(Icons.add, color: Colors.black),
-                            constraints: const BoxConstraints.tightFor(
-                              width: 38,
-                              height: 38,
-                            ),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 9),
                   Text(
-                    product.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    offer.headline,
                     style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.secondary,
                     ),
                   ),
-                  MenuItemPrice(
-                    branch: widget.store.id,
-                    product: product.id,
-                    original: product.price,
+                  const SizedBox(height: 6),
+                  Text(
+                    offer.brief,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF647184),
+                    ),
                   ),
+                  const SizedBox(height: 20),
+                  if (all.isEmpty)
+                    const Text(
+                      'لا توجد أصناف مشمولة متاحة في القائمة الحالية.',
+                    ),
+                  for (final product in all)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: RestaurantMenuTile(
+                        product: product,
+                        available:
+                            _canRestaurantAcceptOrders() &&
+                            _getDishAvailability(product).isAvailable,
+                        unavailableReason:
+                            _getDishAvailability(product).reasonText,
+                        onDetails: () {
+                          Navigator.pop(sheetContext);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _openMenuProduct(product);
+                          });
+                        },
+                        onAdd: () {
+                          Navigator.pop(sheetContext);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _addToCart(product);
+                          });
+                        },
+                      ),
+                    ),
                 ],
               ),
             ),
-          );
-        },
-      ),
+          ),
     );
   }
 
