@@ -18,6 +18,8 @@ import 'language_settings_screen.dart';
 import 'country_settings_screen.dart';
 import 'delete_account_screen.dart';
 import 'personal_info_screen.dart';
+import 'support_chat_screen.dart';
+import 'account_more_screen.dart';
 
 class ImprovedAccountScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -470,17 +472,9 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
           if (isLoggedIn) ...[
             _buildDivider(),
             _buildMenuItem(
-              icon: Icons.delete_forever,
-              title: 'حذف الحساب',
-              onTap: () => _navigateToDeleteAccount(),
-              isDestructive: true,
-            ),
-            _buildDivider(),
-            _buildMenuItem(
-              icon: Icons.logout,
-              title: 'تسجيل الخروج',
-              onTap: () => _showLogoutDialog(),
-              isDestructive: true,
+              icon: Icons.more_horiz,
+              title: 'المزيد',
+              onTap: _navigateToMore,
             ),
           ],
         ],
@@ -626,6 +620,18 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const CountrySettingsScreen()),
     );
+  }
+
+  void _navigateToMore() {
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AccountMoreScreen(
+        onSupport: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const SupportChatScreen())),
+        onDeleteAccount: _navigateToDeleteAccount,
+        onLogout: _showLogoutDialog,
+      ),
+    ));
   }
 
   void _navigateToDeleteAccount() {

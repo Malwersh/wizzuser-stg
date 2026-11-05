@@ -11,6 +11,8 @@ class WalletTransferException implements Exception {
 }
 
 class WalletTransferService {
+  static const baseUrl = String.fromEnvironment('WALLET_TRANSFER_API_URL',
+    defaultValue: 'https://z14s5f8oxh.execute-api.us-east-1.amazonaws.com/staging/wallet/transfers');
   Future<Map<String, dynamic>> call(
     String path, {
     Map<String, String>? query,
@@ -24,7 +26,7 @@ class WalletTransferService {
       );
     }
     final uri = Uri.parse(
-      'https://z14s5f8oxh.execute-api.us-east-1.amazonaws.com/staging/wallet/transfers/$path',
+      '$baseUrl/$path',
     ).replace(queryParameters: query);
     final headers = {
       'Authorization': 'Bearer $token',

@@ -26,6 +26,72 @@ Map<String, dynamic> result(String address, {int fee = 1500000}) => {
   'arrivalMinutes': {'minimum': 24, 'maximum': 29},
 };
 void main() {
+  testWidgets('distance remains visible when the price preview fails', (t) async {
+    final p=StorefrontPricing(account:()=>'u',token:()=>'t',addressId:()=>'a',
+      addressRevision:()=>'v',regionId:()=>'zone',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,19),client:MockClient((request)async {
+        if(jsonDecode(request.body)['action']=='storefront_preview')return http.Response('{"success":false}',503);
+        final route=result('a')..remove('customerDeliveryFee')..['kind']='STOREFRONT_ROUTE'..['pricingAvailable']=false;
+        return http.Response(jsonEncode({'success':true,'route':route}),200);
+      }));
+    await t.pumpWidget(MaterialApp(home:StorefrontValue(branchId:'b',field:StorefrontField.distance,items:const [],pricing:p)));
+    await t.pumpAndSettle();expect(find.text('4.5 كم'),findsOneWidget);
+    expect(p.feeIqd('b',[]),isNull);await t.pumpWidget(const SizedBox());p.dispose();
+  });
+
+  test('missing pricing preserves road facts without authorizing a fee',()async {
+    var address='a';final actions=<String>[];
+    final p=StorefrontPricing(account:()=>'u',token:()=>'t',addressId:()=>address,
+      addressRevision:()=>'v',regionId:()=>'zone',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,19),client:MockClient((request)async {
+        final body=jsonDecode(request.body);actions.add(body['action']);
+        if(body['action']=='storefront_preview')return http.Response('{"success":false}',503);
+        expect(body.keys.toSet(),{'action','branchId','addressId'});
+        final route=result('a')..remove('customerDeliveryFee')..['kind']='STOREFRONT_ROUTE'..['pricingAvailable']=false;
+        return http.Response(jsonEncode({'success':true,'route':route}),200);
+      }));
+    expect(await p.load('b',[]),isNull);expect(actions,['storefront_preview','storefront_route']);
+    expect(p.peekRoute('b')!.distanceText,'4.5 كم');expect(p.peekRoute('b')!.arrivalText,'24–29 دقيقة');
+    expect(p.feeIqd('b',[]),isNull);address='other';expect(p.peekRoute('b'),isNull);p.dispose();
+  });
+  test('late route responses cannot cross an address change',()async {
+    var address='a';final response=Completer<http.Response>();
+    final p=StorefrontPricing(account:()=>'u',token:()=>'t',addressId:()=>address,
+      addressRevision:()=>'v',regionId:()=>'zone',listenToAddress:false,
+      now:()=>DateTime.utc(2026,10,19),client:MockClient((_)=>response.future));
+    final task=p.loadRoute('b');await Future<void>.delayed(Duration.zero);address='other';
+    final route=result('a')..remove('customerDeliveryFee')..['kind']='STOREFRONT_ROUTE'..['pricingAvailable']=false;
+    response.complete(http.Response(jsonEncode({'success':true,'route':route}),200));
+    expect(await task,isNull);expect(p.peekRoute('b'),isNull);p.dispose();
+  });
+  test('route-only responses reject money and inconsistent arrival estimates',() {
+    final route=result('a')..remove('customerDeliveryFee')..['kind']='STOREFRONT_ROUTE'..['pricingAvailable']=false;
+    expect(()=>StorefrontRoute({...route,'customerDeliveryFee':{'minorAmount':0}}),throwsFormatException);
+    expect(()=>StorefrontRoute({...route,'arrivalMinutes':{'minimum':1,'maximum':2}}),throwsFormatException);
+  });
+
+  testWidgets('fresh merchant preparation and minimum survive a route pricing failure', (t) async {
+    final p = StorefrontPricing(account: () => 'u', token: () => 't',
+      addressId: () => 'a', addressRevision: () => 'v', regionId: () => 'zone',
+      listenToAddress: false, client: MockClient((_) async =>
+        http.Response('{"success":false,"code":"QUOTE_SERVICE_UNAVAILABLE"}', 503)));
+    p.seedBusiness('b', {'averagePreparationMinutes': 15, 'minimumOrderAmountIqd': 4000});
+    await t.pumpWidget(MaterialApp(home: StorefrontValue(branchId: 'b',
+      field: StorefrontField.preparation, initialPreparationMinutes: 15,
+      items: const [], pricing: p)));
+    await t.pumpAndSettle();
+    expect(find.text('نحو 15 دقيقة'), findsOneWidget);
+    p.seedBusiness('b', {'averagePreparationMinutes': 20, 'minimumOrderAmountIqd': 10000});
+    await t.pumpAndSettle();
+    expect(find.text('نحو 20 دقيقة'), findsOneWidget);
+    expect(p.minimumIqd('b', []), 10000);
+    expect(p.feeIqd('b', []), isNull);
+    expect(find.text('إعادة حساب التوصيل'), findsNothing);
+    await t.pumpWidget(const SizedBox());
+    p.dispose();
+  });
+
+
   test('display retains expired same-context fee only during bounded revalidation', () async {
     var clock = DateTime.utc(2026, 10, 19);
     var address = 'a';

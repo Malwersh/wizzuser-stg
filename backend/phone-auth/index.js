@@ -28,10 +28,11 @@ async function send(phone,event,key){
  const time=now(),day=Math.floor(time/86400),ip=event.requestContext?.identity?.sourceIp||'unknown';
  const limits=[{id:`COOLDOWN#${phone}`,cooldown:true},{id:`DAILY#${day}#${phone}`,limit:10},{id:`IP#${day}#${crypto.createHash('sha256').update(ip).digest('hex')}`,limit:30},{id:`GLOBAL#${day}`,limit:200}];
  await db.send(new TransactWriteCommand({TransactItems:[...sendFence,...limits.map(x=>({Update:{TableName:table,Key:{id:x.id},UpdateExpression:x.cooldown?'SET nextAllowedAt = :next, expiresAt = :ttl':'SET expiresAt = :ttl ADD sends :one',ConditionExpression:x.cooldown?'attribute_not_exists(nextAllowedAt) OR nextAllowedAt <= :now':'attribute_not_exists(sends) OR sends < :limit',ExpressionAttributeValues:x.cooldown?{':next':time+60,':ttl':time+86400,':now':time}:{':ttl':time+172800,':one':1,':limit':x.limit}}}))]}));
- const id=crypto.randomUUID(),code=String(crypto.randomInt(0,1000000)).padStart(6,'0');
+ const review=phone===process.env.REVIEW_TEST_PHONE&&/^\d{6}$/.test(process.env.REVIEW_TEST_CODE||'');
+ const id=crypto.randomUUID(),code=review?process.env.REVIEW_TEST_CODE:String(crypto.randomInt(0,1000000)).padStart(6,'0');
  await db.send(new TransactWriteCommand({TransactItems:[...sendFence,{Put:{TableName:table,Item:{id,phone,username:phone,purpose:'customer-phone-otp',expiresAt:time+300,attempts:0,used:false,digest:digest(key.hmacKey,id,phone,code)},ConditionExpression:'attribute_not_exists(id)'}},{Put:{TableName:table,Item:{id:`ACTIVE#${phone}`,sessionId:id,expiresAt:time+300}}}]}));
- const response=await fetch('https://api.otpiq.com/api/sms',{method:'POST',headers:{Authorization:`Bearer ${key.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:phone.slice(1),smsType:'verification',provider:'whatsapp-telegram-sms',verificationCode:code}),signal:AbortSignal.timeout(10000)});
- if(!response.ok)return reply(503,{message:'تعذر إرسال الرمز. حاول لاحقًا'});return reply(200,{sessionId:id,expiresIn:300,resendAfter:60});
+ if(!review){const response=await fetch('https://api.otpiq.com/api/sms',{method:'POST',headers:{Authorization:`Bearer ${key.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify({phoneNumber:phone.slice(1),smsType:'verification',provider:'whatsapp-telegram-sms',verificationCode:code}),signal:AbortSignal.timeout(10000)});if(!response.ok)return reply(503,{message:'تعذر إرسال الرمز. حاول لاحقًا'});}
+ return reply(200,{sessionId:id,expiresIn:300,resendAfter:60});
 }
 async function provision(phone,body){
  const name=String(body.name||'').trim();if(name.length<2||name.length>80||/[\u0000-\u001f]/.test(name)||body.termsAccepted!==true||body.privacyAccepted!==true)return null;

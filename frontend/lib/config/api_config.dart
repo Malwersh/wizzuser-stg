@@ -68,7 +68,7 @@ class ApiConfig {
   
   // 📱 App Configuration
   static const String appVersion = '1.0.0';
-  static const String appName = 'Food App';
+  static const String appName = 'وزز لتوصيل الطعام';
   
   // 🔄 Registration API Format Requirements
   static const String registrationTypeEmail = 'email';
