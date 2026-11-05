@@ -107,9 +107,10 @@ class _StorefrontValueState extends State<StorefrontValue> {
 
     String text =
         key == null ? 'يُحدد بعد إكمال عنوان التوصيل' : 'جارٍ الحساب…';
-    if (widget.field == StorefrontField.preparation &&
-        widget.initialPreparationMinutes != null)
-      text = 'نحو ${widget.initialPreparationMinutes} دقيقة';
+    final preparation = pricing.preparationMinutes(widget.branchId) ??
+        widget.initialPreparationMinutes;
+    if (widget.field == StorefrontField.preparation && preparation != null)
+      text = 'نحو $preparation دقيقة';
     final retained = pricing.peekDisplay(
       widget.branchId,
       items,
@@ -139,7 +140,8 @@ class _StorefrontValueState extends State<StorefrontValue> {
     if (error != null &&
         p == null &&
         !(display != null && widget.field != StorefrontField.fee) &&
-        !(widget.field == StorefrontField.fee && fee != null))
+        !(widget.field == StorefrontField.fee && fee != null) &&
+        !(widget.field == StorefrontField.preparation && preparation != null))
       return TextButton(
         style:
             widget.compact

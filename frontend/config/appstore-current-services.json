@@ -1,0 +1,20 @@
+{
+  "APP_STORE_RELEASE": "true",
+  "PUBLIC_BACKEND_APPROVED": "true",
+  "PUBLIC_BACKEND_ENVIRONMENT": "staging",
+  "ENVIRONMENT": "staging",
+  "API_URL": "https://4jut6787c8.execute-api.us-east-1.amazonaws.com/staging",
+  "WEBSOCKET_URL": "wss://igcrhwc84c.execute-api.us-east-1.amazonaws.com/staging",
+  "CENTRAL_PUSH_API_BASE_URL": "https://x066k4dftk.execute-api.us-east-1.amazonaws.com/staging",
+  "PHONE_AUTH_API_URL": "https://f44z33oz55.execute-api.us-east-1.amazonaws.com/staging",
+  "PHONE_LINK_API_URL": "https://mawqyuutz4.execute-api.us-east-1.amazonaws.com/staging",
+  "ORDER_SERVICE_URL": "https://mqwom78d3c.execute-api.us-east-1.amazonaws.com/staging",
+  "ACCOUNT_DELETION_API_URL": "https://77j15qyukg.execute-api.us-east-1.amazonaws.com/staging",
+  "SLIDESHOW_API_URL": "https://7oum9md7v6.execute-api.us-east-1.amazonaws.com/staging/staff/public/home-slideshow",
+  "WALLET_TRANSFER_API_URL": "https://z14s5f8oxh.execute-api.us-east-1.amazonaws.com/staging/wallet/transfers",
+  "COGNITO_USER_POOL_ID": "us-east-1_TpyyrVkEE",
+  "APP_CLIENT_ID": "4a9e8o3em311eq2rgckp0pd2s9",
+  "COGNITO_REGION": "us-east-1",
+  "COMMERCIAL_PRICING_ENABLED": "true",
+  "DELIVERY_QUOTES_ENABLED": "true"
+}

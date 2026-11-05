@@ -326,6 +326,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
     }
 
     try {
+      // Refresh merchant settings independently of route pricing and menu data.
+      // The details parser updates the shared storefront facts and notifies listeners.
+      unawaited(BusinessService.getBusinessDetails(widget.store.id));
       developer.log(
         '🔍 جاري تحميل منتجات المطعم: ${widget.store.name} (ID: ${widget.store.id})',
       );

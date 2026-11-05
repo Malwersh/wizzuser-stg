@@ -32,3 +32,11 @@ __pycache__/
 
 # Private local Lambda capture and diagnostic artifacts
 /backend/.tmp/
+# Local Android upload signing material (never commit).
+**/key.properties
+**/*.jks
+**/*.keystore
+
+# Local signing backups and generated deployment output
+**/*.jks.*
+**/*.keystore.*

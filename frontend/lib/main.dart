@@ -1,3 +1,5 @@
+import 'config/public_release_config.dart';
+import 'config/api_config.dart';
 import 'services/activity_link_navigation.dart';
 import 'services/live_activity_service.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +18,7 @@ import 'services/notification_navigation.dart';
 void main() async {
   // تأكد من تهيئة Flutter
   WidgetsFlutterBinding.ensureInitialized();
+  PublicReleaseConfig.validate();
   
   // إعداد orientation للجهاز
   await SystemChrome.setPreferredOrientations([
@@ -71,7 +74,7 @@ class FoodApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'Food App',
+        title: ApiConfig.appName,
         navigatorKey: NotificationNavigation.navigatorKey,
         scaffoldMessengerKey: NotificationNavigation.messengerKey,
         debugShowCheckedModeBanner: false,

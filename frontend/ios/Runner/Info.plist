@@ -2,15 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>FlutterDeepLinkingEnabled</key><false/>
-    <key>CFBundleURLTypes</key><array><dict>
-      <key>CFBundleURLName</key><string>com.wiz.wizuserapp.orders</string>
-      <key>CFBundleURLSchemes</key><array><string>wizuser</string></array>
-    </dict></array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>اختر صورة لإرفاقها برسالتك إلى فريق الدعم.</string>
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.wiz.wizuserapp.orders</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wizuser</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Wiz</string>
+	<string>وزز لتوصيل الطعام</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -54,15 +66,6 @@
 	<string>يحتاج التطبيق إلى إذن الموقع لعرض المطاعم والمحلات القريبة منك وتوصيل الطلبات</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>يحتاج التطبيق إلى إذن الموقع لعرض المطاعم والمحلات القريبة منك وتوصيل الطلبات</string>
-	<key>NSCameraUsageDescription</key>
-	<string>يحتاج التطبيق إلى إذن الكاميرا لرفع صور الوجبات والمراجعات</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>يحتاج التطبيق إلى إذن الصور لرفع صور الوجبات والمراجعات</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>ar</string>
@@ -70,25 +73,7 @@
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>fetch</string>
-		<string>background-fetch</string>
-		<string>background-processing</string>
 		<string>remote-notification</string>
-		<string>audio</string>
-		<string>processing</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.wiz.wizuserapp.refresh</string>
-		<string>com.wiz.wizuserapp.websocket</string>
-	</array>
-	<key>UIRequiresPersistentWiFi</key>
-	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>هذا التطبيق يحتاج للوصول إلى الشبكة المحلية للتطوير والتصحيح</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_dartobservatory._tcp</string>
 	</array>
 	<key>UIStatusBarHidden</key>
 	<false/>

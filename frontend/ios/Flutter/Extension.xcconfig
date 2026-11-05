@@ -1,0 +1,2 @@
+// Share Flutter version/build values without inheriting Runner CocoaPods flags.
+#include "Generated.xcconfig"

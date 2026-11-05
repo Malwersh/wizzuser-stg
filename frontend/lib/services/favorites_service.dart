@@ -141,7 +141,9 @@ class FavoritesService {
         name: 'FAVORITES_SERVICE',
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 ||
+          (response.statusCode == 404 &&
+              jsonDecode(response.body)['message'] == 'المفضلة غير موجودة')) {
         final responseData = jsonDecode(response.body);
         developer.log(
           '✅ تم إزالة المطعم من المفضلة بنجاح',
