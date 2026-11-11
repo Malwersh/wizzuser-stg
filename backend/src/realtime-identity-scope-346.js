@@ -127,6 +127,12 @@ function guardDefault(handler,{db=dbClient(),cognito=new CognitoIdentityProvider
    const id=m.order_id||m.orderId,extra=await authorizeOrder(db,scope,id),subscriptionId=connectionId+'_'+id;
    if(action==='unsubscribe_order')await write(db,scope,[{Delete:{TableName:S,Key:{subscriptionId},ConditionExpression:'connectionId=:id',ExpressionAttributeValues:{':id':connectionId}}}],extra);
    else await write(db,scope,[{Put:{TableName:S,Item:{subscriptionId,connectionId,orderId:id,userId:scope.subjectId,subscriptionType:'order_tracking',ttl:scope.expiresAt,timestamp:now}}}],extra);
+   if(scope.role==='CUSTOMER'&&action!=='unsubscribe_order'){
+    const order=await get(db,O,{PK:'ORDER#'+id,SK:'META'});
+    if(order?.driverId&&['picked_up','heading_to_customer','arrived_at_customer','on_the_way','out_for_delivery'].includes(order.status)){
+     const {LambdaClient,InvokeCommand}=require('@aws-sdk/client-lambda');await new LambdaClient({region:'us-east-1'}).send(new InvokeCommand({FunctionName:'WizzUser-WebSocketSendUpdate-staging',InvocationType:'Event',Payload:Buffer.from(JSON.stringify({source:'wizz.driver-location-438',schemaVersion:1,orderId:id,driverId:order.driverId}))}));
+    }
+   }
    await post(e,{type:'subscription_ack',action,orderId:id,timestamp:now});return {statusCode:200,body:'OK'};
   }
   if(scope.role==='CUSTOMER'&&['subscribe_user_orders','unsubscribe_user_orders'].includes(action)){

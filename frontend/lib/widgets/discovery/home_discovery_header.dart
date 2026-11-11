@@ -75,7 +75,12 @@ class HomeDiscoveryHeader extends StatelessWidget {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 6, 16, promotion == null && background == null ? 24 : 4),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              6,
+              16,
+              promotion == null && background == null ? 24 : 4,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -208,6 +213,10 @@ class HomeTypeCategories extends StatelessWidget {
           button: true,
           label: c.label,
           child: Material(
+            animationDuration:
+                MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
             color: active ? AppColors.primary : const Color(0xFFF5F6F8),
             borderRadius: BorderRadius.circular(36),
             child: InkWell(

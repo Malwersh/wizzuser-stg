@@ -1,3 +1,5 @@
+import '../utils/iraqi_phone.dart';
+import 'iraqi_mobile_field.dart';
 // lib/widgets/add_address_bottom_sheet.dart
 import '../constants/app_colors.dart';
 
@@ -32,7 +34,7 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
   final _floorNumberController = TextEditingController();
   final _apartmentNumberController = TextEditingController();
   final _phoneNumberController = TextEditingController();
-  
+
   String _selectedType = 'home';
   bool _isDefault = false;
   double? _latitude;
@@ -99,14 +101,16 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           // Header
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 Text(
-                  widget.editAddress != null ? 'تعديل العنوان' : 'إضافة عنوان جديد',
+                  widget.editAddress != null
+                      ? 'تعديل العنوان'
+                      : 'إضافة عنوان جديد',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -120,7 +124,7 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
               ],
             ),
           ),
-          
+
           // Form
           Expanded(
             child: SingleChildScrollView(
@@ -134,13 +138,13 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                     hint: 'مثال: المنزل، العمل، الشقة',
                     icon: Icons.label,
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   _buildAddressTypeSelector(),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   Row(
                     children: [
                       Expanded(
@@ -162,9 +166,9 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   Row(
                     children: [
                       Expanded(
@@ -186,9 +190,9 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   _buildTextField(
                     controller: _detailedAddressController,
                     label: 'تفاصيل العنوان (اختياري)',
@@ -196,19 +200,16 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                     icon: Icons.description,
                     maxLines: 2,
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   const Text(
                     'معلومات المبنى (اختياري)',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   Row(
                     children: [
                       Expanded(
@@ -232,9 +233,9 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   Row(
                     children: [
                       Expanded(
@@ -258,14 +259,14 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Get Current Location Button
                   _buildCurrentLocationButton(),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Set as Default Checkbox
                   CheckboxListTile(
                     value: _isDefault,
@@ -278,13 +279,13 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
-                  
+
                   const SizedBox(height: 20),
                 ],
               ),
             ),
           ),
-          
+
           // Save Button
           Container(
             padding: const EdgeInsets.all(16),
@@ -323,6 +324,12 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
   }) {
+    if (keyboardType == TextInputType.phone) {
+      return IraqiMobileField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -470,9 +477,7 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
                 const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
             ],
           ),
@@ -483,7 +488,7 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
 
   void _getCurrentLocation() async {
     await widget.addressService.getCurrentLocationAddress();
-    
+
     if (widget.addressService.currentLocationAddress != null) {
       final currentAddress = widget.addressService.currentLocationAddress!;
       setState(() {
@@ -514,7 +519,10 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
         buildingNumber: _buildingNumberController.text.trim(),
         floorNumber: _floorNumberController.text.trim(),
         apartmentNumber: _apartmentNumberController.text.trim(),
-        phoneNumber: _phoneNumberController.text.trim(),
+        phoneNumber:
+            _phoneNumberController.text.trim().isEmpty
+                ? null
+                : IraqiPhone.normalize(_phoneNumberController.text),
         latitude: _latitude,
         longitude: _longitude,
       );
@@ -542,12 +550,17 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
         buildingNumber: _buildingNumberController.text.trim(),
         floorNumber: _floorNumberController.text.trim(),
         apartmentNumber: _apartmentNumberController.text.trim(),
-        phoneNumber: _phoneNumberController.text.trim(),
+        phoneNumber:
+            _phoneNumberController.text.trim().isEmpty
+                ? null
+                : IraqiPhone.normalize(_phoneNumberController.text),
         latitude: _latitude,
         longitude: _longitude,
       );
 
-      final newAddress = await widget.addressService.createAddress(createRequest);
+      final newAddress = await widget.addressService.createAddress(
+        createRequest,
+      );
 
       if (newAddress != null && mounted) {
         widget.onAddressSaved(newAddress);
@@ -557,6 +570,13 @@ class _AddAddressBottomSheetState extends State<AddAddressBottomSheet> {
   }
 
   bool _validateForm() {
+    if (_phoneNumberController.text.trim().isNotEmpty &&
+        !IraqiPhone.valid(_phoneNumberController.text)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('أدخل رقم هاتف عراقي صحيح')));
+      return false;
+    }
     if (_nameController.text.trim().isEmpty ||
         _provinceController.text.trim().isEmpty ||
         _districtController.text.trim().isEmpty ||

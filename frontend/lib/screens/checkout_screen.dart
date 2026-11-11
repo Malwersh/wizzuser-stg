@@ -1,3 +1,10 @@
+import '../services/basket_preparation.dart';
+import '../widgets/offer_replacement_sheet.dart';
+import '../widgets/delivery_location_notice.dart';
+import '../utils/iraqi_phone.dart';
+import '../widgets/iraqi_mobile_field.dart';
+import '../widgets/checkout_delivery_summary.dart';
+import '../services/checkout_review_policy.dart';
 import 'customer_phone_auth_screen.dart';
 import '../models/cart_model.dart';
 import '../models/browsing_location.dart';
@@ -219,6 +226,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Map<String, dynamic>? _confirmedPricingPoint;
   String? _pricingSelectionKey;
   Timer? _pointInvoiceDebounce;
+  String? _automaticDeliveryId() {
+    final state = context.read<AppStateProvider>();
+    final branch = _branchId(state);
+    if (branch == null) return null;
+    final request = PointInvoice321.basketRequest(branch, state.cartItems);
+    final pending = PendingOffer.current;
+    if (request == null || pending?.automaticDelivery != true) return null;
+    final point = request['pricingPoint'];
+    if (!pending!.matchesBasket(
+      branch,
+      state.cartItems,
+      point['latitude'],
+      point['longitude'],
+    ))
+      return null;
+    final address = _selectedAddress;
+    if (address != null &&
+        !_editingDeliveryDetails &&
+        (address.latitude != point['latitude'] ||
+            address.longitude != point['longitude']))
+      return null;
+    return pending.offer['id'] as String?;
+  }
+
   Map<String, dynamic>? _pointInvoiceRequest() {
     if (!_checkoutIdentityReady) return null;
     final state = context.read<AppStateProvider>(),
@@ -258,10 +289,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryBenefitId:
           _selectedBenefit?.isDelivery == true
               ? _selectedBenefit!.id
-              : _deliveryBenefitId,
+              : (_deliveryBenefitId ?? _automaticDeliveryId()),
       promoCode: _appliedPromoCode,
       offerSlideId:
-          PendingOffer.current?.merchantId == branch
+          PendingOffer.current?.merchantId == branch &&
+                  PendingOffer.current?.slideId.isNotEmpty == true
               ? PendingOffer.current?.slideId
               : null,
     );
@@ -314,10 +346,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       deliveryBenefitId:
           _selectedBenefit?.isDelivery == true
               ? _selectedBenefit!.id
-              : _deliveryBenefitId,
+              : (_deliveryBenefitId ?? _automaticDeliveryId()),
       promoCode: _appliedPromoCode,
       offerSlideId:
-          PendingOffer.current?.merchantId == branch
+          PendingOffer.current?.merchantId == branch &&
+                  PendingOffer.current?.slideId.isNotEmpty == true
               ? PendingOffer.current?.slideId
               : null,
     );
@@ -411,6 +444,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   void _quoteChanged() {
     _scheduleInvoice();
+    if (mounted && PendingOffer.current != null) _pendingCartChanged();
     if (mounted)
       setState(() {
         final pendingTip = _quotedCheckout.pendingTipIqd;
@@ -551,6 +585,73 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double get _effectiveDiscount => _discountCurrent ? _discount : 0;
   DetailedAddress? _selectedAddress;
   bool _editingDeliveryDetails = false;
+  bool? _deliveryStep;
+  bool _savingDeliveryStep = false;
+  final _addressEditorController = CheckoutAddressEditorController();
+  Map<String, dynamic>? _displayedCommercialInvoice;
+  String? _displayedCommercialScope;
+  bool get _deliveryReady =>
+      _selectedAddress != null &&
+      (BrowsingLocationService.instance.selection == null ||
+          _completeDeliveryDetails) &&
+      _guestNameController.text.trim().isNotEmpty &&
+      IraqiPhone.valid(_guestPhoneController.text);
+
+  void _openDeliveryStep() {
+    if (_quotedCheckout.pending || _preparingReview || _isLoading) return;
+    setState(() => _deliveryStep = true);
+  }
+
+  Future<void> _continueToPayment() async {
+    if (_savingDeliveryStep || !_checkoutIdentityReady) return;
+    if (_guestNameController.text.trim().isEmpty ||
+        !IraqiPhone.valid(_guestPhoneController.text)) {
+      _showMessage('أدخل اسم المستلم ورقم هاتف صحيح', isError: true);
+      return;
+    }
+    _guestPhoneController.text = IraqiPhone.normalize(
+      _guestPhoneController.text,
+    );
+    _guestPhone = _guestPhoneController.text;
+    FocusScope.of(context).unfocus();
+    setState(() => _savingDeliveryStep = true);
+    try {
+      if (_editingDeliveryDetails || _selectedAddress == null) {
+        if (!_addressEditorController.attached) {
+          _showMessage('اختر عنوان التوصيل أولًا', isError: true);
+          return;
+        }
+        final saved = await _addressEditorController.submit();
+        if (!mounted || !saved || !_checkoutIdentityReady) return;
+      }
+      if (!_deliveryReady) {
+        _showMessage(
+          'أكمل الحي وأقرب نقطة دالة وحدد موقع التوصيل',
+          isError: true,
+        );
+        return;
+      }
+      final address = _selectedAddress;
+      if (address?.latitude != null && address?.longitude != null) {
+        final accepted = await confirmDeliveryDistance(
+          context,
+          address!.latitude!,
+          address.longitude!,
+        );
+        if (!mounted ||
+            !accepted ||
+            !_checkoutIdentityReady ||
+            _selectedAddress != address)
+          return;
+      }
+      await _autoApplyOffer();
+      if (!mounted) return;
+      setState(() => _deliveryStep = false);
+    } finally {
+      if (mounted) setState(() => _savingDeliveryStep = false);
+    }
+  }
+
   bool get _completeDeliveryDetails =>
       !_editingDeliveryDetails &&
       _selectedAddress != null &&
@@ -622,6 +723,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _preparingReview ||
           _invoiceLoading)
         return;
+      final point = _pointInvoiceRequest();
+      if (point != null) {
+        unawaited(_pointInvoices.warmRequest(point));
+        return;
+      }
       final request = _invoiceRequest();
       if (request == null) return;
       final invoice = _invoices.peek(request);
@@ -659,6 +765,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _cartListener = context.read<AppStateProvider>();
       _cartListener!.addListener(_pendingCartChanged);
+      PendingOffer.revision.addListener(_pendingCartChanged);
       if (_checkoutIdentityReady) {
         _initializeUserData().then((_) => _autoApplyOffer());
       }
@@ -682,7 +789,37 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _applyingPending ||
         _selectedAddress == null)
       return;
-    final pending = PendingOffer.current;
+    var pending = PendingOffer.current;
+    final browsing = BrowsingLocationService.instance.selection;
+    final cart = context.read<AppStateProvider>();
+    if (pending != null &&
+        pending.offer['automaticBasketScope'] != null &&
+        !pending.matchesBasket(
+          _branchId(cart) ?? '',
+          cart.cartItems,
+          browsing?.latitude ?? _selectedAddress?.latitude,
+          browsing?.longitude ?? _selectedAddress?.longitude,
+        )) {
+      PendingOffer.clear(dismissAutomatic: false);
+      pending = null;
+    }
+    if (pending?.automaticDelivery == true && _automaticDeliveryId() != null) {
+      final request = _pointInvoiceRequest();
+      if (request != null) await _pointInvoices.ensure(request);
+      if (!mounted ||
+          PendingOffer.current != pending ||
+          _automaticDeliveryId() == null)
+        return;
+      final invoice = request == null ? null : _pointInvoices.peek(request);
+      if (invoice == null) return;
+      setState(() {
+        _deliveryBenefitId = pending!.offer['id'] as String;
+        _deliveryBenefitSaving =
+            (pending.offer['savingMinor'] as num).toDouble() / 1000;
+        _validatedDiscountContext = _discountContext();
+      });
+      return;
+    }
     if (pending == null) {
       await _autoApplyItemOffer();
       return;
@@ -704,6 +841,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _applyingPending = true;
     try {
       final offer = pending.offer;
+      if (offer['deliveryBenefitId'] is String)
+        _deliveryBenefitId = offer['deliveryBenefitId'] as String;
       if (offer['source'] == 'merchant') {
         await _selectDiscount(
           StoreDiscount(
@@ -870,8 +1009,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _applyPromoCode() async {
     final code = _promoCodeController.text.trim();
-    if (!_applyingPending && PendingOffer.current?.offer['code'] != code)
-      PendingOffer.clear();
     final selectedPlatformId =
         _applyingPending ? PendingOffer.current?.offer['id'] as String? : null;
     if (code.isEmpty && selectedPlatformId == null) {
@@ -907,10 +1044,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     final attempt = ++_discountAttempt;
     final validationContext = _discountContext();
+    var replaceDelivery = false;
+    final previousDelivery =
+        _deliveryBenefitId ??
+        _automaticDeliveryId() ??
+        (_selectedBenefit?.isDelivery == true ? _selectedBenefit!.id : null);
     var result = await _orderService.validatePromoCode(
       code: code,
       platformDiscountId: selectedPlatformId,
-      deliveryBenefitId: _deliveryBenefitId,
+      deliveryBenefitId: (_deliveryBenefitId ?? _automaticDeliveryId()),
       existingPlatformDiscountId: _platformDiscountId,
       existingDiscountId: _selectedDiscountId,
       existingPromoCode: _platformDiscountId == null ? _appliedPromoCode : null,
@@ -928,6 +1070,48 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
       return;
     }
+    if (!_applyingPending &&
+        previousDelivery != null &&
+        result['valid'] != true &&
+        result['code'] == 'BENEFIT_STACKING_DENIED') {
+      final alternative = await _orderService.validatePromoCode(
+        code: code,
+        platformDiscountId: selectedPlatformId,
+        storeId: _branchId(appState) ?? '',
+        items: appState.cartItems,
+        orderTotal: appState.cartTotal,
+        deliveryFee: _actualDeliveryFee,
+        addressId: _selectedAddress?.id,
+      );
+      if (!mounted ||
+          attempt != _discountAttempt ||
+          validationContext != _discountContext())
+        return;
+      if (alternative['valid'] == true &&
+          alternative['deliveryBenefit'] != true) {
+        final accepted = await _confirmDeliveryReplacement(
+          title: code,
+          attempt: attempt,
+          scope: validationContext,
+          replacement: {
+            'promoCode': code,
+            if (selectedPlatformId != null)
+              'platformDiscountId': selectedPlatformId,
+            'discount': (alternative['discount'] as num?)?.toDouble() ?? 0,
+          },
+        );
+        if (!mounted ||
+            attempt != _discountAttempt ||
+            validationContext != _discountContext())
+          return;
+        if (!accepted) {
+          setState(() => _isValidatingDiscount = false);
+          return;
+        }
+        result = alternative;
+        replaceDelivery = true;
+      }
+    }
     Map<String, dynamic>? companion;
     if (result['valid'] == true &&
         result['deliveryBenefit'] == true &&
@@ -944,10 +1128,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
     } else if (result['valid'] == true &&
         result['deliveryBenefit'] != true &&
-        _deliveryBenefitId != null) {
+        !replaceDelivery &&
+        previousDelivery != null) {
       companion = await _orderService.validatePromoCode(
         code: '',
-        platformDiscountId: _deliveryBenefitId,
+        platformDiscountId: (_deliveryBenefitId ?? _automaticDeliveryId()),
         existingPlatformDiscountId: selectedPlatformId,
         storeId: _branchId(appState) ?? '',
         items: appState.cartItems,
@@ -967,6 +1152,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
         _selectedBenefit = null;
+        if (replaceDelivery) {
+          _deliveryBenefitId = null;
+          _deliveryBenefitSaving = 0;
+        } else if (result['deliveryBenefit'] != true) {
+          _deliveryBenefitId = previousDelivery;
+        }
         if (result['deliveryBenefit'] == true) {
           _deliveryBenefitId = selectedPlatformId;
           _deliveryBenefitSaving =
@@ -997,6 +1188,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
 
     if (result['valid'] == true) {
+      if (!_applyingPending)
+        PendingOffer.selectCode(
+          code,
+          null,
+          deliveryBenefitId: _deliveryBenefitId,
+        );
       _showMessage(
         result['deliveryBenefit'] == true
             ? 'تم اختيار ميزة التوصيل؛ ستُراجع الرسوم قبل التأكيد'
@@ -1010,8 +1207,87 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
+  Future<bool> _confirmDeliveryReplacement({
+    required String title,
+    required int attempt,
+    required String scope,
+    required Map<String, dynamic> replacement,
+  }) async {
+    final oldRequest = _pointInvoiceRequest();
+    if (oldRequest == null) return false;
+    final nextRequest =
+        Map<String, dynamic>.from(oldRequest)
+          ..remove('deliveryBenefitId')
+          ..remove('platformDiscountId')
+          ..remove('promoCode')
+          ..remove('offerSlideId')
+          ..remove('discountId')
+          ..addAll(replacement);
+    await Future.wait([
+      _pointInvoices.ensure(oldRequest),
+      _pointInvoices.ensure(nextRequest),
+    ]);
+    if (!mounted || attempt != _discountAttempt || scope != _discountContext())
+      return false;
+    final oldTotal =
+        _pointInvoices.peek(oldRequest)?['customerTotal']?['minorAmount'];
+    final newTotal =
+        _pointInvoices.peek(nextRequest)?['customerTotal']?['minorAmount'];
+    if (oldTotal is! int || newTotal is! int) {
+      _showMessage(
+        'تعذر مقارنة العرضين. احتفظنا بخصمك الحالي؛ أعد المحاولة.',
+        isError: true,
+      );
+      return false;
+    }
+    return confirmOfferReplacement(
+      context,
+      title: title,
+      currentTotalMinor: oldTotal,
+      replacementTotalMinor: newTotal,
+    );
+  }
+
+  bool _recoveringDelivery = false;
+  Future<void> _restoreAutomaticDelivery() async {
+    if (!mounted ||
+        _recoveringDelivery ||
+        _quotedCheckout.pending ||
+        PendingOffer.current != null)
+      return;
+    final state = context.read<AppStateProvider>();
+    final branch = _branchId(state);
+    if (branch == null) return;
+    final items = List<Map<String, dynamic>>.from(state.cartItems);
+    final signature = jsonEncode(items);
+    setState(() => _recoveringDelivery = true);
+    try {
+      await BasketPreparation.instance.prepare(
+        branch,
+        items,
+        current:
+            () =>
+                mounted &&
+                branch == _branchId(state) &&
+                signature == jsonEncode(state.cartItems),
+      );
+      if (mounted &&
+          branch == _branchId(state) &&
+          signature == jsonEncode(state.cartItems))
+        await _autoApplyOffer();
+    } finally {
+      if (mounted) setState(() => _recoveringDelivery = false);
+    }
+  }
+
   void _clearPromoCode() {
-    PendingOffer.clear();
+    final removingAutomatic =
+        PendingOffer.current?.automaticDelivery == true &&
+        _appliedPromoCode == null &&
+        _platformDiscountId == null &&
+        _selectedDiscountId == null;
+    PendingOffer.clear(dismissAutomatic: removingAutomatic);
+    _pendingAttemptContext = null;
     _discountAttempt++;
     setState(() {
       _isValidatingDiscount = false;
@@ -1021,8 +1297,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _deliveryBenefitSaving = 0;
       _promoCodeController.clear();
       _promoDiscountAmount = 0.0;
-      if (_selectedBenefit == null) _discount = _merchantDiscountAmount;
+      _selectedBenefit = null;
+      _validatedDiscountContext = null;
+      _discount = _merchantDiscountAmount;
     });
+    if (!removingAutomatic) unawaited(_restoreAutomaticDelivery());
   }
 
   Future<void> _selectDiscount(
@@ -1030,11 +1309,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     Map<String, dynamic>? preview,
     String? previewContext,
   }) async {
+    final replacingDelivery =
+        _deliveryBenefitId != null ||
+        _automaticDeliveryId() != null ||
+        _selectedBenefit?.isDelivery == true;
     if (!_applyingPending) {
-      PendingOffer.clear();
       _autoItemsEnabled = false;
     }
     if (discount == null) {
+      PendingOffer.clear(dismissAutomatic: false);
+      _pendingAttemptContext = null;
       _discountAttempt++;
       setState(() {
         _isValidatingDiscount = false;
@@ -1042,6 +1326,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _merchantDiscountAmount = 0.0;
         if (_selectedBenefit == null) _discount = _promoDiscountAmount;
       });
+      await _restoreAutomaticDelivery();
       return;
     }
 
@@ -1111,12 +1396,47 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
       return;
     }
+    if (result['valid'] == true && replacingDelivery && !_applyingPending) {
+      final accepted = await _confirmDeliveryReplacement(
+        title: discount.title,
+        attempt: attempt,
+        scope: validationContext,
+        replacement: {
+          'discountId': discount.discountId,
+          'discount': (result['discount'] as num?)?.toDouble() ?? 0,
+        },
+      );
+      if (!mounted ||
+          attempt != _discountAttempt ||
+          validationContext != _discountContext())
+        return;
+      if (!accepted) {
+        setState(() => _isValidatingDiscount = false);
+        return;
+      }
+    }
     setState(() {
       _isValidatingDiscount = false;
       if (result['valid'] == true) {
         _validatedDiscountContext = validationContext;
         _discountLines = result['lines'] as List? ?? [];
         _selectedBenefit = null;
+        PendingOffer.select(
+          PendingOffer(
+            '',
+            storeId.toString(),
+            {
+              'source': 'merchant',
+              'id': discount.discountId,
+              'title': discount.title,
+              'description': discount.description,
+              'type': discount.type,
+              'value': discount.value,
+            },
+            discount.validTo ?? DateTime.now().add(const Duration(minutes: 5)),
+          ),
+        );
+        _pendingAttemptContext = validationContext;
         _selectedDiscountId = discount.discountId;
         _merchantDiscountAmount =
             (result['discount'] as num?)?.toDouble() ?? 0.0;
@@ -1133,7 +1453,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
 
     if (result['valid'] == true) {
-      _showMessage('تم تطبيق الخصم بنجاح');
+      _showMessage(
+        replacingDelivery
+            ? 'تم تطبيق عرض المطعم بدل ميزة التوصيل. راجع الإجمالي المحدّث.'
+            : 'تم تطبيق الخصم بنجاح',
+      );
     } else {
       await showDiscountNoticeSheet(
         context,
@@ -1173,6 +1497,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _pointInvoiceDebounce?.cancel();
     _invoiceDebounce?.cancel();
     _invoiceGeneration++;
+    PendingOffer.revision.removeListener(_pendingCartChanged);
     _cartListener?.removeListener(_pendingCartChanged);
     BrowsingLocationService.instance.removeListener(_browsingSelectionChanged);
     _activeAddressUpdates?.cancel();
@@ -1288,9 +1613,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             !IraqiDeliveryDetails.meaningful(address.landmark);
       });
       if (!_editingDeliveryDetails) {
-        await _loadQuote();
-        await _loadStoreDiscounts();
-        await _autoApplyOffer();
+        await Future.wait([_loadQuote(), _loadStoreDiscounts()]);
       }
       return;
     }
@@ -1316,9 +1639,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   : addressService.defaultAddress ??
                       addressService.detailedAddresses.first;
         });
-        await _loadQuote();
-        await _loadStoreDiscounts();
-        await _autoApplyOffer();
+        await Future.wait([_loadQuote(), _loadStoreDiscounts()]);
       }
     } catch (e) {
       debugPrint('خطأ في تحميل العنوان: $e');
@@ -1445,8 +1766,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF5F7FB),
         appBar: AppBar(
-          title: const Text(
-            'إتمام الطلب',
+          title: Text(
+            (_deliveryStep ?? !_deliveryReady) ? 'بيانات التوصيل' : 'الدفع',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -1461,7 +1782,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Icons.arrow_back_ios,
               color: const Color(0xFF172B4D),
             ),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              if (_deliveryStep == true && _deliveryReady) {
+                setState(() => _deliveryStep = false);
+              } else {
+                Navigator.pop(context);
+              }
+            },
           ),
         ),
         body: CheckoutLoadingBody(
@@ -1501,109 +1828,104 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 return const Center(child: Text('السلة فارغة'));
               }
 
+              final detailsStep =
+                  !_quotedCheckout.pending &&
+                  (_deliveryStep == true || !_deliveryReady);
               return Column(
                 children: [
                   Expanded(
                     child: SingleChildScrollView(
-                      physics: const ClampingScrollPhysics(), // تحسين الأداء
+                      key: ValueKey(
+                        detailsStep ? 'delivery-step' : 'payment-step',
+                      ),
                       padding: const EdgeInsets.all(16),
                       child: Form(
-                        // إضافة Form widget
                         key: _formKey,
-                        child: RepaintBoundary(
-                          // تجنب إعادة رسم غير ضرورية
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildOrderSummary(appState),
-                              const SizedBox(height: 20),
-                              _checkoutGroupLabel('التوصيل والمستلم'),
-                              _buildAddressSection(),
-                              const SizedBox(height: 12),
-                              if (_isGuestUser)
-                                _buildGuestInfoSection()
-                              else
-                                _checkoutDisclosure(
-                                  id: 'recipient',
-                                  title: 'بيانات المستلم',
-                                  subtitle: [
-                                        _guestNameController.text,
-                                        _guestPhoneController.text,
-                                      ]
-                                      .where((v) => v.trim().isNotEmpty)
-                                      .join(' · '),
-                                  icon: Icons.person_outline,
-                                  initiallyExpanded:
-                                      _guestNameController.text
-                                          .trim()
-                                          .isEmpty ||
-                                      _guestPhoneController.text.trim().isEmpty,
-                                  child: _buildLoggedInUserInfoSection(),
-                                ),
-                              const SizedBox(height: 12),
-                              _checkoutDisclosure(
-                                id: 'instructions',
-                                title: 'ملاحظات للسائق',
-                                subtitle:
-                                    'اختياري · تعليمات تساعد على الوصول إليك',
-                                icon: Icons.notes_outlined,
-                                child: _buildInstructionsSection(),
-                              ),
-                              const SizedBox(height: 20),
-                              _checkoutGroupLabel('الدفع والعروض'),
-                              _buildPaymentSection(),
-                              const SizedBox(height: 12),
-                              _buildDiscountsSection(),
-                              if (!_isGuestUser &&
-                                  ApiConfig.commercialPricingEnabled &&
-                                  _quotesEnabled) ...[
-                                const SizedBox(height: 12),
-                                _checkoutDisclosure(
-                                  id: 'benefits',
-                                  title: 'مزايا المنصة',
-                                  subtitle: 'استعرض المزايا المتاحة لحسابك',
-                                  icon: Icons.card_giftcard_outlined,
-                                  child: _buildPlatformBenefitSection(),
-                                ),
-                              ],
-                              if (ApiConfig.commercialPricingEnabled) ...[
-                                const SizedBox(height: 12),
-                                _checkoutDisclosure(
-                                  id: 'tip',
-                                  title: 'إكرامية السائق',
-                                  subtitle:
-                                      _driverTipIqd == 0
-                                          ? 'اختياري · دون إكرامية'
-                                          : '${_driverTipIqd.toStringAsFixed(0)} د.ع · تصل بالكامل إلى السائق',
-                                  icon: Icons.favorite_border,
-                                  child: DriverTipSelector(
-                                    showHeading: false,
-                                    amountIqd: _driverTipIqd,
-                                    enabled:
-                                        !_isLoading &&
-                                        !_preparingReview &&
-                                        !_quotedCheckout.pending,
-                                    onChanged:
-                                        (amount) => setState(
-                                          () => _driverTipIqd = amount,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 20),
-                              _checkoutGroupLabel('مراجعة المبلغ'),
-                              if (_quotesEnabled) _buildQuoteStatus(appState),
-                              _buildPriceSummary(appState),
-                              const SizedBox(height: 24),
-                            ],
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children:
+                              detailsStep
+                                  ? [
+                                    _buildRecipientEditor(),
+                                    const SizedBox(height: 12),
+                                    _buildAddressSection(),
+                                  ]
+                                  : [
+                                    CheckoutDeliverySummary(
+                                      compact: true,
+                                      name: _guestNameController.text.trim(),
+                                      phone: _guestPhoneController.text.trim(),
+                                      address: [
+                                            BrowsingLocationService
+                                                    .instance
+                                                    .selection
+                                                    ?.regionName ??
+                                                _selectedAddress
+                                                    ?.regionNameAr ??
+                                                '',
+                                            _selectedAddress?.neighborhood ??
+                                                '',
+                                            if (IraqiDeliveryDetails.meaningful(
+                                              _selectedAddress?.landmark,
+                                            ))
+                                              'قرب ${_selectedAddress!.landmark}',
+                                          ]
+                                          .where((v) => v.trim().isNotEmpty)
+                                          .join('، '),
+                                      onEdit: _openDeliveryStep,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _checkoutDisclosure(
+                                      id: 'offers-unified',
+                                      title: 'العروض والكوبون',
+                                      subtitle:
+                                          _effectiveDiscount > 0 ||
+                                                  _effectiveDeliveryBenefitSaving >
+                                                      0
+                                              ? 'عرض مطبّق · التفاصيل والتغيير'
+                                              : 'عرض متاح أو كود خصم؟',
+                                      icon: Icons.local_offer_outlined,
+                                      compact: true,
+                                      child: Column(
+                                        children: [
+                                          _buildDiscountsSection(),
+                                          if (!_isGuestUser &&
+                                              ApiConfig
+                                                  .commercialPricingEnabled &&
+                                              _quotesEnabled)
+                                            _buildPlatformBenefitSection(),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildPaymentSection(),
+                                    const SizedBox(height: 12),
+                                    _buildInstructionsSection(),
+                                    if (ApiConfig.commercialPricingEnabled) ...[
+                                      const SizedBox(height: 12),
+                                      DriverTipSelector(
+                                        amountIqd: _driverTipIqd,
+                                        enabled:
+                                            !_isLoading &&
+                                            !_preparingReview &&
+                                            !_quotedCheckout.pending,
+                                        onChanged:
+                                            (amount) => setState(
+                                              () => _driverTipIqd = amount,
+                                            ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 12),
+                                    _buildPriceSummary(appState),
+                                  ],
                         ),
                       ),
                     ),
                   ),
-
-                  // زر تأكيد الطلب
-                  _buildConfirmButton(appState),
+                  if (detailsStep)
+                    _buildDeliveryContinueButton()
+                  else
+                    _buildConfirmButton(appState),
                 ],
               );
             },
@@ -1613,14 +1935,85 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _checkoutGroupLabel(String title) => Padding(
-    padding: const EdgeInsets.only(right: 4, bottom: 10),
-    child: Text(
-      title,
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: Color(0xFF53627B),
+  Widget _buildRecipientEditor() => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xFFE7EBF2)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'المستلم',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.secondaryDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _guestNameController,
+          decoration: deliveryFieldDecoration(
+            'اسم المستلم',
+            icon: const Icon(Icons.person_outline),
+          ).copyWith(labelText: 'اسم المستلم'),
+          textInputAction: TextInputAction.next,
+          onChanged:
+              (v) => setState(() {
+                _deliveryStep = true;
+                _guestName = v;
+              }),
+        ),
+        const SizedBox(height: 12),
+        IraqiMobileField(
+          controller: _guestPhoneController,
+          readOnly: _isLoggedInWithPhone,
+          decoration: deliveryFieldDecoration('رقم الهاتف').copyWith(
+            labelText: 'رقم الهاتف',
+            suffixIcon:
+                _isLoggedInWithPhone
+                    ? const Icon(
+                      Icons.verified_outlined,
+                      color: Color(0xFF22744B),
+                    )
+                    : null,
+          ),
+          onChanged:
+              (v) => setState(() {
+                _deliveryStep = true;
+                _guestPhone = v;
+              }),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildDeliveryContinueButton() => Container(
+    padding: const EdgeInsets.all(16),
+    color: Colors.white,
+    child: SafeArea(
+      top: false,
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed:
+              !_savingDeliveryStep && !_isLoading ? _continueToPayment : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: AppColors.secondaryDark,
+            elevation: 0,
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: Text(
+            _savingDeliveryStep ? 'جارٍ تجهيز الدفع…' : 'متابعة إلى الدفع',
+          ),
+        ),
       ),
     ),
   );
@@ -1632,6 +2025,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     required IconData icon,
     required Widget child,
     bool initiallyExpanded = false,
+    bool compact = false,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1644,21 +2038,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         key: PageStorageKey('checkout-$id'),
         maintainState: true,
         initiallyExpanded: initiallyExpanded,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        tilePadding: EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: compact ? 0 : 4,
+        ),
         childrenPadding: const EdgeInsets.only(bottom: 4),
         shape: const Border(),
         collapsedShape: const Border(),
         iconColor: AppColors.secondaryDark,
         collapsedIconColor: AppColors.secondaryDark,
-        leading: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEDF2FA),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 20, color: AppColors.secondaryDark),
-        ),
+        leading:
+            compact
+                ? Icon(icon, size: 21, color: AppColors.secondaryDark)
+                : Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDF2FA),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, size: 20, color: AppColors.secondaryDark),
+                ),
         title: Text(
           title,
           style: const TextStyle(
@@ -1695,64 +2095,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _buildOrderSummary(AppStateProvider appState) {
-    final itemCount = appState.cartItems.length;
-    final totalQuantity = appState.cartItems.fold<int>(
-      0,
-      (sum, item) => sum + (item['quantity'] as int? ?? 1),
-    );
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7EBF2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDF2FA),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.shopping_bag,
-                  color: AppColors.secondary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.storeName ?? 'المطعم',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF172B4D),
-                      ),
-                    ),
-                    Text(
-                      '$itemCount صنف · $totalQuantity قطعة',
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _acceptDeliveryAddress(DetailedAddress address) async {
     if (!IraqiDeliveryDetails.meaningful(address.neighborhood) ||
         !IraqiDeliveryDetails.meaningful(address.landmark)) {
@@ -1767,16 +2109,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     BrowsingLocationService.instance.confirmAddress(address);
     setState(() {
       _selectedAddress = address;
+      _deliveryStep ??= true;
       _editingDeliveryDetails = false;
       _confirmedPricingPoint = {
         'latitude': address.latitude,
         'longitude': address.longitude,
       };
     });
-    _quotedCheckout.invalidate();
-    await _loadQuote();
-    await _loadStoreDiscounts();
-    await _autoApplyOffer();
+    // Binding quotes remain address-specific. Point pricing is independent of
+    // delivery instructions and stays cached when only the address text changes.
+    if (_quotedCheckout.quote?.addressId != address.id) {
+      _quotedCheckout.invalidate();
+    }
+    unawaited(_loadQuote());
+    // Offer loading/validation must not hold the delivery form's continuation.
+    // _loadStoreDiscounts performs auto-application after the list is ready.
+    unawaited(_loadStoreDiscounts());
   }
 
   Widget _buildAddressSection() {
@@ -1804,10 +2152,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                   ),
                 ),
-                TextButton(
-                  onPressed: _selectAddress,
-                  child: const Text('عناويني'),
-                ),
+                if (!_editingDeliveryDetails && _selectedAddress != null)
+                  TextButton(
+                    onPressed: _selectAddress,
+                    child: const Text('تغيير'),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1817,6 +2166,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   'delivery-details-${browsing.toJson()}-${_selectedAddress?.id}',
                 ),
                 selection: browsing,
+                controller: _addressEditorController,
+                onChooseSaved: _selectAddress,
+                showSubmitButton: false,
                 initialAddress: _selectedAddress,
                 onPointConfirmed: (p) {
                   if (_confirmedPricingPoint?['latitude'] != p.latitude ||
@@ -1829,7 +2181,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _pricingSelectionKey = jsonEncode(browsing.toJson());
                     });
                 },
-                onConfirmed: (a) => unawaited(_acceptDeliveryAddress(a)),
+                onConfirmed: _acceptDeliveryAddress,
               )
             else ...[
               Text(
@@ -2086,53 +2438,31 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildPaymentSection() => Container(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: const Color(0xFFE7EBF2)),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    child: Row(
       children: [
-        const Row(
-          children: [
-            Icon(
-              Icons.payments_outlined,
-              color: AppColors.secondaryDark,
-              size: 22,
-            ),
-            SizedBox(width: 10),
-            Text(
-              'طريقة الدفع',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ],
+        const Icon(
+          Icons.payments_outlined,
+          color: AppColors.secondaryDark,
+          size: 22,
         ),
-        const SizedBox(height: 8),
-        ...PaymentMethod.values
-            .where((m) => m.isEnabled)
-            .map(
-              (method) => RadioListTile<PaymentMethod>(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                activeColor: AppColors.secondaryDark,
-                value: method,
-                groupValue: _selectedPaymentMethod,
-                onChanged: (value) {
-                  if (value != null)
-                    setState(() => _selectedPaymentMethod = value);
-                },
-                title: Text(
-                  method.arabicName,
-                  style: const TextStyle(fontSize: 14),
-                ),
-                subtitle: const Text(
-                  'يُدفع عند استلام الطلب',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF53627B)),
-                ),
-              ),
-            ),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Text(
+            'الدفع نقدًا عند الاستلام',
+            style: TextStyle(fontSize: 14),
+          ),
+        ),
+        const Icon(
+          Icons.check_circle_outline,
+          color: Color(0xFF22744B),
+          size: 20,
+        ),
       ],
     ),
   );
@@ -2209,8 +2539,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         );
         return;
       }
+      if (!benefit.isDelivery &&
+          (_deliveryBenefitId != null ||
+              _automaticDeliveryId() != null ||
+              _selectedBenefit?.isDelivery == true)) {
+        final accepted = await _confirmDeliveryReplacement(
+          title: benefit.title,
+          attempt: attempt,
+          scope: scope,
+          replacement: {
+            'platformDiscountId': benefit.id,
+            'discount': (result['discount'] as num?)?.toDouble() ?? 0,
+          },
+        );
+        if (!mounted ||
+            attempt != _discountAttempt ||
+            scope != _discountContext())
+          return;
+        if (!accepted) return;
+      }
       setState(() {
-        PendingOffer.clear();
+        PendingOffer.select(
+          PendingOffer('', branch, {
+            'source': 'platform',
+            'id': benefit.id,
+            'title': benefit.title,
+            'deliverySelection': benefit.isDelivery,
+          }, benefit.endAt),
+        );
+        _pendingAttemptContext = scope;
         _platformDiscountId = null;
         _deliveryBenefitId = null;
         _deliveryBenefitSaving = 0;
@@ -2246,6 +2603,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _isLoading ||
         _preparingReview ||
         _isValidatingDiscount ||
+        _recoveringDelivery ||
         _quotedCheckout.pending;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2285,15 +2643,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               if (_selectedBenefit != null)
                 TextButton(
-                  onPressed:
-                      locked
-                          ? null
-                          : () => setState(() {
-                            _discountAttempt++;
-                            _selectedBenefit = null;
-                            _discount = 0;
-                            _validatedDiscountContext = null;
-                          }),
+                  onPressed: locked ? null : _clearPromoCode,
                   child: const Text('إزالة'),
                 ),
             ],
@@ -2544,51 +2894,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _buildInstructionsSection() => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-    child: TextField(
-      controller: _instructionsController,
-      minLines: 2,
-      maxLines: 3,
-      maxLength: 500,
-      decoration: InputDecoration(
-        hintText: 'مثال: يرجى الاتصال عند الوصول إلى الباب',
-        counterText: '',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      onChanged: (value) => _deliveryInstructions = value,
+  Widget _buildInstructionsSection() => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xffe7ebf2)),
     ),
-  );
-
-  Widget _buildQuoteStatus(AppStateProvider appState) {
-    if (!_quotedCheckout.pending &&
-        (_quotedCheckout.error == null || _quotedCheckout.valid)) {
-      return const SizedBox.shrink();
-    }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
           children: [
-            Text(
-              _quotedCheckout.pending
-                  ? 'توجد محاولة تأكيد سابقة. تابعها لاستعادة نتيجتها قبل بدء طلب آخر.'
-                  : (_quotedCheckout.error ??
-                      'تعذر تحميل سعر التوصيل؛ أعد المحاولة'),
-            ),
-            if (!_quotedCheckout.pending)
-              TextButton(
-                onPressed:
-                    _quotedCheckout.busy || _isLoading
-                        ? null
-                        : () => _loadQuote(renew: true),
-                child: const Text('إعادة المحاولة'),
+            Icon(Icons.notes_rounded, size: 22, color: AppColors.secondaryDark),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'ملاحظة للسائق',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.secondaryDark,
+                ),
               ),
+            ),
+            Text(
+              'اختياري',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
           ],
         ),
-      ),
-    );
-  }
+        const SizedBox(height: 12),
+        TextField(
+          controller: _instructionsController,
+          minLines: 2,
+          maxLines: 3,
+          maxLength: 500,
+          decoration: deliveryFieldDecoration(
+            'مثال: يرجى الاتصال عند الوصول إلى الباب',
+          ),
+          onChanged: (value) => _deliveryInstructions = value,
+        ),
+      ],
+    ),
+  );
 
   Widget _buildPriceSummary(AppStateProvider appState) {
     _scheduleInvoice();
@@ -2604,6 +2953,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         shared?.proposal ??
         (localCurrent ? _invoice : null) ??
         (pointRequest == null ? null : _pointInvoices.peek(pointRequest));
+    _displayedCommercialInvoice =
+        invoice == null ? null : Map<String, dynamic>.from(invoice);
+    _displayedCommercialScope =
+        invoice == null ? null : _discountContext(includeTip: true);
     final invoiceCurrent = invoice != null;
     double? invoiceAmount(String key) =>
         invoice == null ? null : (invoice[key]['minorAmount'] as num) / 1000;
@@ -2650,12 +3003,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'ملخص الفاتورة',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF172B4D),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.storeName ??
+                          appState.cartStoreName ??
+                          'ملخص الطلب',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.secondaryDark,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${appState.cartItems.fold<int>(0, (sum, i) => sum + (i['quantity'] as num).toInt())} قطع · ملخص الفاتورة',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF69758A),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -2782,11 +3152,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         .clamp(0.0, double.infinity);
     final discount = _effectiveDiscount;
     final total = subtotal + deliveryFee + _driverTipIqd - discount;
+    final shownInvoice = _displayedCommercialInvoice;
+    final shownTotal =
+        shownInvoice != null &&
+                canConfirmDisplayedInvoice(
+                  displayed: shownInvoice,
+                  proposed: shownInvoice,
+                  sameScope:
+                      _displayedCommercialScope ==
+                      _discountContext(includeTip: true),
+                )
+            ? basketMoney(
+              (shownInvoice['customerTotal']['minorAmount'] as num) / 1000,
+            )
+            : null;
     final bool pending = _quotesEnabled && _quotedCheckout.pending;
     final bool canConfirm =
+        (pending || _deliveryReady) &&
         (BrowsingLocationService.instance.selection == null ||
             _completeDeliveryDetails) &&
         !_isValidatingDiscount &&
+        !_recoveringDelivery &&
         (pending || _discountCurrent) &&
         !_isLoading &&
         !_preparingReview &&
@@ -2826,14 +3212,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     )
                     : Text(
-                      pending
+                      _recoveringDelivery
+                          ? 'جارٍ مراجعة خصم التوصيل…'
+                          : pending
                           ? 'متابعة تأكيد الطلب السابق'
                           : ApiConfig.commercialPricingEnabled
                           ? (BrowsingLocationService.instance.selection !=
                                       null &&
                                   !_completeDeliveryDetails
                               ? 'أكمل عنوان التوصيل للمتابعة'
-                              : 'مراجعة إجمالي الطلب')
+                              : shownTotal == null
+                              ? 'مراجعة إجمالي الطلب'
+                              : 'تأكيد الطلب • $shownTotal')
                           : 'تأكيد الطلب • ${total.toStringAsFixed(3)} د.ع',
                       style: const TextStyle(
                         fontSize: 15,
@@ -2842,366 +3232,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
           ),
         ),
-      ),
-    );
-  }
-
-  // Guest user information section
-  Widget _buildGuestInfoSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7EBF2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDF2FA),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.person,
-                  color: AppColors.secondary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'معلوماتك الشخصية',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF172B4D),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Name field
-          TextFormField(
-            controller: _guestNameController,
-            textDirection: TextDirection.rtl,
-            decoration: InputDecoration(
-              labelText: 'الاسم الكامل *',
-              hintText: 'ادخل اسمك الكامل',
-              prefixIcon: const Icon(Icons.person_outline),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AppColors.secondaryDark),
-              ),
-            ),
-            onChanged: (value) {
-              _guestName = value; // إزالة setState لتحسين الأداء
-            },
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'يرجى إدخال الاسم الكامل';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // Phone field
-          TextFormField(
-            controller: _guestPhoneController,
-            keyboardType: TextInputType.phone,
-            textDirection: TextDirection.ltr,
-            decoration: InputDecoration(
-              labelText: 'رقم الهاتف *',
-              hintText: '+964XXXXXXXXX',
-              prefixIcon: const Icon(Icons.phone_outlined),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AppColors.secondaryDark),
-              ),
-            ),
-            onChanged: (value) {
-              _guestPhone = value; // إزالة setState لتحسين الأداء
-            },
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'يرجى إدخال رقم الهاتف';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // Email field (optional)
-          TextFormField(
-            controller: _guestEmailController,
-            keyboardType: TextInputType.emailAddress,
-            textDirection: TextDirection.ltr,
-            decoration: InputDecoration(
-              labelText: 'البريد الإلكتروني (اختياري)',
-              hintText: 'example@email.com',
-              prefixIcon: const Icon(Icons.email_outlined),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AppColors.secondaryDark),
-              ),
-            ),
-            onChanged: (value) {
-              _guestEmail = value; // إزالة setState لتحسين الأداء
-            },
-            validator: (value) {
-              if (value != null && value.isNotEmpty) {
-                if (!RegExp(
-                  r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                ).hasMatch(value)) {
-                  return 'البريد الإلكتروني غير صحيح';
-                }
-              }
-              return null;
-            },
-          ),
-
-          const SizedBox(height: 12),
-
-          // Login suggestion
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDF2FA),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.info_outline,
-                  color: AppColors.secondary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'لتجربة أفضل',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.secondary,
-                        ),
-                      ),
-                      const Text(
-                        'سجل دخولك لحفظ معلوماتك وعناوينك',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // Navigate to login screen
-                    if (!mounted) return;
-                    Navigator.pushNamed(context, '/login');
-                  },
-                  child: const Text(
-                    'تسجيل دخول',
-                    style: TextStyle(
-                      color: AppColors.secondary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Logged in user information section
-  Widget _buildLoggedInUserInfoSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7EBF2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Name field (always shown for logged in users)
-          TextField(
-            controller: _guestNameController,
-            textDirection: TextDirection.rtl,
-            decoration: InputDecoration(
-              labelText: 'الاسم الكامل',
-              prefixIcon: const Icon(Icons.person_outline),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AppColors.secondaryDark),
-              ),
-              filled: true,
-              fillColor: Colors.grey.withValues(alpha: 0.05),
-            ),
-            readOnly: true,
-            onChanged: (value) {
-              setState(() {
-                _guestName = value;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // Show appropriate fields based on login method
-          if (_isLoggedInWithEmail) ...[
-            // User logged in with email - show email (readonly) and phone (required)
-            TextField(
-              controller: _guestEmailController,
-              keyboardType: TextInputType.emailAddress,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(
-                labelText: 'البريد الإلكتروني',
-                prefixIcon: const Icon(Icons.email_outlined),
-                suffixIcon: const Icon(
-                  Icons.verified,
-                  color: Colors.green,
-                  size: 20,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.secondaryDark),
-                ),
-                filled: true,
-                fillColor: Colors.grey.withValues(alpha: 0.05),
-              ),
-              readOnly: true,
-            ),
-            const SizedBox(height: 12),
-
-            // Phone field (required)
-            TextField(
-              controller: _guestPhoneController,
-              keyboardType: TextInputType.phone,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(
-                labelText: 'رقم الهاتف *',
-                hintText: '+964XXXXXXXXX',
-                prefixIcon: const Icon(Icons.phone_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.secondaryDark),
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _guestPhone = value;
-                });
-              },
-            ),
-          ] else if (_isLoggedInWithPhone) ...[
-            // User logged in with phone - show phone (readonly) and email (optional)
-            TextField(
-              controller: _guestPhoneController,
-              keyboardType: TextInputType.phone,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(
-                labelText: 'رقم الهاتف',
-                prefixIcon: const Icon(Icons.phone_outlined),
-                suffixIcon: const Icon(
-                  Icons.verified,
-                  color: Colors.green,
-                  size: 20,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.secondaryDark),
-                ),
-                filled: true,
-                fillColor: Colors.grey.withValues(alpha: 0.05),
-              ),
-              readOnly: true,
-            ),
-            const SizedBox(height: 12),
-
-            // Email field (optional)
-            TextField(
-              controller: _guestEmailController,
-              keyboardType: TextInputType.emailAddress,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(
-                labelText: 'البريد الإلكتروني (اختياري)',
-                hintText: 'example@email.com',
-                prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.secondaryDark),
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _guestEmail = value;
-                });
-              },
-            ),
-          ],
-
-          const SizedBox(height: 12),
-        ],
       ),
     );
   }
@@ -3370,7 +3400,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       await _verifyCheckoutIdentity();
       return;
     }
-    if (_isLoading || _preparingReview) return;
+    if (_isLoading || _preparingReview || _recoveringDelivery) return;
     setState(() => _preparingReview = true);
     try {
       if (_quotesEnabled && _quotedCheckout.pending) {
@@ -3643,6 +3673,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         approveCommercial: (proposal) async {
           if (!mounted || commercialScope != _discountContext(includeTip: true))
             return false;
+          if (canConfirmDisplayedInvoice(
+            displayed: _displayedCommercialInvoice,
+            proposed: proposal,
+            sameScope: _displayedCommercialScope == commercialScope,
+          )) {
+            _rememberReviewedInvoice(proposal);
+            return true;
+          }
           _rememberReviewedInvoice(proposal);
           final scope = commercialScope;
           final accepted = await showModalBottomSheet<bool>(
@@ -3684,7 +3722,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryBenefitId:
             _selectedBenefit?.isDelivery == true
                 ? _selectedBenefit!.id
-                : _deliveryBenefitId,
+                : (_deliveryBenefitId ?? _automaticDeliveryId()),
         discountId: _selectedDiscountId,
         discount: _effectiveDiscount,
         // إضافة معلومات المستخدم الحقيقية

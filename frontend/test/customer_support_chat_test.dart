@@ -184,7 +184,11 @@ void main() {
     'history failure offers retry and clears error for a new request',
     () async {
       await chat.connect();
-      socket.emit({'type': 'history_error', 'sessionId': 'owned-session'});
+      socket.emit({
+        'type': 'history_error',
+        'requestId': socket.sent.last['requestId'],
+        'sessionId': 'owned-session',
+      });
       await Future<void>.delayed(Duration.zero);
       expect(chat.historyLoading, false);
       expect(chat.historyError, isNotNull);

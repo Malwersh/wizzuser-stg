@@ -1,6 +1,9 @@
+const {promotionConsent,notificationView,fenceNotificationSnapshot}=require('../shared/customer-promotion-consent-449');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
-const {writeContext}=require('../create-order/guarded-write');
+const {accountGuard}=require('../create-order/account-guard');
+const {CognitoIdentityProviderClient,GetUserCommand}=require('@aws-sdk/client-cognito-identity-provider');
+const cognito=new CognitoIdentityProviderClient({});
 
 const client = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(client);
@@ -37,7 +40,10 @@ exports.handler = async (event) => {
             };
         }
 
-        const write = await writeContext(dynamodb,event,userId);
+        const guarded = await accountGuard({event,userId,pool:process.env.USER_POOL_ID,clientId:process.env.USER_POOL_CLIENT_ID,profilesTable:process.env.USERS_TABLE,
+            getUser:token=>cognito.send(new GetUserCommand({AccessToken:token})),
+            getProfile:async id=>(await dynamodb.send(new GetCommand({TableName:process.env.USERS_TABLE,Key:{userId:id},ConsistentRead:true}))).Item});
+        if(!guarded.condition)throw Object.assign(Error('AUTH_REQUIRED'),{statusCode:401});
         // Parse request body
         let requestBody;
         try {
@@ -52,12 +58,15 @@ exports.handler = async (event) => {
             };
         }
 
+        if(!requestBody || typeof requestBody!=='object' || Array.isArray(requestBody))throw Object.assign(Error('INVALID_PREFERENCES'),{statusCode:400});
+
         // Check if user exists first
         const getUserParams = {
             TableName: process.env.USERS_TABLE || 'WizzUser_users_dev',
             Key: {
                 userId: userId
-            }
+            },
+            ConsistentRead: true
         };
 
         console.log('Checking if user exists:', getUserParams);
@@ -92,9 +101,14 @@ exports.handler = async (event) => {
         }
 
         // Handle notification settings update
-        if (requestBody.notification_settings) {
+        if (Object.prototype.hasOwnProperty.call(requestBody, 'notification_settings')) {
             updateExpressionParts.push('notification_settings = :notification_settings');
-            expressionAttributeValues[':notification_settings'] = requestBody.notification_settings;
+            expressionAttributeValues[':notification_settings'] = require('./notification-settings').mergeNotificationSettings(userResult.Item.notification_settings, requestBody.notification_settings);
+        }
+
+        if(typeof requestBody.notification_settings?.promotion_notifications==='boolean'){
+            updateExpressionParts.push('marketing_consent = :marketingConsent');
+            expressionAttributeValues[':marketingConsent']=requestBody.notification_settings.promotion_notifications;
         }
 
         // Validate that at least one preference is provided
@@ -126,17 +140,23 @@ exports.handler = async (event) => {
             ReturnValues: 'ALL_NEW'
         };
 
-        console.log('DynamoDB Update Params:', JSON.stringify(updateParams, null, 2));
+        console.log('Updating customer preferences', {requestId:event.requestContext?.requestId});
         
         // Update the user preferences
-        const result = await write('Update',updateParams);
+        const fence=guarded.condition.ConditionCheck;
+        updateParams.ConditionExpression=fence.ConditionExpression;
+        updateParams.ExpressionAttributeNames=fence.ExpressionAttributeNames;
+        Object.assign(updateParams.ExpressionAttributeValues,fence.ExpressionAttributeValues);
+        if(Object.prototype.hasOwnProperty.call(requestBody,'notification_settings'))fenceNotificationSnapshot(updateParams,userResult.Item);
+        const result = await dynamodb.send(new UpdateCommand(updateParams));
         
         // Format the response data
         const updatedUser = {
             id: result.Attributes.userId,
             language_preference: result.Attributes.language_preference,
             country_preference: result.Attributes.country_preference,
-            notification_settings: result.Attributes.notification_settings,
+            notification_settings: notificationView(result.Attributes),
+            marketing_consent: promotionConsent(result.Attributes),
             updated_at: result.Attributes.updated_at
         };
 

@@ -71,13 +71,14 @@ class FoodApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'Food App',
+        title: 'Wizz',
         navigatorKey: NotificationNavigation.navigatorKey,
         scaffoldMessengerKey: NotificationNavigation.messengerKey,
         debugShowCheckedModeBanner: false,
         
         // الموضوع المحسن - بسيط ونظيف
         theme: AppTheme.lightTheme,
+        themeMode: ThemeMode.light,
         
         // دعم اللغة العربية
         localizationsDelegates: const [
@@ -86,10 +87,9 @@ class FoodApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [
-          Locale('ar', 'SA'), // العربية السعودية
-          Locale('en', 'US'), // الإنجليزية
+          Locale('ar', 'IQ'), // العربية — العراق
         ],
-        locale: const Locale('ar', 'SA'),
+        locale: const Locale('ar', 'IQ'),
         
         // الشاشة الأولى
         home: const SplashScreen(),

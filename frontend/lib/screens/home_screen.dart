@@ -1,3 +1,6 @@
+import 'dart:convert';
+import '../models/inbox_notification.dart';
+import '../widgets/discovery/discovery_results_transition.dart';
 import '../models/menu_classification_focus.dart';
 import '../models/home_filters.dart';
 import '../widgets/discovery/home_filter_strip.dart';
@@ -228,6 +231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     BrowsingLocationService.instance.addListener(_onBrowseChanged);
     ActivityLinkNavigation.ready(true);
     NotificationNavigation.campaignHandler = _openCampaignById;
+    NotificationNavigation.pendingTap.addListener(_handlePendingPushNavigation);
     StorefrontPricing.instance.addListener(_storefrontUpdated);
     NotificationInboxService.instance.load().catchError((Object _) {});
     // مراقبة دورة حياة التطبيق لتفعيل جلب فوري عند العودة للمقدمة
@@ -1477,6 +1481,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     BrowsingLocationService.instance.removeListener(_onBrowseChanged);
     _deliveryAddressSubscription?.cancel();
 
+    NotificationNavigation.pendingTap.removeListener(
+      _handlePendingPushNavigation,
+    );
     NotificationNavigation.campaignHandler = null;
     _promoRefreshTimer?.cancel();
     StorefrontPricing.instance.removeListener(_storefrontUpdated);
@@ -1514,6 +1521,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_isHandlingPendingPush) return;
 
     _isHandlingPendingPush = true;
+    final tapRevision = NotificationNavigation.pendingTap.value;
     try {
       final pendingTab =
           await PushNotificationsService.consumePendingTabFromTap();
@@ -1530,6 +1538,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (campaignId != null) {
         await notificationPrefs.remove('pendingCampaignFromPushTap');
         if (mounted) await _openCampaignById(campaignId);
+      }
+      final supportPush = notificationPrefs.getString(
+        'pendingSupportFromPushTap',
+      );
+      if (supportPush != null) {
+        await notificationPrefs.remove('pendingSupportFromPushTap');
+        try {
+          final data = Map<String, dynamic>.from(jsonDecode(supportPush));
+          if (mounted &&
+              data['notificationOwner'] ==
+                  SessionService.instance.currentUserId)
+            await NotificationNavigation.open(
+              InboxNotification.fromJson({
+                ...data,
+                'id': data['eventId'] ?? 'support-tap',
+                'createdAt': DateTime.now().toIso8601String(),
+              }),
+            );
+        } catch (_) {
+          /* Invalid stale payload cannot navigate. */
+        }
       }
       if (notificationPrefs.getBool('pendingWalletFromPushTap') == true) {
         await notificationPrefs.remove('pendingWalletFromPushTap');
@@ -1573,6 +1602,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       developer.log('Home: pending push navigation error: $e');
     } finally {
       _isHandlingPendingPush = false;
+      if (mounted && tapRevision != NotificationNavigation.pendingTap.value) {
+        scheduleMicrotask(_handlePendingPushNavigation);
+      }
     }
   }
 
@@ -2310,12 +2342,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHomeCategories(),
-              _buildHomeTopics(),
+              AnimatedSize(
+                duration:
+                    MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 180),
+                alignment: Alignment.topCenter,
+                curve: Curves.easeOutCubic,
+                child: _buildHomeTopics(),
+              ),
               if (!_showHomeResults) ...[
                 _buildManagedPlacement('beforeSlideshow'),
                 _buildBannerSection(),
               ],
-              _buildStoresSection(),
+              DiscoveryResultsTransition(
+                selection:
+                    '$_effectiveHomeCategory|$_effectiveTopic|${_activeFilterIds.toList()..sort()}|$_priceTier|$_selectedSortOption|$_homeSearch',
+                child: _buildStoresSection(),
+              ),
             ],
           ),
         ),
@@ -2883,16 +2927,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             });
         },
       ),
-      if (_publishedHomeLayout?.promotionHeader.enabled != true)
-        TextButton.icon(
-          onPressed: _openPlatformBenefits,
-          icon: const Icon(Icons.card_giftcard),
-          label: Text(
-            Localizations.localeOf(context).languageCode == 'ar'
-                ? 'مزاياي من ويز'
-                : 'My Wizz benefits',
-          ),
-        ),
     ],
   );
 
@@ -3488,7 +3522,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 3:
         return _buildMapScreen();
       case 4:
-        return const OrdersScreen();
+        return OrdersScreen(
+          onBack: () => setState(() => _selectedTabIndex = 0),
+        );
       case 5:
         return ImprovedAccountScreen(
           favoritesBuilder: (_) => _buildFavoritesTab(),
@@ -3517,7 +3553,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildMapScreen() {
     // عرض شاشة الخريطة مع المطاعم المصفاة حسب المنطقة
-    return MapScreenNew(businesses: _allRealBusinesses);
+    return MapScreenNew(
+      businesses: _allRealBusinesses,
+      layout:
+          _publishedLayoutScope == _homeLayoutScope
+              ? _publishedHomeLayout
+              : null,
+      refreshAvailability: () => _statusPolling.refreshForFilters(),
+    );
   }
 
   void _openBottomCart() {

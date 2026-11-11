@@ -3,7 +3,7 @@ const { GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 const {normalizeDiscount, normalizePlatformPromo, validateDiscount, validatePlatformPromo, calculateCheckoutDiscountAmount} = require('./discount-engine');
 const {validVersion}=require('./campaign-version');
 const {eligibility,catalogItems}=require('./offer-eligibility');
-const fail = () => {throw Object.assign(Error('DISCOUNT_UNAVAILABLE'), {statusCode:409});};
+const fail = (code='DISCOUNT_UNAVAILABLE') => {throw Object.assign(Error(code), {statusCode:409});};
 const merchantTable = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
 const platformTable = process.env.PLATFORM_DISCOUNTS_TABLE || 'WizzCentral_Platform_Discounts';
 const fields = ['discountId','businessId','code','status','isActive','type','discountType','value','discountValue',
@@ -60,10 +60,11 @@ async function resolveDiscount({db,branchId,discountId,promoCode,platformDiscoun
  if (!['allItems','minimumOrder','specificItems','specificCategories',undefined].includes(d.applicability)) fail();
  if(d.applicability==='specificItems'&&(!Array.isArray(d.applicable_item_ids)||!d.applicable_item_ids.length))fail();
  if(d.applicability==='specificCategories'&&(!Array.isArray(d.applicable_category_ids)||!d.applicable_category_ids.length))fail();
- if(!(platform?validatePlatformPromo(d,subtotal):validateDiscount(d,subtotal)).valid)fail();
+ const validation=platform?validatePlatformPromo(d,subtotal):validateDiscount(d,subtotal);
+ if(!validation.valid){const codes={'Discount is not active':'OFFER_PAUSED','Discount is not valid yet':'OFFER_NOT_STARTED','Discount has expired':'OFFER_EXPIRED','Discount usage limit reached':'OFFER_EXHAUSTED'};fail(codes[validation.message]||(validation.message?.startsWith('Order must be at least')?'OFFER_MINIMUM_ORDER':'DISCOUNT_UNAVAILABLE'));}
  const eligible=await eligibility(db,raw,{identity,customer,regionIds,branchId,source:platform?'platform':'merchant',preview});
  const eligibleItems=(items||[]).filter(i=>d.applicability==='specificItems'?d.applicable_item_ids.includes(i.itemId||i.id):d.applicability==='specificCategories'?d.applicable_category_ids.includes(i.categoryId):true);
- if(['specificItems','specificCategories'].includes(d.applicability)&&!eligibleItems.length)fail();
+ if(['specificItems','specificCategories'].includes(d.applicability)&&!eligibleItems.length)fail('OFFER_NO_MATCHING_ITEMS');
  let amount;try{amount=calculateCheckoutDiscountAmount(d,subtotal,items,deliveryFee);}catch{fail();}
 
  // A zero-saving offer must never consume campaign or customer usage.

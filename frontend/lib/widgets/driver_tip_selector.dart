@@ -1,3 +1,4 @@
+import '../constants/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -80,15 +81,32 @@ class DriverTipSelector extends StatelessWidget {
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xffe7ebf2)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (showHeading)
-          const Text(
-            'إكرامية السائق (اختياري)',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          const Row(
+            children: [
+              Icon(
+                Icons.favorite_border_rounded,
+                color: AppColors.secondaryDark,
+                size: 22,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'إكرامية السائق (اختياري)',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.secondaryDark,
+                  ),
+                ),
+              ),
+            ],
           ),
         const SizedBox(height: 8),
         const Text(
@@ -104,9 +122,47 @@ class DriverTipSelector extends StatelessWidget {
               ChoiceChip(
                 label: Text(amount == 0 ? 'دون إكرامية' : '$amount د.ع'),
                 selected: amountIqd == amount,
+                showCheckmark: false,
+                selectedColor: AppColors.secondaryDark,
+                backgroundColor: const Color(0xfff4f6fa),
+                disabledColor: const Color(0xfff0f1f4),
+                labelStyle: TextStyle(
+                  color:
+                      !enabled
+                          ? const Color(0xff8993a4)
+                          : amountIqd == amount
+                          ? Colors.white
+                          : AppColors.secondaryDark,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                side: BorderSide(
+                  color:
+                      amountIqd == amount
+                          ? AppColors.secondaryDark
+                          : const Color(0xffe2e7ef),
+                ),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 onSelected: enabled ? (_) => onChanged(amount) : null,
               ),
             ActionChip(
+              avatar: const Icon(
+                Icons.edit_outlined,
+                size: 16,
+                color: AppColors.secondaryDark,
+              ),
+              backgroundColor: Colors.white,
+              labelStyle: const TextStyle(
+                color: AppColors.secondaryDark,
+                fontSize: 13,
+              ),
+              side: const BorderSide(color: Color(0xffd5deea)),
+              shape: const StadiumBorder(),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               label: Text(
                 [0, 500, 1000, 2000].contains(amountIqd)
                     ? 'مبلغ آخر'

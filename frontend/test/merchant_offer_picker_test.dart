@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/models/store_discount.dart';
-import '../lib/widgets/merchant_offer_picker.dart';
+import 'package:foodapp_user/models/store_discount.dart';
+import 'package:foodapp_user/widgets/merchant_offer_picker.dart';
 
 void main() {
   for (final width in [320.0, 390.0]) {

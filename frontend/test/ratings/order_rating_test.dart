@@ -196,7 +196,7 @@ void main() {
       await tester.tap(find.text('إرسال التقييم'));
       await tester.pump();
       expect(posts, 1);
-      expect(find.text('شكرًا، تم حفظ تقييمك'), findsNothing);
+      expect(find.text('شكرًا لمشاركتنا رأيك'), findsNothing);
       pending.complete(
         http.Response(
           jsonEncode({'success': true, 'orderId': 'o1', 'review': {}}),
@@ -205,7 +205,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('شكرًا، تم حفظ تقييمك'), findsOneWidget);
+      expect(find.text('شكرًا لمشاركتنا رأيك'), findsOneWidget);
       expect(find.text('إرسال التقييم'), findsNothing);
     },
   );
@@ -251,7 +251,7 @@ void main() {
       MaterialApp(home: OrderRatingScreen(orderId: 'o1', service: s)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('شكرًا، تم حفظ تقييمك'), findsOneWidget);
+    expect(find.text('شكرًا لمشاركتنا رأيك'), findsOneWidget);
     expect(find.text('إرسال التقييم'), findsNothing);
     expect(tester.widget<TextField>(find.byType(TextField)).enabled, false);
   });
@@ -280,7 +280,7 @@ void main() {
       await tester.ensureVisible(find.text('إرسال التقييم'));
       await tester.tap(find.text('إرسال التقييم'));
       await tester.pumpAndSettle();
-      expect(find.text('شكرًا، تم حفظ تقييمك'), findsNothing);
+      expect(find.text('شكرًا لمشاركتنا رأيك'), findsNothing);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         'نصي محفوظ',

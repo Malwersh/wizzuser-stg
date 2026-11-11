@@ -26,6 +26,10 @@ class HomeFilterStrip extends StatelessWidget {
           button: true,
           selected: active,
           child: Material(
+            animationDuration:
+                MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
             color: active ? AppColors.secondaryDark : const Color(0xFFF1F2F4),
             borderRadius: BorderRadius.circular(22),
             child: InkWell(

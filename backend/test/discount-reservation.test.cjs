@@ -3,7 +3,7 @@ const {resolveDiscount,readPromo,reserve}=require('../src/functions/shared/disco
 const {normalizeDiscount,validateDiscount,calculateDiscountAmount,normalizePlatformPromo,validatePlatformPromo}=require('../src/functions/shared/discount-engine');
 const row=()=>({discountId:'d1',businessId:'b1',status:'active',type:'percentage',value:10,applicability:'allItems',usage_count:0,usage_limit:1});
 const input=(raw=row())=>({db:{async send(c){assert.equal(c.input.ConsistentRead,true);return {Item:structuredClone(raw)};}},branchId:'b1',discountId:'d1',subtotal:3500000,items:[],deliveryFee:0});
-const reject=p=>assert.rejects(p,e=>['DISCOUNT_UNAVAILABLE','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_NOT_ELIGIBLE'].includes(e.message));
+const reject=p=>assert.rejects(p,e=>['DISCOUNT_UNAVAILABLE','OFFER_PAUSED','OFFER_NOT_STARTED','OFFER_EXPIRED','OFFER_EXHAUSTED','OFFER_MINIMUM_ORDER','OFFER_NO_MATCHING_ITEMS','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_NOT_ELIGIBLE'].includes(e.message));
 test('reservation pins campaign and increments usage in a transaction operation without writing',async()=>{
  const r=await resolveDiscount(input());assert.equal(r.amount,250000);assert.equal(r.operations.length,1);
  const u=r.operations[0].Update;assert.equal(u.TableName,'WhizzMerchants_Discounts');assert.equal(u.ExpressionAttributeValues[':next'],1);

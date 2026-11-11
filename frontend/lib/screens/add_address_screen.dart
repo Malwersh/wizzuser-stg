@@ -1,3 +1,4 @@
+import '../utils/iraqi_phone.dart';
 import '../services/iraqi_delivery_details.dart';
 // lib/screens/add_address_screen.dart
 
@@ -259,7 +260,10 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
       maxLines: maxLines,
       keyboardType: keyboardType,
       readOnly: readOnly,
-      textDirection: TextDirection.rtl, // ✅ RTL للنصوص العربية
+      textDirection:
+          keyboardType == TextInputType.phone
+              ? TextDirection.ltr
+              : TextDirection.rtl,
       decoration: InputDecoration(
         labelText: label + (isRequired ? ' *' : ''),
         hintText: hint,
@@ -284,7 +288,7 @@ class _AddAddressScreenState extends State<AddAddressScreen> {
                   return 'هذا الحقل مطلوب';
                 }
                 final phone = value.trim();
-                if (!phone.startsWith('+964') || phone.length < 13) {
+                if (!IraqiPhone.valid(phone)) {
                   return 'يرجى إدخال رقم عراقي صحيح يبدأ بـ +964';
                 }
                 return null;

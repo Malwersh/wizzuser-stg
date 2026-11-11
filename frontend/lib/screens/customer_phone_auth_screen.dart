@@ -1,3 +1,4 @@
+import '../widgets/iraqi_mobile_field.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -16,12 +17,16 @@ import 'delete_account_screen.dart';
 import '../services/account_deletion_service.dart';
 
 class CustomerPhoneAuthScreen extends StatefulWidget {
+  final String? expectedOwner;
+  final String initialPhone;
   final bool registration;
   final bool returnToCaller;
   final CustomerPhoneAuthService? service;
   final CustomerLegalService? legalService;
   const CustomerPhoneAuthScreen({
     super.key,
+    this.expectedOwner,
+    this.initialPhone = '',
     this.registration = false,
     this.returnToCaller = false,
     this.service,
@@ -48,7 +53,10 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
   @override
   void initState() {
     super.initState();
-    api = widget.service ?? CustomerPhoneAuthService();
+    api =
+        widget.service ??
+        CustomerPhoneAuthService(expectedOwner: widget.expectedOwner);
+    phone.text = widget.initialPhone;
     needsName = widget.registration;
     if (needsName) unawaited(_loadLegal());
     _savedDeletionReceipt = AccountDeletionService.hasSavedReceipt();
@@ -250,17 +258,17 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
             Text(
               sent
                   ? 'أدخل الرمز الذي وصلك. صلاحيته 5 دقائق.'
+                  : widget.expectedOwner != null
+                  ? 'أكّد ملكية رقمك الحالي قبل تغييره، دون مغادرة حسابك'
                   : 'أدخل رقم هاتفك لنرسل لك رمز الدخول',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.grey, height: 1.6),
             ),
             const SizedBox(height: 32),
-            TextField(
+            IraqiMobileField(
               controller: phone,
               enabled: !busy && !sent,
-              keyboardType: TextInputType.phone,
-              textDirection: TextDirection.ltr,
-              autofillHints: const [AutofillHints.telephoneNumber],
+              readOnly: widget.expectedOwner != null,
               decoration: InputDecoration(
                 labelText: 'رقم الهاتف العراقي',
                 hintText: '07831367435',
@@ -446,25 +454,26 @@ class _CustomerPhoneAuthScreenState extends State<CustomerPhoneAuthScreen> {
                           )
                           : const SizedBox.shrink(),
             ),
-            TextButton(
-              onPressed:
-                  busy
-                      ? null
-                      : () async {
-                        final done = await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => EmailLoginScreen(
-                                  returnToCaller: widget.returnToCaller,
-                                ),
-                          ),
-                        );
-                        if (done == true && mounted && widget.returnToCaller)
-                          await _finish();
-                      },
-              child: const Text('لدي حساب قديم بالبريد — ربط رقم الهاتف'),
-            ),
+            if (widget.expectedOwner == null)
+              TextButton(
+                onPressed:
+                    busy
+                        ? null
+                        : () async {
+                          final done = await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => EmailLoginScreen(
+                                    returnToCaller: widget.returnToCaller,
+                                  ),
+                            ),
+                          );
+                          if (done == true && mounted && widget.returnToCaller)
+                            await _finish();
+                        },
+                child: const Text('لدي حساب قديم بالبريد — ربط رقم الهاتف'),
+              ),
             if (!widget.returnToCaller)
               TextButton(
                 onPressed:

@@ -1,17 +1,33 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/session_service.dart';
 import '../services/user_profile_service.dart';
 import '../constants/app_colors.dart';
+import 'notification_settings_screen.dart';
 
 class PersonalInfoScreen extends StatefulWidget {
-  const PersonalInfoScreen({super.key});
+  final Future<Map<String, dynamic>?> Function(String)? profileLoader;
+  final Future<Map<String, dynamic>> Function(String, Map<String, dynamic>)?
+  profileSaver;
+  final String? Function()? currentOwner;
+  const PersonalInfoScreen({
+    super.key,
+    this.profileLoader,
+    this.profileSaver,
+    this.currentOwner,
+  });
 
   @override
   State<PersonalInfoScreen> createState() => _PersonalInfoScreenState();
 }
 
 class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
+  String? get _owner =>
+      widget.currentOwner != null
+          ? widget.currentOwner!()
+          : SessionService.instance.currentUserId;
+
   // Controllers للمدخلات
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -23,112 +39,67 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   String? _userId;
   String _selectedGender = 'male';
   DateTime? _selectedDate;
-  bool _marketingConsent = false;
-  bool _newsletterSubscription = false;
+  bool _profileLoaded = false;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
+    SessionService.instance.addListener(_sessionChanged);
     _loadUserData();
   }
 
   @override
   void dispose() {
+    SessionService.instance.removeListener(_sessionChanged);
     _nameController.dispose();
     _birthdateController.dispose();
     super.dispose();
   }
 
+  void _sessionChanged() {
+    if (!mounted || _userId == null || _owner == _userId) {
+      return;
+    }
+    _nameController.clear();
+    _birthdateController.clear();
+    setState(() {
+      _profileLoaded = false;
+      _loadError =
+          'تغيرت جلسة الحساب. ارجع إلى حسابي لفتح معلومات الحساب الحالي.';
+    });
+  }
+
   /// تحميل بيانات المستخدم من قاعدة البيانات
   Future<void> _loadUserData() async {
+    final owner = _owner;
+    setState(() {
+      _isLoading = true;
+      _profileLoaded = false;
+      _loadError = null;
+    });
     try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // الحصول على معرف المستخدم من الجلسة الحالية
-      final userData = await SessionService.instance.getUserData();
-      if (userData == null) {
-        print('❌ لا توجد بيانات جلسة للمستخدم');
-        _showErrorDialog('لا توجد بيانات جلسة صالحة');
-        return;
+      if (owner == null) throw StateError('AUTH_REQUIRED');
+      final profile = await (widget.profileLoader ??
+          UserProfileService.getUserProfile)(owner);
+      if (!mounted) return;
+      if (_owner != owner) {
+        throw StateError('ACCOUNT_CHANGED');
       }
-
-      // ✅ إصلاح: استخراج userId بالترتيب الصحيح مع دعم البيانات المتداخلة
-      String? extractedUserId;
-
-      // البحث في المواقع المختلفة بالترتيب الأفضل
-      if (userData['userId'] != null) {
-        extractedUserId = userData['userId'].toString();
-      } else if (userData['user_id'] != null) {
-        extractedUserId = userData['user_id'].toString();
-      } else if (userData['user'] != null &&
-          userData['user']['userId'] != null) {
-        extractedUserId = userData['user']['userId'].toString();
-      } else if (userData['id'] != null) {
-        extractedUserId = userData['id'].toString();
-      } else if (userData['email'] != null) {
-        extractedUserId = userData['email'].toString();
-        print('⚠️ استخدام email كـ userId: $extractedUserId');
-      }
-
-      _userId = extractedUserId;
-      print('👤 بيانات المستخدم الكاملة: $userData');
-      print('👤 معرف المستخدم المستخرج: $_userId');
-
-      if (_userId == null || _userId!.isEmpty) {
-        print('❌ معرف المستخدم غير صالح');
-        _showErrorDialog('معرف المستخدم غير صالح');
-        return;
-      }
-
-      // التحقق من أن userId ليس placeholder
-      if (_userId == 'placeholder_user_id' || _userId == 'default_user_id') {
-        print(
-          '⚠️ تحذير: معرف المستخدم هو placeholder، استخدام بيانات افتراضية',
-        );
-        _showErrorDialog('معرف المستخدم غير صحيح، يرجى تسجيل الدخول مرة أخرى');
-        return;
-      }
-
-      // جلب البيانات من جدول WizzUser_users_dev
-      final userProfile = await UserProfileService.getUserProfile(_userId!);
-
-      if (userProfile != null) {
-        _populateUserData(userProfile);
-      } else {
-        print('⚠️ لم يتم العثور على بيانات المستخدم في قاعدة البيانات');
-        // إضافة تشخيص إضافي للبيانات الأساسية
-        print('🔍 بيانات الجلسة الحالية: $userData');
-
-        // محاولة ملء البيانات من الجلسة نفسها كبديل
-        final basicProfile = {
-          'id': _userId,
-          'name': userData['name'] ?? 'المستخدم',
-          'email': userData['email'] ?? '',
-          'phone': userData['phone'] ?? '',
-          'gender': 'male',
-          'birthdate': '',
-          'marketing_consent': false,
-          'newsletter_subscription': false,
-        };
-
-        _populateUserData(basicProfile);
-
-        // عرض تحذير للمستخدم
-        _showErrorDialog(
-          'تم تحميل بيانات أساسية. قد تحتاج لإعادة تسجيل الدخول للحصول على البيانات الكاملة.',
-        );
-      }
-    } catch (e) {
-      print('❌ خطأ في تحميل البيانات: $e');
-      _showErrorDialog('خطأ في تحميل البيانات: $e');
-    } finally {
+      if (profile == null) throw StateError('PROFILE_UNAVAILABLE');
+      _userId = owner;
+      _populateUserData(profile);
+      _profileLoaded = true;
+    } catch (_) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(
+          () =>
+              _loadError =
+                  'تعذر تحميل معلومات الحساب. أعد المحاولة قبل تعديلها.',
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -139,60 +110,57 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
           userProfile['name'] ?? userProfile['username'] ?? '';
       _birthdateController.text = userProfile['birthdate'] ?? '';
       _selectedGender = userProfile['gender'] ?? 'male';
-      _marketingConsent = userProfile['marketing_consent'] ?? false;
-      _newsletterSubscription = userProfile['newsletter_subscription'] ?? false;
+      _selectedDate = null;
 
       // تحويل تاريخ الميلاد إلى DateTime إذا كان موجوداً
       if (userProfile['birthdate'] != null &&
           userProfile['birthdate'].isNotEmpty) {
         try {
           _selectedDate = DateTime.parse(userProfile['birthdate']);
-        } catch (e) {
-          print('❌ خطأ في تحليل تاريخ الميلاد: $e');
+        } catch (_) {
+          _selectedDate = null;
         }
       }
     });
-
-    print('📊 تم تحميل البيانات:');
-    print('  - الاسم: ${_nameController.text}');
-    print('  - تاريخ الميلاد: ${_birthdateController.text}');
-    print('  - الجنس: $_selectedGender');
-    print('  - موافقة التسويق: $_marketingConsent');
-    print('  - اشتراك النشرة: $_newsletterSubscription');
   }
 
   /// حفظ التحديثات في قاعدة البيانات
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_userId == null) return;
+    if (!_profileLoaded || _userId == null || _userId != _owner) {
+      return;
+    }
 
     try {
       setState(() {
         _isSaving = true;
       });
 
-      print('💾 حفظ التحديثات للمستخدم: $_userId');
+      final fields = <String, dynamic>{
+        'name': _nameController.text.trim(),
+        'birthdate': _birthdateController.text.trim(),
+        'gender': _selectedGender,
+      };
+      final result =
+          widget.profileSaver != null
+              ? await widget.profileSaver!(_userId!, fields)
+              : await UserProfileService.updatePersonalInfo(
+                userId: _userId!,
+                name: fields['name'],
+                birthdate: fields['birthdate'],
+                gender: fields['gender'],
+              );
 
-      final result = await UserProfileService.updatePersonalInfo(
-        userId: _userId!,
-        name: _nameController.text.trim(),
-        birthdate: _birthdateController.text.trim(),
-        gender: _selectedGender,
-        marketingConsent: _marketingConsent,
-        newsletterSubscription: _newsletterSubscription,
-      );
-
-      if (result['success'] == true && mounted) {
+      if (!mounted || _userId != _owner) return;
+      if (result['success'] == true) {
         _showSuccessDialog('تم حفظ التحديثات بنجاح');
       } else {
-        print('❌ فشل في حفظ التحديثات: ${result['message']}');
         _showErrorDialog(
           'فشل في حفظ التحديثات: ${result['message'] ?? 'خطأ غير معروف'}',
         );
       }
     } catch (e) {
-      print('❌ خطأ في حفظ البيانات: $e');
-      _showErrorDialog('خطأ في حفظ البيانات: $e');
+      if (mounted) _showErrorDialog('تعذر حفظ المعلومات. أعد المحاولة.');
     } finally {
       if (mounted) {
         setState(() {
@@ -259,21 +227,75 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   void _showSuccessDialog(String message) {
     if (!mounted) return;
 
-    showDialog(
+    showModalBottomSheet<void>(
       context: context,
+      backgroundColor: Colors.white,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder:
-          (context) => AlertDialog(
-            title: const Text(
-              'تم بنجاح',
-              style: TextStyle(color: Colors.green),
-            ),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('حسناً'),
+          (sheetContext) => Directionality(
+            textDirection: ui.TextDirection.rtl,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Color(0xFFEAF5EF),
+                      child: Icon(
+                        Icons.check_rounded,
+                        color: Color(0xFF21754E),
+                        size: 38,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'تم حفظ التغييرات',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF00296B),
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF748198),
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: const Color(0xFF00296B),
+                          shape: const StadiumBorder(),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text(
+                          'حسنًا',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
     );
   }
@@ -281,24 +303,22 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         title: const Text(
           'المعلومات الشخصية',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: const Color(0xFF00296B),
+            color: Color(0xFF00296B),
           ),
         ),
-        backgroundColor: AppColors.primary,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: const Color(0xFF00296B),
-          ),
+          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF00296B)),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -321,8 +341,30 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                   ],
                 ),
               )
+              : _loadError != null
+              ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _loadError!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: AppColors.secondaryDark),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: _loadUserData,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('إعادة المحاولة'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
               : SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(20.0),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -348,10 +390,14 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   /// بناء بطاقة المعلومات الأساسية
   Widget _buildInfoCard() {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: Color(0xFFE5EAF2)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -360,7 +406,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                color: AppColors.secondaryDark,
               ),
             ),
             const SizedBox(height: 16),
@@ -370,15 +416,22 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               controller: _nameController,
               decoration: InputDecoration(
                 labelText: 'الاسم الكامل',
-                prefixIcon: Icon(Icons.person, color: AppColors.primary),
+                filled: true,
+                fillColor: const Color(0xFFF5F6FA),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
+                prefixIcon: Icon(Icons.person, color: AppColors.secondary),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppColors.primary, width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: AppColors.secondary, width: 2),
                 ),
-                labelStyle: TextStyle(color: AppColors.primary),
+                labelStyle: TextStyle(color: AppColors.secondary),
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
@@ -396,23 +449,30 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               onTap: _selectBirthdate,
               decoration: InputDecoration(
                 labelText: 'تاريخ الميلاد',
+                filled: true,
+                fillColor: const Color(0xFFF5F6FA),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
                 hintText: 'اختر تاريخ الميلاد',
                 prefixIcon: Icon(
                   Icons.calendar_today,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                 ),
                 suffixIcon: Icon(
                   Icons.arrow_drop_down,
-                  color: AppColors.primary,
+                  color: AppColors.secondary,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppColors.primary, width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: AppColors.secondary, width: 2),
                 ),
-                labelStyle: TextStyle(color: AppColors.primary),
+                labelStyle: TextStyle(color: AppColors.secondary),
               ),
             ),
             const SizedBox(height: 16),
@@ -423,27 +483,28 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: Colors.black87,
+                color: AppColors.secondaryDark,
               ),
             ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                border: Border.all(color: AppColors.primary),
-                borderRadius: BorderRadius.circular(8),
+                color: const Color(0xFFF5F6FA),
+                border: Border.all(color: const Color(0xFFE5EAF2)),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedGender,
                   isExpanded: true,
-                  icon: Icon(Icons.arrow_drop_down, color: AppColors.primary),
+                  icon: Icon(Icons.arrow_drop_down, color: AppColors.secondary),
                   items: [
                     DropdownMenuItem(
                       value: 'male',
                       child: Row(
                         children: [
-                          Icon(Icons.male, color: AppColors.primary),
+                          Icon(Icons.male, color: AppColors.secondary),
                           SizedBox(width: 8),
                           Text('ذكر'),
                         ],
@@ -477,69 +538,47 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   }
 
   /// بناء بطاقة التفضيلات
-  Widget _buildPreferencesCard() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'التفضيلات والإشعارات',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // موافقة التسويق
-            SwitchListTile(
-              title: const Text('استقبال رسائل التسويق'),
-              subtitle: const Text('الحصول على عروض وخصومات خاصة'),
-              value: _marketingConsent,
-              activeColor: AppColors.secondary,
-              onChanged: (bool value) {
-                setState(() {
-                  _marketingConsent = value;
-                });
-              },
-              secondary: Icon(Icons.campaign, color: AppColors.secondary),
-            ),
-            const Divider(),
-
-            // اشتراك النشرة الإخبارية
-            SwitchListTile(
-              title: const Text('النشرة الإخبارية'),
-              subtitle: const Text('تلقي آخر الأخبار والتحديثات'),
-              value: _newsletterSubscription,
-              activeColor: AppColors.secondary,
-              onChanged: (bool value) {
-                setState(() {
-                  _newsletterSubscription = value;
-                });
-              },
-              secondary: Icon(Icons.email, color: AppColors.secondary),
-            ),
-          ],
-        ),
+  Widget _buildPreferencesCard() => Card(
+    elevation: 0,
+    color: Colors.white,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(24),
+      side: const BorderSide(color: Color(0xFFE5EAF2)),
+    ),
+    child: ListTile(
+      leading: const Icon(
+        Icons.notifications_outlined,
+        color: AppColors.secondaryDark,
       ),
-    );
-  }
+      title: const Text(
+        'العروض وإعدادات الإشعارات',
+        style: TextStyle(color: AppColors.secondaryDark),
+      ),
+      subtitle: const Text('إدارة موافقتك على إشعارات العروض والخصومات'),
+      trailing: const Icon(
+        Icons.chevron_left,
+        textDirection: ui.TextDirection.ltr,
+        color: AppColors.secondaryDark,
+      ),
+      onTap:
+          () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const NotificationSettingsScreen(),
+            ),
+          ),
+    ),
+  );
 
   /// بناء زر الحفظ
   Widget _buildSaveButton() {
     return ElevatedButton(
-      onPressed: _isSaving ? null : _saveProfile,
+      onPressed: _isSaving || !_profileLoaded ? null : _saveProfile,
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.secondary,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 2,
+        shape: const StadiumBorder(),
+        elevation: 0,
       ),
       child:
           _isSaving

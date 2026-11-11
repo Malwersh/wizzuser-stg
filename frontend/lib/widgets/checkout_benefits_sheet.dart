@@ -98,7 +98,10 @@ class _CheckoutBenefitsSheetState extends State<CheckoutBenefitsSheet> {
                     ],
                   );
                 }
-                final benefits = snapshot.data ?? [];
+                final benefits =
+                    (snapshot.data ?? [])
+                        .where((b) => b.availableFor(widget.branchId))
+                        .toList();
                 if (benefits.isEmpty)
                   return const Padding(
                     padding: EdgeInsets.all(24),

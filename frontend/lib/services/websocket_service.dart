@@ -1,3 +1,4 @@
+import '../models/live_driver_point.dart';
 // lib/services/websocket_service.dart
 
 import 'dart:async';
@@ -55,6 +56,8 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
   // ✅ NEW: Flag to prevent multiple simultaneous connection attempts
   bool _connectionInProgress = false;
 
+  final _driverPoints = StreamController<LiveDriverPoint>.broadcast();
+  Stream<LiveDriverPoint> get driverLocations => _driverPoints.stream;
   final Map<String, StreamController<OrderModel>> _orderStreams = {};
   
   // StreamController for business status updates
@@ -271,11 +274,19 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
         final sessionService = SessionService.instance;
         userId = sessionService.currentUserId;
         // 🔧 إصلاح: استخدام idToken بدلاً من accessToken للحصول على معرف المستخدم
-        token = sessionService.idToken;
+        // Refresh the authentication pair before reusing the ID token for WS.
+        // Reopening the app alone must not replay an expired cached token.
+        final freshAccess = await sessionService.getToken();
+        userId = sessionService.currentUserId;
+        token = freshAccess == null ? null : sessionService.idToken;
         debugPrint('WebSocket: معرف المستخدم: ${userId ?? "غير متاح"}');
         debugPrint('WebSocket: ID Token متاح: ${token != null ? "نعم" : "لا"}');
       } catch (e) {
         debugPrint('WebSocket: لا يمكن الحصول على بيانات المصادقة: $e');
+      }
+
+      if (SessionService.instance.isLoggedIn && (token == null || token.isEmpty)) {
+        throw StateError('Authenticated realtime session unavailable');
       }
 
       // إعداد معلومات الجهاز والتطبيق بطريقة آمنة للويب
@@ -796,6 +807,10 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
           break;
         case 'order_status_changed':
           _handleOrderStatusChange(data);
+          break;
+        case 'driver_location':
+          final point = LiveDriverPoint.parse(data);
+          if (point != null) _driverPoints.add(point);
           break;
         case 'delivery_update':
           _handleDeliveryUpdate(data);

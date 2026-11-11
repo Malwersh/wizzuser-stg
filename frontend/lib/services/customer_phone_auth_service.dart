@@ -1,3 +1,4 @@
+import '../utils/iraqi_phone.dart';
 import '../models/customer_legal_bundle.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -13,7 +14,8 @@ class CustomerPhoneAuthException implements Exception {
 
 class CustomerPhoneAuthService {
   final http.Client _client;
-  CustomerPhoneAuthService({http.Client? client})
+  final String? expectedOwner;
+  CustomerPhoneAuthService({http.Client? client, this.expectedOwner})
     : _client = client ?? http.Client();
   static const baseUrl = String.fromEnvironment(
     'PHONE_AUTH_API_URL',
@@ -23,24 +25,11 @@ class CustomerPhoneAuthService {
   String? _sessionId, _phone;
   CustomerLegalBundle? enrollmentPolicy;
   static String normalizePhone(String input) {
-    var p = input
-        .trim()
-        .replaceAllMapped(RegExp('[٠-٩۰-۹]'), (m) {
-          final x = m[0]!.codeUnitAt(0);
-          return '${x >= 0x6f0 ? x - 0x6f0 : x - 0x660}';
-        })
-        .replaceAll(RegExp(r'[\s()\-]'), '');
-    if (p.startsWith('+964'))
-      p = p.substring(4);
-    else if (p.startsWith('00964'))
-      p = p.substring(5);
-    else if (p.startsWith('964'))
-      p = p.substring(3);
-    else if (p.startsWith('0'))
-      p = p.substring(1);
-    if (!RegExp(r'^7[0-9]{9}$').hasMatch(p))
+    try {
+      return IraqiPhone.normalize(input);
+    } on FormatException {
       throw const CustomerPhoneAuthException('أدخل رقم هاتف عراقي صحيح');
-    return '+964$p';
+    }
   }
 
   Future<Map<String, dynamic>> _post(
@@ -96,6 +85,15 @@ class CustomerPhoneAuthService {
       if (accepted && enrollmentPolicy != null)
         'legalAcceptance': enrollmentPolicy!.pin,
     });
+    if (expectedOwner != null &&
+        (r['needsName'] == true ||
+            r['user']?['userId'] != expectedOwner ||
+            SessionService.instance.currentUserId != expectedOwner)) {
+      throw const CustomerPhoneAuthException(
+        'لم يتم تأكيد الحساب الحالي؛ لم تتغير جلستك',
+        'ACCOUNT_MISMATCH',
+      );
+    }
     if (r['needsName'] == true) return false;
     await SessionService.instance.saveUserSession(
       accessToken: r['accessToken'] as String,

@@ -1,3 +1,4 @@
+import '../widgets/basket_invoice.dart';
 import '../widgets/rotating_search_hint.dart';
 import '../models/menu_classification_focus.dart';
 import '../widgets/menu_classification_focus_section.dart';
@@ -683,52 +684,59 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
             .toSet();
     for (final section in _storeSections()) {
       if (!section.visible(SessionService.instance.isLoggedIn, now)) continue;
-      if (section.source == 'menu') {
-        output.add(
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 16, 4),
-              child: Semantics(
-                button: true,
-                label: 'ابحث في قائمة ${widget.store.name}',
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFF2F5FA), Color(0xFFE6EDF7)],
-                      begin: Alignment.centerRight,
-                      end: Alignment.centerLeft,
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _showSearchDialog,
+      if ([
+        'menu',
+        'search',
+        'menuTabs',
+        'menuContent',
+      ].contains(section.source)) {
+        if (section.source == 'menu' || section.source == 'search') {
+          output.add(
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 16, 4),
+                child: Semantics(
+                  button: true,
+                  label: 'ابحث في قائمة ${widget.store.name}',
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFF2F5FA), Color(0xFFE6EDF7)],
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                      ),
                       borderRadius: BorderRadius.circular(18),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 15,
-                        ),
-                        child: Row(
-                          textDirection: TextDirection.rtl,
-                          children: [
-                            const Icon(
-                              Icons.search,
-                              color: Color(0xFF00296B),
-                              size: 24,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: RotatingSearchHint(
-                                hints: [
-                                  'ابحث في قائمة ${widget.store.name}',
-                                  'ابحث عن وجبتك المفضلة',
-                                  'ماذا تشتهي من القائمة؟',
-                                ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _showSearchDialog,
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 15,
+                          ),
+                          child: Row(
+                            textDirection: TextDirection.rtl,
+                            children: [
+                              const Icon(
+                                Icons.search,
+                                color: Color(0xFF00296B),
+                                size: 24,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: RotatingSearchHint(
+                                  hints: [
+                                    'ابحث في قائمة ${widget.store.name}',
+                                    'ابحث عن وجبتك المفضلة',
+                                    'ماذا تشتهي من القائمة؟',
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -736,17 +744,23 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                 ),
               ),
             ),
-          ),
-        );
-        output.add(_buildStickyHeader());
-        output.add(
-          SliverToBoxAdapter(
-            child: Column(
-              children:
-                  _categoryProducts.keys.map(_buildIntegratedSection).toList(),
+          );
+        }
+        if (section.source == 'menu' || section.source == 'menuTabs') {
+          output.add(_buildStickyHeader());
+        }
+        if (section.source == 'menu' || section.source == 'menuContent') {
+          output.add(
+            SliverToBoxAdapter(
+              child: Column(
+                children:
+                    _categoryProducts.keys
+                        .map(_buildIntegratedSection)
+                        .toList(),
+              ),
             ),
-          ),
-        );
+          );
+        }
         continue;
       }
       if (section.source == 'offers') {
@@ -795,27 +809,43 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
         _categoryProducts.isNotEmpty &&
         !_hasNoProducts();
 
-    return Directionality(
-      textDirection: ui.TextDirection.rtl,
-      child: Stack(
-        children: [
-          Scaffold(
-            backgroundColor: Colors.white,
-            body:
-                _isLoading
-                    ? _buildLoadingWidget()
-                    : _error != null
-                    ? _buildErrorWidget()
-                    : !hasMenu
-                    ? _buildEmptyWidget()
-                    : _buildMainContent(),
-          ),
+    return Consumer<AppStateProvider>(
+      builder:
+          (context, appState, _) => BasketInvoiceWarmup(
+            branch: widget.store.id,
+            storeName: widget.store.name,
+            items:
+                appState.hasCartItemsForStore(widget.store.id)
+                    ? List<Map<String, dynamic>>.from(appState.cartItems)
+                    : const [],
+            child: Directionality(
+              textDirection: ui.TextDirection.rtl,
+              child: Stack(
+                children: [
+                  Scaffold(
+                    backgroundColor: Colors.white,
+                    body:
+                        _isLoading
+                            ? _buildLoadingWidget()
+                            : _error != null
+                            ? _buildErrorWidget()
+                            : !hasMenu
+                            ? _buildEmptyWidget()
+                            : _buildMainContent(),
+                  ),
 
-          // زر السلة العائم (يظهر فقط عندما توجد عناصر لهذا المطعم)
-          if (hasMenu)
-            Positioned(left: 0, right: 0, bottom: 0, child: _buildCartBar()),
-        ],
-      ),
+                  // زر السلة العائم (يظهر فقط عندما توجد عناصر لهذا المطعم)
+                  if (hasMenu)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildCartBar(),
+                    ),
+                ],
+              ),
+            ),
+          ),
     );
   }
 

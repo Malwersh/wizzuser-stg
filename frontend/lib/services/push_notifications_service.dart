@@ -13,6 +13,7 @@ import 'session_service.dart';
 import 'android_order_tracking.dart';
 import 'notification_inbox_service.dart';
 import 'notification_navigation.dart';
+import 'customer_notification_preferences.dart';
 import '../constants/app_colors.dart';
 import 'package:flutter/material.dart';
 
@@ -38,7 +39,9 @@ class PushNotificationsService {
   static const String _pendingOrderKey = 'pendingOrderFromPushTap';
   static const String _pendingTabIndexKey = 'pendingTabIndexFromPushTap';
 
-  static Future<void> initialize({FutureOr<void> Function(RemoteMessage message)? onNotificationTap}) async {
+  static Future<void> initialize({
+    FutureOr<void> Function(RemoteMessage message)? onNotificationTap,
+  }) async {
     if (kIsWeb) return;
 
     if (onNotificationTap != null) {
@@ -76,13 +79,19 @@ class PushNotificationsService {
       'central=${ApiConfig.centralPushApiBaseUrl}',
     );
 
-    final perm = await messaging.requestPermission(alert: true, badge: true, sound: true);
+    final perm = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
     print('PushNotificationsService: permission=${perm.authorizationStatus}');
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       try {
         final apns = await messaging.getAPNSToken();
-        print('PushNotificationsService: APNs token ${apns == null ? 'is NULL' : 'is SET'}');
+        print(
+          'PushNotificationsService: APNs token ${apns == null ? 'is NULL' : 'is SET'}',
+        );
       } catch (e) {
         print('PushNotificationsService: getAPNSToken failed: $e');
       }
@@ -94,6 +103,7 @@ class PushNotificationsService {
       sound: true,
     );
 
+    unawaited(_refreshPreferences());
     await _refreshTokenAndRegister(messaging);
 
     _tokenRefreshSub?.cancel();
@@ -107,30 +117,54 @@ class PushNotificationsService {
       await AndroidOrderTracking.fromPush(message.data);
       final item = await NotificationInboxService.recordPush(message);
       if (item == null) return;
-      NotificationNavigation.messengerKey.currentState?.showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating, backgroundColor: AppColors.secondary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        content: Text('${item.title}\n${item.body}', maxLines: 3, overflow: TextOverflow.ellipsis),
-        action: SnackBarAction(label: 'عرض', textColor: AppColors.primary, onPressed: () => NotificationNavigation.open(item)),
-      ));
+      final settings =
+          SessionService.instance.currentUser?['notification_settings'];
+      if (!CustomerNotificationPreferences.fromJson(
+        settings is Map ? settings : null,
+      ).allows(message.data))
+        return;
+      NotificationNavigation.messengerKey.currentState?.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.secondary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: Text(
+            '${item.title}\n${item.body}',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          action: SnackBarAction(
+            label: 'عرض',
+            textColor: AppColors.primary,
+            onPressed: () => NotificationNavigation.open(item),
+          ),
+        ),
+      );
     });
     FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+      if (!await NotificationInboxService.acceptsPush(message)) return;
       await NotificationInboxService.recordPush(message);
       final handler = _onNotificationTap;
       if (handler != null) await handler(message);
+      NotificationNavigation.pendingTap.value++;
     });
 
     final initialMessage = await messaging.getInitialMessage();
-    if (initialMessage != null) {
+    if (initialMessage != null &&
+        await NotificationInboxService.acceptsPush(initialMessage)) {
       await NotificationInboxService.recordPush(initialMessage);
       final handler = _onNotificationTap;
       if (handler != null) await handler(initialMessage);
+      NotificationNavigation.pendingTap.value++;
     }
 
     // If the user signs in later, retry token registration.
     _sessionSub?.cancel();
     _sessionSub = SessionService.instance.sessionStateStream.listen((_) async {
       await NotificationInboxService.bindCurrentAccount();
+      unawaited(_refreshPreferences());
       final tokenToRegister = _lastKnownFcmToken;
       if (tokenToRegister != null && tokenToRegister.isNotEmpty) {
         await _attemptRegisterForCurrentSession(tokenToRegister);
@@ -138,6 +172,24 @@ class PushNotificationsService {
     });
 
     _initialized = true;
+  }
+
+  static Future<void> _refreshPreferences() async {
+    final owner = SessionService.instance.currentUserId;
+    if (owner == null || !SessionService.instance.isLoggedIn) return;
+    final service = CustomerNotificationPreferencesService();
+    try {
+      final preferences = await service.load();
+      if (SessionService.instance.currentUserId == owner) {
+        await SessionService.instance.updateUserData({
+          'notification_settings': preferences.toJson(),
+        });
+      }
+    } catch (_) {
+      debugPrint('Customer notification preferences refresh unavailable');
+    } finally {
+      service.close();
+    }
   }
 
   static Future<void> dispose() async {
@@ -196,13 +248,25 @@ class PushNotificationsService {
     _lastKnownFcmToken = null;
     try {
       if (token != null && jwt != null) {
-        await http.post(Uri.parse('${ApiConfig.centralPushApiBaseUrl}/push/tokens/unregister'),
-          headers: {'Authorization': 'Bearer $jwt', 'Content-Type': 'application/json'},
-          body: jsonEncode({'token': token, 'app': 'user'}))
-          .timeout(const Duration(seconds: 10));
+        await http
+            .post(
+              Uri.parse(
+                '${ApiConfig.centralPushApiBaseUrl}/push/tokens/unregister',
+              ),
+              headers: {
+                'Authorization': 'Bearer $jwt',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'token': token, 'app': 'user'}),
+            )
+            .timeout(const Duration(seconds: 10));
       }
-    } catch (_) { debugPrint('Device unregistration unavailable'); }
-    try { await FirebaseMessaging.instance.deleteToken(); } catch (_) {}
+    } catch (_) {
+      debugPrint('Device unregistration unavailable');
+    }
+    try {
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {}
   }
 
   static Future<void> _registerToken(String token) async {
@@ -213,7 +277,9 @@ class PushNotificationsService {
       return;
     }
 
-    final uri = Uri.parse('${ApiConfig.centralPushApiBaseUrl}/push/tokens/register');
+    final uri = Uri.parse(
+      '${ApiConfig.centralPushApiBaseUrl}/push/tokens/register',
+    );
     final deviceId = await _deviceId();
 
     final payload = <String, dynamic>{
@@ -277,9 +343,24 @@ class PushNotificationsService {
       final data = message.data;
       final type = (data['type'] ?? '').toString();
 
-      if (data['action'] == 'open_wallet' || type == 'wallet_transfer_completed') {
+      if (data['action'] == 'open_wallet' ||
+          type == 'wallet_transfer_completed') {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('pendingWalletFromPushTap', true);
+      }
+      if (type == 'campaign_offer') {
+        final id = data['campaignId']?.toString();
+        if (id != null) await NotificationNavigation.openCampaign(id);
+      }
+      if (type == 'support_reply' || type == 'order_complaint_updated') {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'pendingSupportFromPushTap',
+          jsonEncode({
+            ...data,
+            'notificationOwner': SessionService.instance.currentUserId,
+          }),
+        );
       }
       // Order updates should open the Orders tab.
       final targetTab = type == 'order_update' ? 4 : 0;
@@ -319,9 +400,15 @@ class PushNotificationsService {
     return null;
   }
 
-  static Future<void> _refreshTokenAndRegister(FirebaseMessaging messaging) async {
+  static Future<void> _refreshTokenAndRegister(
+    FirebaseMessaging messaging,
+  ) async {
     // On iOS, getToken() may return null early until APNs registration completes.
-    const delays = <Duration>[Duration.zero, Duration(seconds: 2), Duration(seconds: 6)];
+    const delays = <Duration>[
+      Duration.zero,
+      Duration(seconds: 2),
+      Duration(seconds: 6),
+    ];
     for (final d in delays) {
       if (d != Duration.zero) {
         await Future.delayed(d);
@@ -334,7 +421,9 @@ class PushNotificationsService {
       }
       if (token != null && token.isNotEmpty) {
         _lastKnownFcmToken = token;
-        print('PushNotificationsService: got FCM token (${token.substring(0, 12)}…)');
+        print(
+          'PushNotificationsService: got FCM token (${token.substring(0, 12)}…)',
+        );
         await _attemptRegisterForCurrentSession(token);
         return;
       }
@@ -372,7 +461,10 @@ class PushNotificationsService {
     await _registerGuestToken(token, guestToken);
   }
 
-  static Future<void> _registerGuestToken(String fcmToken, String guestToken) async {
+  static Future<void> _registerGuestToken(
+    String fcmToken,
+    String guestToken,
+  ) async {
     final deviceId = await _deviceId();
     final uri = Uri.parse(ApiConfig.buildUrl('/push/tokens/register-guest'));
 
@@ -389,15 +481,15 @@ class PushNotificationsService {
       final resp = await http
           .post(
             uri,
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: {'Content-Type': 'application/json'},
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 10));
 
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        print('Guest push token register failed: ${resp.statusCode} ${resp.body}');
+        print(
+          'Guest push token register failed: ${resp.statusCode} ${resp.body}',
+        );
       } else {
         print('Guest push token registered: ${resp.statusCode}');
       }

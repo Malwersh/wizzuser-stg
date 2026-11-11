@@ -10,15 +10,18 @@ class InboxNotification {
     this.orderId,
     this.orderNumber,
     this.campaignId,
+    this.sessionId,
     this.target = '',
   });
   final String id, title, body, type, source, target;
   final DateTime createdAt;
   final DateTime? readAt;
-  final String? orderId, orderNumber, campaignId;
+  final String? orderId, orderNumber, campaignId, sessionId;
   bool get isRead => readAt != null;
   String get category =>
-      type == 'order_update' || orderId != null
+      type == 'support_reply' || sessionId != null
+          ? 'support'
+          : type == 'order_update' || orderId != null
           ? 'orders'
           : type.contains('wallet') || target == 'wallet'
           ? 'wallet'
@@ -37,6 +40,7 @@ class InboxNotification {
         orderId: j['orderId']?.toString(),
         orderNumber: j['orderNumber']?.toString(),
         campaignId: j['campaignId']?.toString(),
+        sessionId: j['sessionId']?.toString(),
         target: j['target']?.toString() ?? '',
       );
   Map<String, dynamic> toJson() => {
@@ -50,6 +54,7 @@ class InboxNotification {
     'orderId': orderId,
     'orderNumber': orderNumber,
     'campaignId': campaignId,
+    'sessionId': sessionId,
     'target': target,
   };
   InboxNotification read() => InboxNotification.fromJson({

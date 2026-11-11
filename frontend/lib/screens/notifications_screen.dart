@@ -84,7 +84,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   Future<void> _open(InboxNotification item) async {
     await _read([item]);
     if (!mounted) return;
-    if (item.category == 'wallet' || item.orderId != null) {
+    if (item.category == 'support' ||
+        item.category == 'wallet' ||
+        item.orderId != null ||
+        item.campaignId != null) {
       await NotificationNavigation.open(item);
     } else {
       await showModalBottomSheet(
@@ -163,9 +166,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     final list =
         inbox.items
             .where(
-              (x) =>
-                  _filter == 'all' ||
-                  (_filter == 'unread' && !x.isRead),
+              (x) => _filter == 'all' || (_filter == 'unread' && !x.isRead),
             )
             .toList();
     return Directionality(

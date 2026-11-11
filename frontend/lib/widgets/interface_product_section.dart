@@ -51,14 +51,16 @@ class InterfaceProductSection extends StatelessWidget {
             ),
           const SizedBox(height: 12),
           if (section.layout == 'horizontal')
-            SizedBox(
-              height: 276,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: products.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 14),
-                itemBuilder:
-                    (_, i) => SizedBox(width: 165, child: card(products[i])),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < products.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 14),
+                    SizedBox(width: 165, child: card(products[i])),
+                  ],
+                ],
               ),
             )
           else if (section.layout == 'vertical')

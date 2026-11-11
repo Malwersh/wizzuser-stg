@@ -1,3 +1,5 @@
+import '../services/basket_preparation.dart';
+import '../services/pending_offer.dart';
 import '../services/point_invoice_321.dart';
 import '../services/browsing_location_service.dart';
 import '../config/api_config.dart';
@@ -35,6 +37,7 @@ class _BasketInvoiceWarmupState extends State<BasketInvoiceWarmup> {
   void initState() {
     super.initState();
     BrowsingLocationService.instance.addListener(_schedule);
+    PendingOffer.revision.addListener(_schedule);
     _address = DeliveryAddressManager.instance.addressStream.listen(
       (_) => _schedule(),
     );
@@ -65,14 +68,22 @@ class _BasketInvoiceWarmupState extends State<BasketInvoiceWarmup> {
           ModalRoute.of(context)?.isCurrent != true ||
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed)
         return;
-      unawaited(
-        PointInvoice321.instance.warmBasket(
-          widget.branch,
-          widget.items,
-          storeName: widget.storeName,
-        ),
-      );
+      unawaited(_prepare());
     });
+  }
+
+  Future<void> _prepare() {
+    final expected = jsonEncode(widget.items);
+    final branch = widget.branch;
+    return BasketPreparation.instance.prepare(
+      branch,
+      widget.items,
+      current:
+          () =>
+              mounted &&
+              widget.branch == branch &&
+              jsonEncode(widget.items) == expected,
+    );
   }
 
   @override
@@ -82,6 +93,7 @@ class _BasketInvoiceWarmupState extends State<BasketInvoiceWarmup> {
     _address?.cancel();
     _session?.cancel();
     BrowsingLocationService.instance.removeListener(_schedule);
+    PendingOffer.revision.removeListener(_schedule);
     super.dispose();
   }
 
@@ -111,9 +123,20 @@ class BasketInvoiceTotals extends StatelessWidget {
       );
       if (r == null) return const SizedBox.shrink();
       return ListenableBuilder(
-        listenable: PointInvoice321.instance,
+        listenable: Listenable.merge([
+          PointInvoice321.instance,
+          PendingOffer.revision,
+        ]),
         builder: (context, _) {
-          final p = PointInvoice321.instance.peek(r);
+          final currentRequest = PointInvoice321.basketRequest(
+            branch,
+            items,
+            storeName: storeName,
+          );
+          final p =
+              currentRequest == null
+                  ? null
+                  : PointInvoice321.instance.peek(currentRequest);
           if (p == null) return const SizedBox.shrink();
           return Column(
             children: [
@@ -149,13 +172,21 @@ class BasketInvoiceTotals extends StatelessWidget {
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
+              Container(
+                margin: const EdgeInsets.only(top: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xffeaf0f8),
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'المجموع الكلي',
+                      'الإجمالي',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
@@ -267,7 +298,12 @@ class BasketInvoiceDelivery extends StatelessWidget {
     final source = store ?? CheckoutInvoiceStore.instance;
     final display = pricing ?? StorefrontPricing.instance;
     return ListenableBuilder(
-      listenable: Listenable.merge([source, display, PointInvoice321.instance]),
+      listenable: Listenable.merge([
+        source,
+        display,
+        PointInvoice321.instance,
+        PendingOffer.revision,
+      ]),
       builder: (context, _) {
         final request = source.basketRequest(branch, items);
         final invoice = request == null ? null : source.peek(request);

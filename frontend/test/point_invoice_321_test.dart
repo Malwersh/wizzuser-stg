@@ -73,6 +73,39 @@ void main() {
       api.dispose();
     },
   );
+  test(
+    'valid near-expiry pricing remains reusable during background renewal',
+    () async {
+      var clock = now;
+      var calls = 0;
+      final gate = Completer<http.Response>();
+      final api = PointInvoice321(
+        owner: () => 'owner',
+        token: () async => 't',
+        now: () => clock,
+        client: MockClient((r) async {
+          calls++;
+          return calls == 1 ? result(jsonDecode(r.body)) : gate.future;
+        }),
+      );
+      final r = request();
+      await api.ensure(r);
+      clock = now.add(const Duration(seconds: 80));
+      await api.ensure(r, retry: true);
+      expect(calls, 1);
+      final renewal = api.warmRequest(r);
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, 2);
+      expect(api.peek(r), isNotNull);
+      await api.ensure(r);
+      expect(calls, 2);
+      gate.complete(result(r));
+      await renewal;
+      clock = now.add(const Duration(seconds: 101));
+      expect(api.peek(r), isNull);
+      api.dispose();
+    },
+  );
   test('late response after account change cannot leak invoice', () async {
     var owner = 'a';
     final gate = Completer<http.Response>();

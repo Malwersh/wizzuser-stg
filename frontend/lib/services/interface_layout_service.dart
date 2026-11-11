@@ -57,6 +57,7 @@ class InterfaceLayoutService {
       queryParameters: {
         'surface': surface,
         'offerSlotsVersion': '1',
+        'storeStructureVersion': '2',
         'branchId': branch,
         if (region != null) 'regionId': region,
         if (session.isLoggedIn) 'userId': session.currentUserId!,

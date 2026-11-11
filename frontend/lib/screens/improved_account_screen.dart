@@ -1,13 +1,15 @@
+import 'dart:ui' as ui;
+import '../widgets/account_overview.dart';
 import 'orders_screen.dart';
 import 'wallet_transfer_screen.dart';
 import 'customer_legal_screen.dart';
-import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../providers/app_state_provider.dart';
 import '../services/user_profile_service.dart';
+import '../services/session_service.dart';
 import '../services/logout_service.dart';
 import 'login_screen.dart';
 import 'register_screen_tabs.dart';
@@ -33,6 +35,8 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
   Map<String, dynamic>? userProfile;
   bool isLoadingProfile = false;
   String? profileError;
+  String? _profileOwner;
+  int _profileGeneration = 0;
   bool _hasLoadedOnce = false; // 🔧 إضافة فلاج لتجنب التحميل المتكرر
   bool _isDisposed =
       false; // 🔧 إضافة فلاج للتأكد من عدم استدعاء setState بعد dispose
@@ -42,6 +46,8 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
   void initState() {
     super.initState();
     developer.log('🔧 ImprovedAccountScreen initState() called');
+    _profileOwner = SessionService.instance.currentUserId;
+    SessionService.instance.addListener(_onSessionChanged);
     _initializeAndLoadProfile();
   }
 
@@ -54,6 +60,8 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
   @override
   void dispose() {
+    SessionService.instance.removeListener(_onSessionChanged);
+    _profileGeneration++;
     _isDisposed = true; // 🔧 منع أي setState بعد dispose
     super.dispose();
   }
@@ -64,79 +72,53 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     await _loadUserProfile();
   }
 
-  Future<void> _loadUserProfile() async {
-    final appState = Provider.of<AppStateProvider>(context, listen: false);
+  void _onSessionChanged() {
+    final owner = SessionService.instance.currentUserId;
+    if (owner == _profileOwner || !mounted) return;
+    _profileOwner = owner;
+    _profileGeneration++;
+    setState(() {
+      userProfile = null;
+      _hasLoadedOnce = false;
+      profileError = null;
+    });
+    _loadUserProfile();
+  }
 
-    // 🔧 فحوصات الأمان الأساسية
-    if (!mounted || _isDisposed) return;
-
-    // 🔧 منع التحميل المتكرر
-    if (_hasLoadedOnce) {
-      developer.log('⚠️ تم تجنب التحميل المتكرر', name: 'IMPROVED_ACCOUNT');
+  Future<void> _loadUserProfile({bool force = false}) async {
+    if (!mounted || _isDisposed || (_hasLoadedOnce && !force)) return;
+    final owner = SessionService.instance.currentUserId;
+    final generation = ++_profileGeneration;
+    if (owner == null || !SessionService.instance.isLoggedIn) {
+      setState(() {
+        userProfile = null;
+        isLoadingProfile = false;
+      });
       return;
     }
-
-    // 🔧 تحميل البروفايل للمستخدمين المسجلين فقط
-    if (appState.isLoggedIn && appState.userData != null) {
-      if (mounted && !_isDisposed) {
-        setState(() {
-          isLoadingProfile = true;
-          profileError = null;
-        });
-      }
-
-      try {
-        final userId =
-            appState.userData!['userId'] ??
-            appState.userData!['user_id'] ??
-            appState.userData!['email'];
-
-        if (userId != null) {
-          final profile = await UserProfileService.getUserProfile(
-            userId.toString(),
-          );
-          if (mounted && !_isDisposed) {
-            setState(() {
-              userProfile = profile;
-              isLoadingProfile = false;
-              _hasLoadedOnce = true;
-            });
-          }
-        } else {
-          if (mounted && !_isDisposed) {
-            setState(() {
-              profileError = 'لم يتم العثور على معرف المستخدم';
-              isLoadingProfile = false;
-              _hasLoadedOnce = true;
-            });
-          }
-        }
-      } catch (e) {
-        if (mounted && !_isDisposed) {
-          setState(() {
-            profileError = 'خطأ في جلب بيانات المستخدم: $e';
-            isLoadingProfile = false;
-            _hasLoadedOnce = true;
-          });
-        }
-      }
-    } else {
-      // للضيوف أو غير المسجلين
-      if (mounted && !_isDisposed) {
-        setState(() {
-          userProfile = null;
-          isLoadingProfile = false;
-          profileError = null;
-          _hasLoadedOnce = true;
-        });
-      }
+    setState(() {
+      isLoadingProfile = true;
+      profileError = null;
+    });
+    final profile = await UserProfileService.getUserProfile(owner);
+    if (!mounted ||
+        _isDisposed ||
+        generation != _profileGeneration ||
+        owner != SessionService.instance.currentUserId) {
+      return;
     }
+    setState(() {
+      userProfile = profile;
+      isLoadingProfile = false;
+      _hasLoadedOnce = profile != null;
+      profileError = profile == null ? 'تعذر تحديث معلومات الحساب' : null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -150,7 +132,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
         title: const Text(
           'حسابي',
           style: TextStyle(
-            color: Colors.black,
+            color: AppColors.secondaryDark,
             fontSize: 22,
             fontWeight: FontWeight.bold,
           ),
@@ -165,6 +147,21 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             child: Column(
               children: [
                 _buildUserInfoCard(appState),
+                if (profileError != null)
+                  TextButton.icon(
+                    onPressed:
+                        isLoadingProfile
+                            ? null
+                            : () => _loadUserProfile(force: true),
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: AppColors.secondaryDark,
+                    ),
+                    label: Text(
+                      '$profileError · إعادة المحاولة',
+                      style: const TextStyle(color: AppColors.secondaryDark),
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 _buildOptionsMenu(appState),
               ],
@@ -177,7 +174,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
   Widget _buildUserInfoCard(AppStateProvider appState) {
     final isLoggedIn = appState.isLoggedIn;
-    final userData = appState.userData;
+    final userData = SessionService.instance.currentUser ?? appState.userData;
 
     // إصلاح: عرض البيانات من المصادر الصحيحة
     final userName =
@@ -186,7 +183,9 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
         userData?['userName'] ??
         'مستخدم';
     final userPhone = [
+          userProfile?['phone'],
           userData?['phone'],
+          userData?['phoneNumber'],
           userData?['phone_number'],
           userData?['userPhone'],
         ]
@@ -196,171 +195,38 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
           orElse: () => 'رقم الهاتف غير مضاف',
         );
 
-    // 🔧 إصلاح: إزالة الـ developer.log من build methods لتجنب اللوب اللانهائي
+    if (isLoggedIn) {
+      final name = [userProfile?['name'], userProfile?['fullName'], userName]
+          .map((v) => v?.toString().trim() ?? '')
+          .firstWhere((v) => v.isNotEmpty, orElse: () => 'حسابي');
+      return AccountOverview(
+        name: name,
+        phone: userPhone,
+        photoUrl:
+            (userProfile?['photoUrl'] ?? userData?['photoUrl'])?.toString(),
+        onFavorites:
+            widget.favoritesBuilder == null
+                ? null
+                : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: widget.favoritesBuilder!),
+                ),
+        onWallet:
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WalletTransferScreen()),
+            ),
+        onOrders:
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OrdersScreen()),
+            ),
+      );
+    }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // أيقونة المستخدم
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(50),
-              border: Border.all(color: Colors.white, width: 3),
-            ),
-            child: Icon(
-              isLoggedIn ? Icons.person : Icons.person_outline,
-              size: 50,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // معلومات المستخدم
-          if (isLoggedIn) ...[
-            Text(
-              userName,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF00296B),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                userPhone,
-                textDirection: TextDirection.ltr,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ] else ...[
-            // 🔧 إصلاح: عرض تصميم الضيف دائماً للمستخدمين غير المسجلين
-            const Text(
-              'مرحباً ضيفنا الكريم',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'أنت تتصفح كضيف - سجل للحصول على تجربة أفضل!',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.secondary.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.star, color: Colors.white, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'مستخدم ضيف',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(Icons.star, color: Colors.white, size: 20),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'سجّل حساباً واحفظ طلباتك المفضلة\nواحصل على عروض خاصة!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            // أزرار تسجيل الدخول وإنشاء الحساب
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _navigateToLogin(),
-                    icon: const Icon(Icons.login, size: 20),
-                    label: const Text('تسجيل الدخول'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: readableForeground(Colors.white),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _navigateToRegister(),
-                    icon: const Icon(Icons.person_add, size: 20),
-                    label: const Text('إنشاء حساب'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.secondary,
-                      side: const BorderSide(color: Colors.white, width: 2),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+    return GuestAccountOverview(
+      onLogin: _navigateToLogin,
+      onRegister: _navigateToRegister,
     );
   }
 
@@ -402,40 +268,6 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             _buildDivider(),
           ],
 
-          _buildMenuItem(
-            icon: Icons.receipt_long_outlined,
-            title: 'طلباتي',
-            onTap:
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const OrdersScreen()),
-                ),
-          ),
-          _buildDivider(),
-          _buildMenuItem(
-            icon: Icons.account_balance_wallet_outlined,
-            title: 'المحفظة',
-            onTap:
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const WalletTransferScreen(),
-                  ),
-                ),
-          ),
-          _buildDivider(),
-          if (widget.favoritesBuilder != null) ...[
-            _buildMenuItem(
-              icon: Icons.favorite_border_rounded,
-              title: 'المفضلة',
-              onTap:
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: widget.favoritesBuilder!),
-                  ),
-            ),
-            _buildDivider(),
-          ],
           _buildMenuItem(
             icon: Icons.notifications,
             title: 'إعدادات الإشعارات',
@@ -516,7 +348,12 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
                 ),
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+            Icon(
+              Icons.chevron_left,
+              textDirection: ui.TextDirection.ltr,
+              size: 20,
+              color: Colors.grey[400],
+            ),
           ],
         ),
       ),
@@ -584,11 +421,12 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     ).push(MaterialPageRoute(builder: (context) => const RegisterScreenTabs()));
   }
 
-  void _navigateToPersonalInfo() {
+  Future<void> _navigateToPersonalInfo() async {
     if (!mounted) return;
-    Navigator.of(
+    await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (context) => const PersonalInfoScreen()));
+    if (mounted) await _loadUserProfile(force: true);
   }
 
   void _navigateToAddresses() {
@@ -598,11 +436,12 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     ).push(MaterialPageRoute(builder: (context) => const AddressesScreen()));
   }
 
-  void _navigateToChangePhone() {
+  Future<void> _navigateToChangePhone() async {
     if (!mounted) return;
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const VerifiedPhoneScreen()),
     );
+    if (mounted) await _loadUserProfile(force: true);
   }
 
   void _navigateToNotificationSettings() {

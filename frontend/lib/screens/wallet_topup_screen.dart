@@ -1,3 +1,4 @@
+import '../utils/iraqi_phone.dart';
 import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -145,7 +146,7 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
     return {
       'name': 'مستخدم التطبيق',
       'email': userEmail ?? 'user@foodapp.com',
-      'phone': userPhone ?? '+964xxxxxxxxx',
+      'phone': IraqiPhone.normalize(userPhone?.toString() ?? ''),
       'city': 'بغداد',
       'country': 'IQ',
     };
