@@ -1,3 +1,4 @@
+import '../widgets/iraqi_mobile_field.dart';
 import '../utils/readable_colors.dart';
 import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
@@ -84,7 +85,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
   @override
   void initState() {
     super.initState();
-    _phoneController = TextEditingController(text: '+964 770 123 4567');
+    _phoneController = TextEditingController();
     _couponController = TextEditingController();
     _customTipController = TextEditingController();
 
@@ -399,9 +400,8 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          TextField(
+          IraqiMobileField(
             controller: _phoneController,
-            keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               hintText: '+964 770 123 4567',
               border: OutlineInputBorder(

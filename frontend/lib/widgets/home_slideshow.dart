@@ -162,6 +162,8 @@ class _HomeSlideshowState extends State<HomeSlideshow>
             },
             child: PageView.builder(
               controller: _controller,
+              // Advance banners physically from right to left in either locale.
+              reverse: Directionality.of(context) == TextDirection.rtl,
               itemCount: count > 1 ? null : 1,
               onPageChanged: (i) {
                 _page = i;

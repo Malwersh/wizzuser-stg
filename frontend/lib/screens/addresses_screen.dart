@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+import '../utils/iraqi_phone.dart';
 import '../utils/readable_colors.dart';
 // lib/screens/addresses_screen.dart
 import '../constants/app_colors.dart';
@@ -55,7 +57,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         title: const Text(
           'عناويني',
@@ -64,9 +66,11 @@ class _AddressesScreenState extends State<AddressesScreen> {
             color: const Color(0xFF00296B),
           ),
         ),
-        backgroundColor: AppColors.primary,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        centerTitle: true,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color(0xFF00296B)),
         actions: [
           IconButton(
             onPressed: _loadAddresses,
@@ -115,6 +119,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.secondary,
         icon: const Icon(Icons.add_location),
+        shape: const StadiumBorder(),
+        elevation: 2,
         label: const Text('إضافة عنوان'),
       ),
     );
@@ -139,20 +145,23 @@ class _AddressesScreenState extends State<AddressesScreen> {
   Widget _buildAddressCard(DetailedAddress address) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
         side: BorderSide(
-          color: AppColors.primary.withValues(alpha: 0.2),
+          color:
+              address.isDefault
+                  ? const Color(0xFFADBFD9)
+                  : const Color(0xFFE5EAF2),
           width: 1,
         ),
       ),
       color: Colors.white,
       child: InkWell(
         onTap: () => _showAddressOptions(address),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -163,12 +172,17 @@ class _AddressesScreenState extends State<AddressesScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: _getAddressTypeColor(address.addressType),
-                      borderRadius: BorderRadius.circular(8),
+                      color: const Color(0xFFEAF0F8),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Text(
-                      address.typeIcon,
-                      style: const TextStyle(fontSize: 16),
+                    child: Icon(
+                      address.addressType == AddressType.home
+                          ? Icons.home_outlined
+                          : address.addressType == AddressType.work
+                          ? Icons.business_outlined
+                          : Icons.location_on_outlined,
+                      color: const Color(0xFF00296B),
+                      size: 24,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -178,11 +192,16 @@ class _AddressesScreenState extends State<AddressesScreen> {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              address.name,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                            Expanded(
+                              child: Text(
+                                address.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF00296B),
+                                ),
                               ),
                             ),
                             if (address.isDefault) ...[
@@ -193,7 +212,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary,
+                                  color: const Color(0xFFEAF0F8),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: const Text(
@@ -220,13 +239,13 @@ class _AddressesScreenState extends State<AddressesScreen> {
                   ),
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.grey[50],
+                      color: const Color(0xFFF3F5F9),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: IconButton(
                       onPressed: () => _showAddressOptions(address),
                       icon: const Icon(Icons.more_vert),
-                      color: Colors.grey[600],
+                      color: const Color(0xFF00296B),
                     ),
                   ),
                 ],
@@ -251,7 +270,10 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     if (address.apartmentNumber != null)
                       _buildInfoChip('الشقة', address.apartmentNumber!),
                     if (address.phoneNumber != null)
-                      _buildInfoChip('الهاتف', address.phoneNumber!),
+                      _buildInfoChip(
+                        'الهاتف',
+                        IraqiPhone.display(address.phoneNumber!),
+                      ),
                   ],
                 ),
               ],
@@ -342,14 +364,14 @@ class _AddressesScreenState extends State<AddressesScreen> {
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(Icons.place, size: 14, color: AppColors.primary),
+              Icon(Icons.place, size: 14, color: AppColors.secondary),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   landmarkPart,
                   style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.primary,
+                    color: AppColors.secondary,
                     fontWeight: FontWeight.w500,
                     height: 1.4,
                   ),
@@ -381,19 +403,6 @@ class _AddressesScreenState extends State<AddressesScreen> {
         ),
       ],
     );
-  }
-
-  Color _getAddressTypeColor(String type) {
-    switch (type) {
-      case AddressType.home:
-        return AppColors.primary.withValues(alpha: 0.1);
-      case AddressType.work:
-        return AppColors.secondary.withValues(alpha: 0.1);
-      case AddressType.current:
-        return Colors.green.withValues(alpha: 0.1);
-      default:
-        return Colors.grey[100]!;
-    }
   }
 
   Widget _buildEmptyState() {
@@ -527,7 +536,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
+                  color: const Color(0xFFEAF0F8),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -582,7 +591,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
                   ),
                   title: const Text('تعديل العنوان'),
                   trailing: const Icon(
-                    Icons.arrow_forward_ios,
+                    Icons.chevron_left,
+                    textDirection: ui.TextDirection.ltr,
                     size: 16,
                     color: Colors.grey,
                   ),
@@ -598,18 +608,19 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     leading: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.1),
+                        color: const Color(0xFFEAF0F8),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
                         Icons.star,
-                        color: Colors.amber,
+                        color: AppColors.secondary,
                         size: 20,
                       ),
                     ),
                     title: const Text('جعل افتراضي'),
                     trailing: const Icon(
-                      Icons.arrow_forward_ios,
+                      Icons.chevron_left,
+                      textDirection: ui.TextDirection.ltr,
                       size: 16,
                       color: Colors.grey,
                     ),
@@ -639,7 +650,8 @@ class _AddressesScreenState extends State<AddressesScreen> {
                     style: TextStyle(color: Colors.red),
                   ),
                   trailing: const Icon(
-                    Icons.arrow_forward_ios,
+                    Icons.chevron_left,
+                    textDirection: ui.TextDirection.ltr,
                     size: 16,
                     color: Colors.grey,
                   ),

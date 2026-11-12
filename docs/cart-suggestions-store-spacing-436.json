@@ -1,0 +1,13 @@
+{
+  "status": "IMPLEMENTED",
+  "changes": [
+    "Horizontal store product sections size to content instead of reserving 276 pixels",
+    "Cart suggestions no longer require legacy restaurant type or complementary category metadata; prefer complementary categories then include other branch catalog products",
+    "Existing branch, availability, positive price and in-cart exclusion gates retained"
+  ],
+  "tests": {
+    "targetedFlutter": 7,
+    "releaseBuild": 399
+  },
+  "backendChanges": false
+}

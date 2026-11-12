@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -63,12 +64,40 @@ Future<void> confirm(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('pricing receives confirmed coordinates before either text field and typing text does not reprice or save', (tester) async {
-    final points=<LatLng>[];var saves=0;
-    await tester.pumpWidget(MaterialApp(home:Scaffold(body:SingleChildScrollView(child:CheckoutAddressEditor(selection:area,currentPosition:()async=>const LatLng(31.9,44.4),resolver:resolver(),loggedIn:()=>true,onPointConfirmed:points.add,persist:(r)async{saves++;return saved(r);},onConfirmed:(_){})))));
-    await tester.pumpAndSettle();expect(points,[const LatLng(31.9,44.4)]);expect(saves,0);
-    await typeDetails(tester);await tester.pumpAndSettle();expect(points.length,1);expect(saves,0);
-  });
+  testWidgets(
+    'pricing receives confirmed coordinates before either text field and typing text does not reprice or save',
+    (tester) async {
+      final points = <LatLng>[];
+      var saves = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: CheckoutAddressEditor(
+                selection: area,
+                currentPosition: () async => const LatLng(31.9, 44.4),
+                resolver: resolver(),
+                loggedIn: () => true,
+                onPointConfirmed: points.add,
+                persist: (r) async {
+                  saves++;
+                  return saved(r);
+                },
+                onConfirmed: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(points, [const LatLng(31.9, 44.4)]);
+      expect(saves, 0);
+      await typeDetails(tester);
+      await tester.pumpAndSettle();
+      expect(points.length, 1);
+      expect(saves, 0);
+    },
+  );
 
   testWidgets(
     'area starts with current GPS but requires written details and defaults to checkout-only storage',
@@ -143,7 +172,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(gpsCalls, 0);
-      expect(find.text('شارع اختاره الزبون'), findsOneWidget);
+      expect(find.text('شارع اختاره الزبون'), findsNothing);
+      expect(find.text('نقطة التوصيل داخل المنطقة المختارة'), findsNothing);
+      expect(find.text('مطلوب'), findsNWidgets(2));
       await typeDetails(tester);
       await tester.ensureVisible(find.byType(CheckboxListTile));
       await tester.tap(find.byType(CheckboxListTile));
@@ -211,4 +242,63 @@ void main() {
     expect(keys.length, 2);
     expect(keys.first, keys.last);
   });
+  testWidgets(
+    'continue saves hidden address editor once and awaits delivery acceptance',
+    (tester) async {
+      final controller = CheckoutAddressEditorController();
+      final save = Completer<DetailedAddress?>(), accept = Completer<void>();
+      AddressCreateRequest? request;
+      var saves = 0, confirmations = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: CheckoutAddressEditor(
+                selection: area,
+                controller: controller,
+                showSubmitButton: false,
+                currentPosition: () async => const LatLng(31.9, 44.4),
+                resolver: resolver(),
+                loggedIn: () => true,
+                persist: (r) {
+                  request = r;
+                  saves++;
+                  return save.future;
+                },
+                onConfirmed: (_) async {
+                  confirmations++;
+                  await accept.future;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('confirm-delivery-details')),
+        findsNothing,
+      );
+      expect(await controller.submit(), false);
+      expect(saves, 0);
+      await typeDetails(tester);
+      var completed = false;
+      final pending = controller.submit().then((v) {
+        completed = true;
+        return v;
+      });
+      await tester.pump();
+      expect(saves, 1);
+      expect(await controller.submit(), false);
+      save.complete(saved(request!));
+      await tester.pump();
+      expect(confirmations, 1);
+      expect(completed, false);
+      accept.complete();
+      await tester.pumpAndSettle();
+      expect(await pending, true);
+      await tester.pumpWidget(const SizedBox());
+      expect(controller.attached, false);
+    },
+  );
 }

@@ -1,11 +1,11 @@
-import '../utils/readable_colors.dart';
+import '../widgets/tracking_cancellation.dart';
+import '../widgets/basket_line_card.dart' show basketMoney;
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../services/order_service_v2.dart';
 import '../services/session_service.dart';
 import '../services/websocket_service.dart';
 import '../models/order_model.dart';
-import '../widgets/connection_status_widget.dart';
 import 'order_tracking_screen.dart';
 import 'dart:async';
 
@@ -25,7 +25,6 @@ class _OrdersScreenState extends State<OrdersScreen>
   Timer? _refreshTimer;
 
   // متغيرات حالة الاتصال للتحكم في UI
-  bool _isWebSocketConnected = false;
   bool _isInitialized = false;
 
   // جعل الشاشة تستمع للتغييرات في OrderServiceV2
@@ -272,9 +271,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       // لا نقوم بإنشاء اتصال جديد هنا - الاتصالات تتم فقط عبر connectForOrder(orderId)
       if (_wsService.isConnected) {
         print('✅ WebSocket: متصل بالفعل - إعداد المستمعات للطلبات الموجودة');
-        setState(() {
-          _isWebSocketConnected = true;
-        });
         _setupOrderUpdatesListener();
         return;
       }
@@ -292,7 +288,6 @@ class _OrdersScreenState extends State<OrdersScreen>
         );
         if (mounted) {
           setState(() {
-            _isWebSocketConnected = isConnected;
             if (isConnected) {
               print('✅ WebSocket: متصل - تفعيل التحديثات الفورية');
               // إعادة إعداد المستمعات عند إعادة الاتصال - فوري وبدون تأخير
@@ -314,9 +309,6 @@ class _OrdersScreenState extends State<OrdersScreen>
 
       // تحديث الحالة الأولية وإعداد المستمع
       if (mounted) {
-        setState(() {
-          _isWebSocketConnected = _wsService.isConnected;
-        });
         if (_wsService.isConnected) {
           // إعداد المستمعات فورياً
           Future.microtask(() {
@@ -326,11 +318,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       }
     } catch (e) {
       print('❌ خطأ في إعداد WebSocket: $e');
-      if (mounted) {
-        setState(() {
-          _isWebSocketConnected = false;
-        });
-      }
       // لا نريد إيقاف التطبيق بسبب مشكلة WebSocket
     }
   }
@@ -879,7 +866,7 @@ class _OrdersScreenState extends State<OrdersScreen>
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -900,8 +887,8 @@ class _OrdersScreenState extends State<OrdersScreen>
             decoration: BoxDecoration(
               color: _getStatusColor(order.status).withOpacity(0.1),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
+                topLeft: Radius.circular(22),
+                topRight: Radius.circular(22),
               ),
             ),
             child: Row(
@@ -924,11 +911,13 @@ class _OrdersScreenState extends State<OrdersScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'طلب #${order.orderNumber}',
+                        'طلب #\u2066${order.orderNumber}\u2069',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          color: AppColors.secondaryDark,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -979,9 +968,9 @@ class _OrdersScreenState extends State<OrdersScreen>
                       child: Text(
                         order.storeName,
                         style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.secondaryDark,
                         ),
                       ),
                     ),
@@ -998,7 +987,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${order.items.length} عنصر • ${order.total.toStringAsFixed(0)} د.ع',
+                        '${order.items.length} عنصر • ${basketMoney(order.total)}',
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                       ),
                     ),
@@ -1023,46 +1012,96 @@ class _OrdersScreenState extends State<OrdersScreen>
                 // Action buttons
                 Column(
                   children: [
-                    Row(
-                      children: [
-                        if (isActive) ...[
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _callRestaurant(order),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.grey[700],
-                                side: BorderSide(color: Colors.grey[300]!),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final track = ElevatedButton(
+                          onPressed: () => _navigateToTracking(order),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.secondaryDark,
+                            minimumSize: const Size(0, 48),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            shape: const StadiumBorder(),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                isActive
+                                    ? Icons.near_me_outlined
+                                    : Icons.receipt_long_outlined,
+                                size: 19,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  isActive ? 'تتبّع الطلب' : 'عرض التفاصيل',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
-                              icon: const Icon(Icons.phone, size: 18),
-                              label: const Text('اتصال'),
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                        ],
-                        Expanded(
-                          flex: isActive ? 2 : 1,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _navigateToTracking(order),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: AppColors.secondary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                        );
+                        if (!isActive)
+                          return SizedBox(width: double.infinity, child: track);
+                        final call = OutlinedButton(
+                          onPressed: () => _callRestaurant(order),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.secondaryDark,
+                            backgroundColor: const Color(0xfff3f5fa),
+                            side: const BorderSide(color: Color(0xffe1e7f0)),
+                            minimumSize: const Size(0, 48),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            shape: const StadiumBorder(),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.phone_outlined, size: 18),
+                              SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  'اتصال',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
-                            ),
-                            icon: Icon(
-                              isActive ? Icons.track_changes : Icons.receipt,
-                              size: 18,
-                            ),
-                            label: Text(
-                              isActive ? 'تتبع الطلب' : 'عرض التفاصيل',
-                            ),
+                            ],
                           ),
-                        ),
-                      ],
+                        );
+                        if (constraints.maxWidth < 280 ||
+                            MediaQuery.textScalerOf(context).scale(14) > 19) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [track, const SizedBox(height: 10), call],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: track),
+                            const SizedBox(width: 10),
+                            SizedBox(width: 112, child: call),
+                          ],
+                        );
+                      },
                     ),
                     // Cancel button for active orders that can be cancelled
                     if (isActive &&
@@ -1087,13 +1126,20 @@ class _OrdersScreenState extends State<OrdersScreen>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Colors.red),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            minimumSize: const Size(0, 44),
                           ),
                           icon: const Icon(Icons.cancel, size: 18),
-                          label: const Text('إلغاء الطلب'),
+                          label: const Text(
+                            'إلغاء الطلب',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -1289,6 +1335,16 @@ class _OrdersScreenState extends State<OrdersScreen>
             ),
             iconTheme: const IconThemeData(color: Colors.black),
             automaticallyImplyLeading: false,
+            leading: IconButton(
+              tooltip: 'رجوع',
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: AppColors.secondary,
+                size: 22,
+              ),
+              onPressed:
+                  widget.onBack ?? () => Navigator.of(context).maybePop(),
+            ),
           ),
           body: const Center(
             child: Column(
@@ -1337,94 +1393,21 @@ class _OrdersScreenState extends State<OrdersScreen>
               ),
               iconTheme: const IconThemeData(color: Colors.black),
               automaticallyImplyLeading: false,
-              actions: [
-                // مؤشر حالة الاتصال في AppBar
-                Container(
-                  margin: const EdgeInsets.only(right: 16),
-                  child: GestureDetector(
-                    onTap: () {
-                      // التحقق من أن الـ widget ما زال mounted قبل عرض الـ dialog
-                      if (!mounted) return;
-
-                      // عرض تفاصيل الاتصال
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => AlertDialog(
-                              title: const Text('حالة الاتصال'),
-                              content: const ConnectionStatusWidget(
-                                showDetailed: true,
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('حسناً'),
-                                ),
-                              ],
-                            ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            _isWebSocketConnected
-                                ? Colors.green.withOpacity(0.1)
-                                : AppColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color:
-                              _isWebSocketConnected
-                                  ? Colors.green
-                                  : AppColors.primary,
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _isWebSocketConnected ? Icons.wifi : Icons.refresh,
-                            size: 16,
-                            color:
-                                _isWebSocketConnected
-                                    ? Colors.green
-                                    : AppColors.primary,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _isWebSocketConnected ? 'مباشر' : 'تلقائي',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color:
-                                  _isWebSocketConnected
-                                      ? Colors.green
-                                      : AppColors.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+              leading: IconButton(
+                tooltip: 'رجوع',
+                icon: const Icon(
+                  Icons.arrow_back_ios_new,
+                  color: AppColors.secondary,
+                  size: 22,
                 ),
-              ],
+                onPressed:
+                    widget.onBack ?? () => Navigator.of(context).maybePop(),
+              ),
             ),
           ),
         ),
         body: Column(
           children: [
-            // شريط حالة الاتصال
-            Container(
-              width: double.infinity,
-              child: const ConnectionStatusWidget(
-                showDetailed: false,
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              ),
-            ),
             // التبويبات
             Container(
               color: Colors.white,
@@ -1643,66 +1626,22 @@ class _OrdersScreenState extends State<OrdersScreen>
     );
   }
 
-  void _showCancelOrderDialog(OrderModel order) {
-    showDialog(
+  Future<void> _showCancelOrderDialog(OrderModel order) async {
+    final reason = await showModalBottomSheet<String>(
       context: context,
-      builder: (BuildContext context) {
-        final TextEditingController reasonController = TextEditingController();
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: const Text('إلغاء الطلب'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'هل أنت متأكد من رغبتك في إلغاء طلب #${order.orderNumber}؟',
-                  style: const TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'سبب الإلغاء (اختياري):',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: reasonController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'مثال: تغيير الرأي، لا أحتاج الطلب الآن...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.all(12),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('العودة'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  final reason = reasonController.text.trim();
-                  _cancelOrderFromOrdersScreen(
-                    order.id,
-                    reason.isEmpty ? 'Order cancelled by user' : reason,
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: readableForeground(Colors.red),
-                ),
-                child: const Text('إلغاء الطلب'),
-              ),
-            ],
-          ),
-        );
-      },
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (_) => const TrackingCancellationSheet(),
+    );
+    if (!mounted || reason == null) return;
+    await _cancelOrderFromOrdersScreen(
+      order.id,
+      reason.isEmpty ? 'Order cancelled by user' : reason,
     );
   }
 

@@ -135,6 +135,11 @@ class PointInvoice321 extends ChangeNotifier {
         lat == null ||
         lng == null)
       return null;
+    final selectedOffer = PendingOffer.current;
+    final pending =
+        selectedOffer?.matchesBasket(branch, items, lat, lng) == true
+            ? selectedOffer
+            : null;
     final r = invoiceRequest(
       branch: branch,
       items: items,
@@ -142,13 +147,28 @@ class PointInvoice321 extends ChangeNotifier {
       storeName: storeName,
       storeAddress: storeAddress,
       discountId:
-          PendingOffer.current?.merchantId == branch &&
-                  PendingOffer.current?.offer['source'] == 'merchant'
-              ? PendingOffer.current?.offer['id'] as String?
+          pending?.merchantId == branch &&
+                  pending?.offer['source'] == 'merchant'
+              ? pending?.offer['id'] as String?
+              : null,
+      platformDiscountId:
+          pending?.offer['source'] == 'platform' &&
+                  !pending!.deliverySelection &&
+                  (pending.merchantId.isEmpty || pending.merchantId == branch)
+              ? pending.offer['id'] as String?
+              : null,
+      deliveryBenefitId:
+          pending?.deliverySelection == true
+              ? pending!.offer['id'] as String?
+              : pending?.offer['deliveryBenefitId'] as String?,
+      promoCode:
+          pending?.offer['source'] == 'platform' &&
+                  (pending!.merchantId.isEmpty || pending.merchantId == branch)
+              ? pending.offer['code'] as String?
               : null,
       offerSlideId:
-          PendingOffer.current?.merchantId == branch
-              ? PendingOffer.current?.slideId
+          pending?.merchantId == branch && pending?.slideId.isNotEmpty == true
+              ? pending?.slideId
               : null,
     );
     r.remove('deliveryAddress');

@@ -1,5 +1,13 @@
 import 'business_model.dart';
 
+String normalizedHomeActivity(String value) =>
+    const {
+      'restaurant': 'RESTAURANT',
+      'grocery': 'MARKET',
+      'store': 'STORE',
+    }[value] ??
+    value;
+
 String? canonicalHomeActivity(BusinessModel business) =>
     business.businessTypeId ??
     const {
@@ -45,9 +53,11 @@ class HomeNavigationItem {
     return switch (kind) {
       'all' => true,
       'activity' =>
-        value == canonicalHomeActivity(business) ||
-            (value != null && value == business.businessType) ||
-            homeActivity(business) == value,
+        value != null &&
+            (canonicalHomeActivity(business) != null
+                ? normalizedHomeActivity(value!) ==
+                    canonicalHomeActivity(business)
+                : homeActivity(business) == value),
       'cuisine' =>
         (profile?['cuisineIds'] as List? ?? []).contains(value) ||
             (business.metadata?['publishedCuisineIds'] as List? ?? []).contains(
@@ -84,7 +94,11 @@ class HomeNavigation {
                 ['cuisine', 'brand'].contains(r.kind) &&
                 (activity == null ||
                     r.parentActivities.isEmpty ||
-                    r.parentActivities.contains(activity)),
+                    r.parentActivities.any(
+                      (parent) =>
+                          normalizedHomeActivity(parent) ==
+                          normalizedHomeActivity(activity),
+                    )),
           )
           .toList();
   HomeNavigation.fromJson(Map<String, dynamic> json)

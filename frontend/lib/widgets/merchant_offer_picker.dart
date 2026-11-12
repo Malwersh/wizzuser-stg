@@ -19,9 +19,13 @@ class _MerchantOfferPickerState extends State<MerchantOfferPicker> {
     final filtered =
         widget.offers
             .where(
-              (d) => '${d.title} ${d.description} ${d.displayValue}'
-                  .toLowerCase()
-                  .contains(query.toLowerCase()),
+              (d) =>
+                  (d.validFrom == null ||
+                      !DateTime.now().isBefore(d.validFrom!)) &&
+                  (d.validTo == null || DateTime.now().isBefore(d.validTo!)) &&
+                  '${d.title} ${d.description} ${d.displayValue}'
+                      .toLowerCase()
+                      .contains(query.toLowerCase()),
             )
             .toList();
     return Directionality(

@@ -1,3 +1,4 @@
+import 'delivery_location_notice.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -14,6 +15,7 @@ class LocationPickerScreen extends StatefulWidget {
   final LatLngBounds? initialViewport;
   final String? initialAddress, requiredRegionId;
   final bool requirePinSelection;
+  final bool showCoverageNotice;
   final RegionResolverService? regionResolver;
   final RegionBoundaryService? boundaryService;
   final GooglePlacesService? placesService;
@@ -25,6 +27,7 @@ class LocationPickerScreen extends StatefulWidget {
     this.initialAddress,
     this.requiredRegionId,
     this.requirePinSelection = false,
+    this.showCoverageNotice = false,
     this.regionResolver,
     this.boundaryService,
     this.placesService,
@@ -54,6 +57,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       _confirming = false,
       _searching = false;
   bool _hasSelected = false, _locationGranted = false;
+  bool _coverageNotified = false;
   int _pointGeneration = 0, _searchGeneration = 0;
   MapType _mapType = MapType.normal;
   bool get _valid =>
@@ -184,7 +188,20 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           _resolved = result;
         }
       });
-      if (_resolved != null) _prefetchAddress(point);
+      if (_resolved != null) {
+        _coverageNotified = false;
+        _prefetchAddress(point);
+      } else if (widget.showCoverageNotice &&
+          !_coverageNotified &&
+          _pointError != null) {
+        _coverageNotified = true;
+        await showDeliveryLocationNotice(
+          context,
+          title: 'الموقع خارج نطاق التوصيل',
+          message:
+              'اختر نقطة داخل المنطقة التي تتصفحها لإكمال الطلب. يمكنك تحريك الخريطة لتصحيح الموقع.',
+        );
+      }
     } catch (_) {
       if (mounted && generation == _pointGeneration) {
         setState(() {

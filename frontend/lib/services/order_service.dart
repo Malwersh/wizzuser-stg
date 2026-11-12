@@ -769,6 +769,16 @@ class OrderService extends ChangeNotifier {
   }
 
   /// التحقق من كود خصم منصة وحساب قيمته من الخادم
+  bool _offerServiceFailure(int status, dynamic data) =>
+      status >= 500 &&
+      !const {
+        'GOODS_UNAVAILABLE',
+        'GOODS_PRICING_UNSUPPORTED',
+        'GOODS_PRICING_UNAVAILABLE',
+        'INVALID_GOODS_SELECTION',
+        'INSUFFICIENT_STOCK',
+      }.contains(data['code'] ?? data['message']);
+
   String _offerMessage(dynamic code) =>
       {
         'UNSUPPORTED_DISCOUNT_ITEMS': unsupportedDiscountItemsMessage,
@@ -793,6 +803,14 @@ class OrderService extends ChangeNotifier {
         'BENEFIT_PAUSED': 'المنفعة متوقفة مؤقتاً.',
         'BENEFIT_NO_SAVINGS': 'المنفعة لا تحقق توفيراً إضافياً لهذا الطلب.',
         'BENEFIT_NOT_ELIGIBLE': 'المنفعة غير متاحة لحسابك.',
+        'OFFER_NO_MATCHING_ITEMS':
+            'هذا العرض يخص أصنافًا محددة، ولا تحتوي سلتك الحالية على أي منها. أضف صنفًا مشمولًا أو اختر عرضًا آخر.',
+        'OFFER_MINIMUM_ORDER':
+            'قيمة الأصناف في السلة أقل من الحد الأدنى لهذا العرض. أضف أصنافًا ثم أعد تطبيقه.',
+        'OFFER_PAUSED': 'أوقف المطعم هذا العرض مؤقتًا. اختر عرضًا آخر.',
+        'OFFER_NOT_STARTED': 'لم تبدأ فترة هذا العرض بعد.',
+        'OFFER_EXPIRED': 'انتهت فترة هذا العرض. اختر عرضًا آخر.',
+        'OFFER_EXHAUSTED': 'اكتملت الاستخدامات المتاحة لهذا العرض.',
         'OFFER_NO_SAVINGS':
             'هذا العرض لا يحقق توفيراً لهذه السلة بعد التقريب نزولاً إلى مضاعفات 250 د.ع. اختر عرضاً آخر أو أزل العرض للمتابعة.',
         'OFFER_ALREADY_USED':
@@ -887,7 +905,16 @@ class OrderService extends ChangeNotifier {
       return {
         'success': false,
         'valid': false,
-        'message': _offerMessage(responseData['message']),
+        'code':
+            _offerServiceFailure(response.statusCode, responseData)
+                ? 'OFFER_SERVICE_UNAVAILABLE'
+                : responseData['code'] ?? responseData['message'],
+        'message':
+            _offerServiceFailure(response.statusCode, responseData)
+                ? 'تعذر التحقق من العرض الآن بسبب مشكلة في الخدمة. لم يُطبّق الخصم؛ أعد المحاولة بعد قليل.'
+                : _offerMessage(
+                  responseData['code'] ?? responseData['message'],
+                ),
       };
     } catch (e) {
       return {
@@ -904,30 +931,42 @@ class OrderService extends ChangeNotifier {
     String? addressId,
     List<String> itemIds = const [],
   }) async {
+    final owner = SessionService.instance.currentUserId;
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/business/$storeId/discounts').replace(
-          queryParameters: {
-            if (SessionService.instance.isLoggedIn)
-              'userId': SessionService.instance.currentUserId!,
-            if (addressId != null) 'addressId': addressId,
-            if (itemIds.isNotEmpty) 'itemIds': itemIds.join(','),
-          },
-        ),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          if (SessionService.instance.isLoggedIn)
-            'Authorization':
-                'Bearer ${await SessionService.instance.getToken()}',
-        },
-      );
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/business/$storeId/discounts').replace(
+              queryParameters: {
+                if (SessionService.instance.isLoggedIn)
+                  'userId': SessionService.instance.currentUserId!,
+                if (addressId != null) 'addressId': addressId,
+                if (itemIds.isNotEmpty) 'itemIds': itemIds.join(','),
+              },
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              if (SessionService.instance.isLoggedIn)
+                'Authorization':
+                    'Bearer ${await SessionService.instance.getToken()}',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
+      if (owner != SessionService.instance.currentUserId)
+        throw StateError('DISCOUNT_CONTEXT_CHANGED');
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         final list = (responseData['discounts'] as List?) ?? const [];
         return list
             .map((d) => StoreDiscount.fromJson(Map<String, dynamic>.from(d)))
+            .where(
+              (d) =>
+                  (d.businessId.isEmpty || d.businessId == storeId) &&
+                  (d.validFrom == null ||
+                      !DateTime.now().isBefore(d.validFrom!)) &&
+                  (d.validTo == null || DateTime.now().isBefore(d.validTo!)),
+            )
             .toList();
       }
       throw StateError('DISCOUNT_LIST_UNAVAILABLE');
@@ -1009,7 +1048,16 @@ class OrderService extends ChangeNotifier {
       return {
         'success': false,
         'valid': false,
-        'message': _offerMessage(responseData['message']),
+        'code':
+            _offerServiceFailure(response.statusCode, responseData)
+                ? 'OFFER_SERVICE_UNAVAILABLE'
+                : responseData['code'] ?? responseData['message'],
+        'message':
+            _offerServiceFailure(response.statusCode, responseData)
+                ? 'تعذر التحقق من العرض الآن بسبب مشكلة في الخدمة. لم يُطبّق الخصم؛ أعد المحاولة بعد قليل.'
+                : _offerMessage(
+                  responseData['code'] ?? responseData['message'],
+                ),
       };
     } catch (e) {
       return {

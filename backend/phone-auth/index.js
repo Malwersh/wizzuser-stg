@@ -64,6 +64,7 @@ async function verify(phone,body,key){
   if(!body.legalAcceptance)throw Object.assign(Error('LEGAL_ACCEPTANCE_REQUIRED'),{statusCode:409});
   legalConsent=await legalDocuments.consent(db,GetCommand,process.env.LEGAL_SETTINGS_TABLE,body.legalAcceptance);
  }
+ if(profile?.phoneChangePending) return reply(409,{code:'PHONE_CHANGE_PENDING',message:'تغيير رقم الهاتف قيد الإكمال؛ أكمل العملية من جلستك الحالية أو تواصل مع الدعم'});
  // Consume current OTP atomically before any account creation or authentication.
  await db.send(new TransactWriteCommand({TransactItems:[...(legalConsent?[legalConsent.condition]:[]),{ConditionCheck:{TableName:table,Key:{id:`ACTIVE#${phone}`},ConditionExpression:'sessionId = :id',ExpressionAttributeValues:{':id':r.id}}},{Update:{TableName:table,Key:{id:r.id},UpdateExpression:'SET used = :yes ADD attempts :one',ConditionExpression:'used = :no AND attempts < :max AND expiresAt > :now',ExpressionAttributeValues:{':yes':true,':no':false,':max':5,':now':time,':one':1}}}]}));
  if(!user){user=await provision(phone,body);if(!user)return reply(400,{message:'الاسم والموافقة على الشروط مطلوبان'});}

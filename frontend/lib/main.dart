@@ -81,6 +81,7 @@ class FoodApp extends StatelessWidget {
         
         // الموضوع المحسن - بسيط ونظيف
         theme: AppTheme.lightTheme,
+        themeMode: ThemeMode.light,
         
         // دعم اللغة العربية
         localizationsDelegates: const [
@@ -89,10 +90,9 @@ class FoodApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: const [
-          Locale('ar', 'SA'), // العربية السعودية
-          Locale('en', 'US'), // الإنجليزية
+          Locale('ar', 'IQ'), // العربية — العراق
         ],
-        locale: const Locale('ar', 'SA'),
+        locale: const Locale('ar', 'IQ'),
         
         // الشاشة الأولى
         home: const SplashScreen(),

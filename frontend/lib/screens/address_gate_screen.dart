@@ -509,10 +509,29 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xfff5f7fb),
       appBar: AppBar(
-        title: Text('اختيار عنوان التوصيل'),
-        backgroundColor: AppColors.primary,
-        automaticallyImplyLeading: widget.showBackButton,
+        title: const Text(
+          'اختيار عنوان التوصيل',
+          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.secondaryDark,
+        automaticallyImplyLeading: false,
+        leading:
+            widget.showBackButton
+                ? IconButton(
+                  tooltip: 'رجوع',
+                  onPressed: () => Navigator.maybePop(context),
+                  icon: const Icon(
+                    Icons.chevron_right,
+                    textDirection: TextDirection.ltr,
+                  ),
+                )
+                : null,
       ),
       body: Stack(
         children: [
@@ -525,7 +544,17 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'ابحث عن عنوان',
+                    hintText: 'ابحث عن شارع أو معلم قريب',
+                    filled: true,
+                    fillColor: const Color(0xfff1f4f9),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 15,
+                    ),
+                    hintStyle: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xff748198),
+                    ),
                     prefixIcon: Icon(
                       Icons.search,
                       color: AppColors.secondaryDark,
@@ -545,11 +574,11 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                             : null,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
+                      borderSide: BorderSide.none,
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: AppColors.primary),
+                      borderSide: BorderSide(color: AppColors.secondaryDark),
                     ),
                   ),
                   onChanged: (value) {
@@ -566,7 +595,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                 ),
               ),
 
-              Divider(height: 1),
+              const SizedBox(height: 4),
 
               // المحتوى الرئيسي
               Expanded(
@@ -712,18 +741,18 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
   Widget _buildDefaultContent() {
     return SingleChildScrollView(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // قسم "Explore Nearby"
-            SizedBox(height: 16),
+            SizedBox(height: 4),
             Text(
               'اختر طريقة تحديد العنوان',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.secondaryDark,
               ),
             ),
             SizedBox(height: 16),
@@ -734,15 +763,16 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
               child: Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xffdfe6f0)),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   children: [
                     Container(
                       padding: EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
+                        color: const Color(0xffeaf0f8),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -761,21 +791,25 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: Colors.black87,
+                              color: AppColors.secondaryDark,
                             ),
                           ),
                           SizedBox(height: 4),
                           Text(
                             'نحدد المنطقة حسب موقع جهازك',
                             style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
+                              fontSize: 13,
+                              color: const Color(0xff748198),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: Colors.grey[400]),
+                    Icon(
+                      Icons.chevron_left,
+                      textDirection: TextDirection.ltr,
+                      color: const Color(0xff8290a7),
+                    ),
                   ],
                 ),
               ),
@@ -792,7 +826,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'اختر منطقتك لعرض المطاعم المتاحة فيها.',
+              'اختر المنطقة، ثم حدّد نقطة التوصيل على الخريطة.',
               style: TextStyle(fontSize: 13, color: Colors.black54),
             ),
             const SizedBox(height: 8),
@@ -802,20 +836,26 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                 border: Border.all(color: const Color(0xFFE1E6EE)),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: ActiveRegionTree(
-                onSelected: _selectRegion,
-                catalog: widget.regionCatalog,
+              clipBehavior: Clip.antiAlias,
+              child: Theme(
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
+                child: ActiveRegionTree(
+                  onSelected: _selectRegion,
+                  catalog: widget.regionCatalog,
+                ),
               ),
             ),
             // قسم "العناوين المحفوظة"
             if (_savedAddresses.isNotEmpty) ...[
-              SizedBox(height: 32),
+              SizedBox(height: 24),
               Text(
                 'العناوين المحفوظة',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.secondaryDark,
                 ),
               ),
               SizedBox(height: 16),
@@ -842,18 +882,23 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         child: Container(
           padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+            border: Border.all(color: const Color(0xffe1e7f0)),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
             children: [
               Container(
                 padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: const Color(0xffeaf0f8),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.location_on, color: Colors.red, size: 24),
+                child: Icon(
+                  Icons.location_on,
+                  color: AppColors.secondaryDark,
+                  size: 22,
+                ),
               ),
               SizedBox(width: 16),
               Expanded(
@@ -865,20 +910,27 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black87,
+                        color: AppColors.secondaryDark,
                       ),
                     ),
                     SizedBox(height: 4),
                     Text(
                       address.formattedAddress,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: const Color(0xff748198),
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey[400]),
+              Icon(
+                Icons.chevron_left,
+                textDirection: TextDirection.ltr,
+                color: const Color(0xff8290a7),
+              ),
             ],
           ),
         ),

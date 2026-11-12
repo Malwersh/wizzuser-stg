@@ -15,7 +15,7 @@ class HomeTopicStrip extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 96 + (MediaQuery.textScalerOf(context).scale(11) - 11).clamp(0, 22),
+    height: 90 + (MediaQuery.textScalerOf(context).scale(11) - 11).clamp(0, 22),
     child: ListView.separated(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -43,7 +43,12 @@ class HomeTopicStrip extends StatelessWidget {
               width: 68,
               child: Column(
                 children: [
-                  Container(
+                  AnimatedContainer(
+                    duration:
+                        MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
                     width: 54,
                     height: 54,
                     padding: const EdgeInsets.all(3),

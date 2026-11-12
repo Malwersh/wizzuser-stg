@@ -12,17 +12,33 @@ class EmptyBasketView extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(
+            SizedBox(
               height: 60,
-              child: Center(
-                child: Text(
-                  'سلة التسوق',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.secondaryDark,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  PositionedDirectional(
+                    start: 12,
+                    child: IconButton(
+                      tooltip: 'العودة إلى الرئيسية',
+                      onPressed: onBrowse,
+                      icon: const BackButtonIcon(),
+                      color: AppColors.secondaryDark,
+                    ),
                   ),
-                ),
+                  const IgnorePointer(
+                    child: Center(
+                      child: Text(
+                        'سلة التسوق',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.secondaryDark,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             Expanded(

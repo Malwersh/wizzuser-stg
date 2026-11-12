@@ -2,10 +2,15 @@ import 'dart:typed_data';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-/// Images are requested on demand through an authenticated loader, never a URL.
+/// The loader authenticates each fetch; no public or bearer URL enters the widget.
 class SupportAttachmentImage extends StatefulWidget {
-  const SupportAttachmentImage({super.key, required this.load});
+  const SupportAttachmentImage({
+    super.key,
+    required this.load,
+    this.foregroundColor,
+  });
   final Future<Uint8List> Function() load;
+  final Color? foregroundColor;
   @override
   State<SupportAttachmentImage> createState() => _SupportAttachmentImageState();
 }
@@ -22,36 +27,77 @@ class _SupportAttachmentImageState extends State<SupportAttachmentImage> {
 
   Widget _retry() => TextButton(
     onPressed: _load,
-    child: const Text('تعذر عرض الصورة؛ إعادة المحاولة'),
+    child: Text(
+      'تعذر عرض الصورة؛ إعادة المحاولة',
+      style: TextStyle(color: widget.foregroundColor),
+    ),
   );
+
   @override
   Widget build(BuildContext context) {
     if (_image == null) {
       return TextButton.icon(
         onPressed: _load,
-        icon: const Icon(Icons.image_outlined),
-        label: const Text('عرض الصورة'),
+        icon: Icon(Icons.image_outlined, color: widget.foregroundColor),
+        label: Text(
+          'عرض الصورة',
+          style: TextStyle(color: widget.foregroundColor),
+        ),
       );
     }
     return FutureBuilder<Uint8List>(
       future: _image,
       builder: (context, snapshot) {
-        if (snapshot.hasError) return _retry();
+        if (snapshot.hasError) {
+          return TextButton(
+            onPressed: _load,
+            child: Text(
+              'تعذر تحميل الصورة؛ إعادة المحاولة',
+              style: TextStyle(color: widget.foregroundColor),
+            ),
+          );
+        }
         if (!snapshot.hasData) {
-          return const SizedBox(
-            width: 32,
-            height: 32,
+          return const Padding(
+            padding: EdgeInsets.all(12),
             child: CircularProgressIndicator(),
           );
         }
-        return Image.memory(
-          snapshot.data!,
-          width: 240,
-          height: 180,
-          cacheWidth: 1024,
-          fit: BoxFit.contain,
-          semanticLabel: 'صورة مرفقة بالمحادثة',
-          errorBuilder: (_, __, ___) => _retry(),
+        final bytes = snapshot.data!;
+        return InkWell(
+          onTap:
+              () => showDialog<void>(
+                context: context,
+                builder:
+                    (context) => Dialog(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: InteractiveViewer(
+                              child: Image.memory(
+                                bytes,
+                                errorBuilder: (_, __, ___) => _retry(),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('إغلاق'),
+                          ),
+                        ],
+                      ),
+                    ),
+              ),
+          child: Image.memory(
+            bytes,
+            width: 240,
+            height: 180,
+            cacheWidth: 1024,
+            fit: BoxFit.contain,
+            semanticLabel: 'صورة مرفقة بالمحادثة',
+            errorBuilder: (_, __, ___) => _retry(),
+          ),
         );
       },
     );

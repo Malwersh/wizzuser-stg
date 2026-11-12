@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'support_conversation_checkpoint.dart';
+import 'support_private_images.dart';
+import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/io.dart';
 import 'session_service.dart';
@@ -56,6 +59,104 @@ class CustomerSupportChat extends ChangeNotifier {
   final Future<void> Function(String, String) saveSession;
   final Duration timeout;
   final List<Map<String, dynamic>> messages = [];
+  String draft = '';
+  String? _checkpointKey;
+  Timer? _draftTimer;
+  void setDraft(String value) {
+    draft = value;
+    _draftTimer?.cancel();
+    final key = _checkpointKey;
+    if (key != null)
+      _draftTimer = Timer(const Duration(milliseconds: 350), () {
+        unawaited(saveSession('$key:draft', value).catchError((Object _) {}));
+      });
+  }
+
+  void flushDraft() {
+    _draftTimer?.cancel();
+    final key = _checkpointKey, value = draft;
+    if (key != null)
+      unawaited(saveSession('$key:draft', value).catchError((Object _) {}));
+  }
+
+  late final SupportPrivateImages _images = SupportPrivateImages(
+    endpoint: attachmentsEndpoint,
+    role: 'customer',
+    token: () async {
+      final actor = await identity();
+      if (_disposed || actor.subject != _subject)
+        throw StateError('SESSION_CHANGED');
+      return actor.token;
+    },
+    client: imageClient,
+  );
+  final http.Client? imageClient;
+  static const attachmentsEndpoint = String.fromEnvironment(
+    'SUPPORT_ATTACHMENTS_API_URL',
+    defaultValue:
+        ApiConfig.environment == 'staging'
+            ? 'https://5ytyphpnkc.execute-api.us-east-1.amazonaws.com/staging/support/attachments'
+            : '',
+  );
+  String? _imageDigest, _imageUploadId, _imageAttachment;
+  bool uploading = false;
+  Future<bool> sendImage(Uint8List bytes) async {
+    if (!connected || sending || uploading || _sessionId == null) return false;
+    final generation = _generation, sessionId = _sessionId!;
+    bool current() =>
+        !_disposed &&
+        generation == _generation &&
+        sessionId == _sessionId &&
+        connected;
+    uploading = true;
+    _changed();
+    try {
+      final digest = sha256.convert(bytes).toString();
+      if (_imageDigest != digest) {
+        _imageDigest = digest;
+        _imageUploadId = const Uuid().v4();
+        _imageAttachment = null;
+      }
+      _imageAttachment ??= await _images.upload(
+        sessionId: sessionId,
+        uploadId: _imageUploadId!,
+        bytes: bytes,
+        isCurrent: current,
+      );
+      if (!current()) return false;
+      final confirmed = await send(
+        'صورة مرفقة',
+        attachmentId: _imageAttachment,
+        clientMessageId: _imageUploadId,
+      );
+      if (confirmed) {
+        _imageDigest = null;
+        _imageUploadId = null;
+        _imageAttachment = null;
+      }
+      return confirmed;
+    } catch (_) {
+      return false;
+    } finally {
+      if (generation == _generation) uploading = false;
+      _changed();
+    }
+  }
+
+  Future<Uint8List> loadAttachment(String attachmentId) {
+    final generation = _generation, sessionId = _sessionId;
+    if (sessionId == null || _disposed) throw StateError('NO_SUPPORT_SESSION');
+    return _images.load(
+      sessionId: sessionId,
+      attachmentId: attachmentId,
+      isCurrent:
+          () =>
+              !_disposed &&
+              generation == _generation &&
+              sessionId == _sessionId,
+    );
+  }
+
   SupportTransport? _socket;
   StreamSubscription<dynamic>? _subscription;
   Timer? _heartbeat;
@@ -78,24 +179,15 @@ class CustomerSupportChat extends ChangeNotifier {
     SupportTransport Function(Uri, String)? transport,
     Future<String?> Function(String)? readSession,
     Future<void> Function(String, String)? saveSession,
+    this.imageClient,
     this.timeout = const Duration(seconds: 15),
   }) : identity = identity ?? _identity,
        transport = transport ?? ((uri, token) => _SocketTransport(uri, token)),
-       readSession =
-           readSession ??
-           ((key) async =>
-               (await SharedPreferences.getInstance()).getString(key)),
-       saveSession =
-           saveSession ??
-           ((key, value) async {
-             await (await SharedPreferences.getInstance()).setString(
-               key,
-               value,
-             );
-           });
+       readSession = readSession ?? SupportConversationCheckpoint.read,
+       saveSession = saveSession ?? SupportConversationCheckpoint.write;
   static Future<SupportIdentity> _identity() async {
     final session = SessionService.instance;
-    final token = session.accessToken;
+    final token = await session.getToken();
     if (session.isGuest || token == null) throw StateError('AUTH_REQUIRED');
     final claims =
         jsonDecode(
@@ -113,6 +205,34 @@ class CustomerSupportChat extends ChangeNotifier {
       '${session.currentUser?['name'] ?? 'زبون'}',
       '',
     );
+  }
+
+  static Future<String> orderSessionId(String orderId) async {
+    if (orderId.trim().isEmpty) throw ArgumentError.value(orderId, 'orderId');
+    final actor = await _identity();
+    return 'customer_order_${sha256.convert(utf8.encode(jsonEncode([actor.subject, orderId])))}';
+  }
+
+  void invalidateIdentity() {
+    flushDraft();
+    ++_generation;
+    _checkpointKey = null;
+    draft = '';
+    _subject = null;
+    _sessionId = null;
+    _pendingId = null;
+    _pendingText = null;
+    _pendingAttachment = null;
+    _imageDigest = null;
+    _imageUploadId = null;
+    _imageAttachment = null;
+    messages.clear();
+    sending = false;
+    uploading = false;
+    nextCursor = null;
+    unawaited(_subscription?.cancel());
+    unawaited(_socket?.close());
+    _fail('disconnected');
   }
 
   void _changed() {
@@ -149,16 +269,32 @@ class CustomerSupportChat extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       if (actor.subject.trim().isEmpty || actor.token.isEmpty)
         throw StateError('AUTH_REQUIRED');
+      if (_subject != null && _subject != actor.subject) {
+        flushDraft();
+        draft = '';
+        _checkpointKey = null;
+        _imageDigest = null;
+        _imageUploadId = null;
+        _imageAttachment = null;
+      }
       if (_subject != actor.subject || newConversation) {
+        _imageDigest = null;
+        _imageUploadId = null;
+        _imageAttachment = null;
+        _pendingAttachment = null;
         messages.clear();
         _pendingId = null;
         _pendingText = null;
         nextCursor = null;
       }
       _subject = actor.subject;
-      final key = 'customer-support-v2:${actor.subject}:$orderId';
+      final key = jsonEncode([actor.subject, endpoint, orderId]);
+      _checkpointKey = key;
 
       if (_disposed || generation != _generation) return;
+      final savedDraft = await readSession('$key:draft');
+      if (_disposed || generation != _generation) return;
+      if (draft.isEmpty) draft = savedDraft ?? '';
       _sessionId = fixedSessionId;
       final uri = Uri.parse(endpoint);
       if (uri.scheme != 'wss' ||
@@ -191,12 +327,35 @@ class CustomerSupportChat extends ChangeNotifier {
         'action': 'chat_customer_connect',
         'customerId': actor.subject,
         'customerName': actor.name,
-        'orderId': orderId,
+        if (orderId.isNotEmpty) 'orderId': orderId,
         'sessionId': _sessionId,
       });
       await _handshake!.future.timeout(timeout);
       if (_disposed || generation != _generation) return;
       if (!connected) throw StateError('SUPPORT_NOT_READY');
+      if (_pendingId == null) {
+        try {
+          final raw = await readSession('$key:pending');
+          final pending = raw == null || raw.isEmpty ? null : jsonDecode(raw);
+          if (_disposed || generation != _generation) return;
+          if (pending is Map &&
+              pending['sessionId'] == _sessionId &&
+              pending['id'] is String &&
+              (pending['id'] as String).isNotEmpty &&
+              pending['text'] is String &&
+              (pending['text'] as String).length <= 2000) {
+            _pendingId = pending['id'];
+            _pendingText = pending['text'];
+            _pendingAttachment = pending['attachment'] as String?;
+            _imageDigest = pending['imageDigest'] as String?;
+            _imageUploadId = _imageDigest == null ? null : _pendingId;
+            _imageAttachment = _pendingAttachment;
+          }
+        } catch (_) {
+          /* invalid metadata cannot establish chat identity */
+        }
+      }
+
       await saveSession(key, _sessionId!);
       if (_disposed || generation != _generation) return;
       _heartbeat = Timer.periodic(const Duration(seconds: 40), (_) {
@@ -249,6 +408,7 @@ class CustomerSupportChat extends ChangeNotifier {
           _historyTimer?.cancel();
           break;
         case 'history_error':
+          if (event['requestId'] != _historyRequest) return;
           historyError = 'تعذر تحميل الرسائل السابقة';
           historyLoading = false;
           break;
@@ -263,6 +423,8 @@ class CustomerSupportChat extends ChangeNotifier {
               'messageId': event['messageId'],
               'senderType': 'customer',
               'text': _pendingText ?? '',
+              if (_pendingAttachment != null)
+                'attachment': {'attachmentId': _pendingAttachment},
               'createdAt': DateTime.now().toUtc().toIso8601String(),
             });
             if (_ack != null && !_ack!.isCompleted) _ack!.complete(true);
@@ -319,11 +481,24 @@ class CustomerSupportChat extends ChangeNotifier {
       _pendingId = clientMessageId ?? const Uuid().v4();
       _pendingText = text;
     }
+    final generation = _generation, key = _checkpointKey;
     sending = true;
     _ack = Completer<bool>();
     _changed();
     var confirmed = false;
     try {
+      if (key != null)
+        await saveSession(
+          '$key:pending',
+          jsonEncode({
+            'sessionId': _sessionId,
+            'id': _pendingId,
+            'text': _pendingText,
+            'attachment': _pendingAttachment,
+            'imageDigest': _imageDigest,
+          }),
+        );
+      if (_disposed || generation != _generation || !connected) return false;
       _send({
         'action': 'chat_message',
         'sessionId': _sessionId,
@@ -333,14 +508,17 @@ class CustomerSupportChat extends ChangeNotifier {
         if (attachmentId != null) 'attachmentId': attachmentId,
       });
       confirmed = await _ack!.future.timeout(timeout, onTimeout: () => false);
+      if (_disposed || generation != _generation) return false;
       if (confirmed) {
+        if (key != null) await saveSession('$key:pending', '');
+        if (_disposed || generation != _generation) return false;
         _pendingText = null;
         _pendingId = null;
       }
     } catch (_) {
       confirmed = false;
     } finally {
-      sending = false;
+      if (generation == _generation) sending = false;
       _changed();
     }
     return confirmed;
@@ -348,6 +526,8 @@ class CustomerSupportChat extends ChangeNotifier {
 
   @override
   void dispose() {
+    flushDraft();
+    _images.dispose();
     _disposed = true;
     ++_generation;
     _heartbeat?.cancel();

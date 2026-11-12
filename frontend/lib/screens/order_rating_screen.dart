@@ -127,31 +127,53 @@ class _OrderRatingScreenState extends State<OrderRatingScreen> {
       children: [
         Text(
           title,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            color: Color(0xFF00296B),
+          ),
         ),
         const SizedBox(height: 6),
-        Text(name),
+        Text(
+          name,
+          style: const TextStyle(fontSize: 14, color: Color(0xFF647184)),
+        ),
         const SizedBox(height: 12),
-        Wrap(
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(
             5,
-            (i) => IconButton(
-              tooltip: '${i + 1} من 5 — $title',
-              onPressed:
-                  _saved || _saving
-                      ? null
-                      : () => setState(() => change(i + 1)),
-              icon: Icon(
-                i < value ? Icons.star_rounded : Icons.star_outline_rounded,
-                size: 34,
-                color:
-                    i < value
-                        ? const Color(0xFFD99B13)
-                        : const Color(0xFF71717A),
+            (i) => Expanded(
+              child: IconButton(
+                tooltip: '${i + 1} من 5 — $title',
+                onPressed:
+                    _saved || _saving
+                        ? null
+                        : () => setState(() => change(i + 1)),
+                icon: Icon(
+                  i < value ? Icons.star_rounded : Icons.star_outline_rounded,
+                  size: 34,
+                  color:
+                      i < value
+                          ? const Color(0xFFFDC500)
+                          : const Color(0xFFABB5C4),
+                ),
               ),
             ),
           ),
         ),
+        if (value > 0)
+          Text(
+            [
+              '',
+              'تجربة غير مرضية',
+              'تحتاج تحسينًا',
+              'جيدة',
+              'جيدة جدًا',
+              'ممتازة',
+            ][value],
+            style: const TextStyle(fontSize: 13, color: Color(0xFF647184)),
+          ),
       ],
     ),
   );
@@ -159,9 +181,18 @@ class _OrderRatingScreenState extends State<OrderRatingScreen> {
   Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.rtl,
     child: Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('تقييم الطلب'),
+        title: const Text(
+          'تقييم تجربتك',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF00296B),
+          ),
+        ),
+        centerTitle: true,
+        foregroundColor: const Color(0xFF00296B),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         actions: [
@@ -191,15 +222,22 @@ class _OrderRatingScreenState extends State<OrderRatingScreen> {
                       ),
                     if (_data != null) ...[
                       Text(
-                        _saved ? 'شكرًا، تم حفظ تقييمك' : 'شلون كانت تجربتك؟',
+                        _saved ? 'شكرًا لمشاركتنا رأيك' : 'كيف كانت تجربتك؟',
                         style: const TextStyle(
                           fontSize: 24,
+                          color: Color(0xFF00296B),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'قيّم المطعم والسائق بشكل منفصل. يُحفظ تقييم واحد لكل طلب.',
+                      Text(
+                        _saved
+                            ? 'تم حفظ تقييمك للمطعم والسائق.'
+                            : 'رأيك يساعدنا على تقديم تجربة أفضل.',
+                        style: const TextStyle(
+                          color: Color(0xFF647184),
+                          height: 1.5,
+                        ),
                       ),
                       const SizedBox(height: 24),
                       _stars(
@@ -223,13 +261,26 @@ class _OrderRatingScreenState extends State<OrderRatingScreen> {
                         maxLines: 5,
                         decoration: const InputDecoration(
                           labelText: 'ملاحظاتك — اختياري',
-                          hintText: 'شنو نكدر نحسّن بتجربتك؟',
-                          border: OutlineInputBorder(),
+                          hintText: 'ما الذي أعجبك أو يمكننا تحسينه؟',
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(18)),
+                            borderSide: BorderSide(color: Color(0xFFDCE3EE)),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),
                       if (!_saved)
                         FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFFDC500),
+                            foregroundColor: const Color(0xFF00296B),
+                            minimumSize: const Size.fromHeight(50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
                           onPressed:
                               _saving ||
                                       _merchant == 0 ||

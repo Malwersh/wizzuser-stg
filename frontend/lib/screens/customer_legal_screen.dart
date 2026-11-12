@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../models/customer_legal_bundle.dart';
@@ -128,6 +129,7 @@ class _CustomerLegalScreenState extends State<CustomerLegalScreen> {
                       ),
                       trailing: const Icon(
                         Icons.chevron_left,
+                        textDirection: ui.TextDirection.ltr,
                         color: AppColors.secondaryDark,
                       ),
                       onTap:

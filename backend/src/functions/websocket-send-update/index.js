@@ -284,6 +284,7 @@ function getStatusMessage(status) {
  * Lambda handler that uses the enhanced function
  */
 exports.handler = async (event) => {
+  if(event.source==='wizz.driver-location-438')return require('../../live-trip-438').broadcast(docClient,event);
   console.log('Enhanced WebSocket Send Update Handler');
   console.log('Event:', JSON.stringify(event, null, 2));
   

@@ -26,6 +26,15 @@ class PlatformBenefit {
     required this.branchIds,
   });
   bool get isDelivery => kind != 'GOODS_AMOUNT';
+  bool availableFor(String branch, {DateTime? at}) {
+    final now = at ?? DateTime.now();
+    return eligible &&
+        remaining > 0 &&
+        !now.isBefore(startAt) &&
+        now.isBefore(endAt) &&
+        (branchIds.isEmpty || branchIds.contains(branch));
+  }
+
   factory PlatformBenefit.fromJson(Map<String, dynamic> row) {
     int number(String key) {
       final value = row[key];

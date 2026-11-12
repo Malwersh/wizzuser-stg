@@ -1,3 +1,4 @@
+import '../widgets/iraqi_mobile_field.dart';
 import '../utils/readable_colors.dart';
 import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
@@ -728,6 +729,13 @@ class _PaymentScreenState extends State<PaymentScreen>
     List<TextInputFormatter>? formatter,
     Function(String)? onChanged,
   }) {
+    if (inputType == TextInputType.phone) {
+      return IraqiMobileField(
+        controller: controller,
+        onChanged: onChanged,
+        decoration: InputDecoration(labelText: label),
+      );
+    }
     return TextField(
       controller: controller,
       keyboardType: inputType,

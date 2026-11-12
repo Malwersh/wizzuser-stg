@@ -1,3 +1,5 @@
+import 'delivery_location_notice.dart';
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,10 +14,31 @@ import '../services/address_service.dart';
 import '../services/session_service.dart';
 import 'location_picker_screen.dart';
 
+class CheckoutAddressEditorController {
+  Object? _owner;
+  Future<bool> Function()? _submit;
+  bool get attached => _submit != null;
+  Future<bool> submit() async => await _submit?.call() ?? false;
+  void _attach(Object owner, Future<bool> Function() submit) {
+    _owner = owner;
+    _submit = submit;
+  }
+
+  void _detach(Object owner) {
+    if (identical(owner, _owner)) {
+      _owner = null;
+      _submit = null;
+    }
+  }
+}
+
 class CheckoutAddressEditor extends StatefulWidget {
   final BrowsingLocation selection;
+  final VoidCallback? onChooseSaved;
   final DetailedAddress? initialAddress;
-  final ValueChanged<DetailedAddress> onConfirmed;
+  final FutureOr<void> Function(DetailedAddress) onConfirmed;
+  final CheckoutAddressEditorController? controller;
+  final bool showSubmitButton;
   final ValueChanged<LatLng>? onPointConfirmed;
   final Future<LatLng> Function()? currentPosition;
   final RegionResolverService? resolver;
@@ -24,8 +47,11 @@ class CheckoutAddressEditor extends StatefulWidget {
   const CheckoutAddressEditor({
     super.key,
     required this.selection,
+    this.onChooseSaved,
     required this.onConfirmed,
     this.onPointConfirmed,
+    this.controller,
+    this.showSubmitButton = true,
     this.initialAddress,
     this.currentPosition,
     this.resolver,
@@ -49,6 +75,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(this, _confirm);
     _hood = TextEditingController(
       text:
           widget.initialAddress?.neighborhood == '-'
@@ -73,6 +100,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
 
   @override
   void dispose() {
+    widget.controller?._detach(this);
     _hood.dispose();
     _landmark.dispose();
     super.dispose();
@@ -91,7 +119,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
     return LatLng(point.latitude, point.longitude);
   }
 
-  Future<void> _useCurrent() async {
+  Future<void> _useCurrent({bool notify = false}) async {
     final generation = ++_locationGeneration;
     setState(() {
       _locating = true;
@@ -100,7 +128,8 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
     });
     try {
       final point = await (widget.currentPosition ?? _gps)();
-      if (mounted && generation == _locationGeneration) await _validate(point);
+      if (mounted && generation == _locationGeneration)
+        await _validate(point, notify: notify);
     } catch (_) {
       if (mounted && generation == _locationGeneration)
         setState(() {
@@ -110,7 +139,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
     }
   }
 
-  Future<void> _validate(LatLng point) async {
+  Future<void> _validate(LatLng point, {bool notify = false}) async {
     final generation = ++_locationGeneration;
     setState(() {
       _point = point;
@@ -132,11 +161,19 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
             result != null &&
             result.effective.isDeliveryAvailable &&
             result.region.id == widget.selection.regionId;
-        if (!_validPoint)
-          _error =
-              'موقعك ليس داخل ${widget.selection.regionName}. صحح نقطة التوصيل على الخريطة أو غيّر المنطقة.';
+        _error =
+            _validPoint
+                ? null
+                : 'موقعك ليس داخل ${widget.selection.regionName}. صحح نقطة التوصيل على الخريطة أو غيّر المنطقة.';
       });
       if (_validPoint) widget.onPointConfirmed?.call(point);
+      if (!_validPoint && notify) {
+        await showDeliveryLocationNotice(
+          context,
+          title: 'الموقع خارج نطاق التوصيل',
+          message: _error!,
+        );
+      }
     } catch (_) {
       if (mounted && generation == _locationGeneration)
         setState(() {
@@ -165,22 +202,36 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
               initialAddress: widget.selection.regionName,
               requiredRegionId: widget.selection.regionId,
               requirePinSelection: true,
+              showCoverageNotice: true,
             ),
       ),
     );
     if (!mounted || result == null) return;
-    await _validate(result['position'] as LatLng);
+    await _validate(result['position'] as LatLng, notify: true);
   }
 
-  Future<void> _confirm() async {
-    if (!_form.currentState!.validate() ||
-        !_validPoint ||
-        _point == null ||
-        _saving)
-      return;
+  Future<bool> _confirm() async {
+    if (_saving || !_form.currentState!.validate()) return false;
+    if (!_validPoint || _point == null) {
+      setState(
+        () =>
+            _error ??=
+                _locating
+                    ? 'جارٍ التحقق من الموقع. انتظر قليلًا ثم تابع.'
+                    : 'حدد نقطة التوصيل على الخريطة أولًا.',
+      );
+      if (!_locating) {
+        await showDeliveryLocationNotice(
+          context,
+          title: 'راجع موقع التوصيل',
+          message: _error!,
+        );
+      }
+      return false;
+    }
     if (!(widget.loggedIn?.call() ?? SessionService.instance.isLoggedIn)) {
       setState(() => _error = 'سجل الدخول لإتمام الطلب وحفظ تفاصيل التوصيل.');
-      return;
+      return false;
     }
     final point = _point!,
         hood = _hood.text.trim(),
@@ -225,7 +276,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
           saveToAddressBook: _saveToBook,
         ),
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       if (address == null) {
         setState(
           () =>
@@ -234,7 +285,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
                       ? 'عناوينك المحفوظة ممتلئة. يمكنك إلغاء خيار الحفظ والمتابعة بهذا العنوان للطلب.'
                       : service?.error ?? 'تعذر اعتماد العنوان. أعد المحاولة.',
         );
-        return;
+        return false;
       }
       if (address.regionId != widget.selection.regionId) {
         setState(
@@ -242,16 +293,61 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
               _error =
                   'تغيّرت منطقة الموقع. صحح النقطة أو اختر المنطقة مجددًا.',
         );
-        return;
+        return false;
       }
-      widget.onConfirmed(address);
+      await widget.onConfirmed(address);
+      return true;
     } catch (_) {
-      if (mounted)
-        setState(() => _error = 'تعذر اعتماد العنوان. أعد المحاولة.');
+      if (mounted) setState(() => _error = 'تعذر حفظ العنوان. أعد المحاولة.');
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  Widget _fieldTitle(String title) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.secondaryDark,
+          ),
+        ),
+      ),
+      const Text(
+        'مطلوب',
+        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+      ),
+    ],
+  );
+
+  Widget _locationAction(String label, IconData icon, VoidCallback? action) =>
+      TextButton(
+        onPressed: action,
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.secondaryDark,
+          backgroundColor: const Color(0xffeaf0f8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 22),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) => Form(
@@ -266,81 +362,69 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
             color: AppColors.secondaryDark,
           ),
         ),
-        if (widget.selection.addressText?.isNotEmpty == true &&
-            widget.selection.addressText!.trim() !=
-                widget.selection.regionName.trim())
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              widget.selection.addressText!,
-              style: const TextStyle(fontSize: 13),
-            ),
-          ),
         const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _locationAction(
+                'موقعي الحالي',
+                Icons.my_location_rounded,
+                _saving || _locating ? null : () => _useCurrent(notify: true),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (widget.onChooseSaved != null) ...[
+              Expanded(
+                child: _locationAction(
+                  'عناويني',
+                  Icons.bookmark_border_rounded,
+                  _saving ? null : widget.onChooseSaved,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: _locationAction(
+                'تعديل بالخريطة',
+                Icons.map_outlined,
+                _saving ? null : _map,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _fieldTitle('اسم الحي أو المحلة'),
+        const SizedBox(height: 8),
         TextFormField(
           key: const ValueKey('delivery-neighborhood'),
           controller: _hood,
           maxLength: 120,
-          decoration: const InputDecoration(
-            labelText: 'اسم الحي أو المحلة *',
-            counterText: '',
-          ),
+          textInputAction: TextInputAction.next,
+          decoration: deliveryFieldDecoration('مثال: حي الجمعية'),
           validator: IraqiDeliveryDetails.validateNeighborhood,
         ),
         const SizedBox(height: 12),
+        _fieldTitle('أقرب نقطة دالة'),
+        const SizedBox(height: 8),
         TextFormField(
           key: const ValueKey('delivery-landmark'),
           controller: _landmark,
           maxLength: 250,
-          decoration: const InputDecoration(
-            labelText: 'أقرب نقطة دالة *',
-            hintText: 'مثل: مقابل المدرسة، بجانب الجامع',
-            counterText: '',
+          textInputAction: TextInputAction.done,
+          decoration: deliveryFieldDecoration(
+            'مثال: مقابل المدرسة أو بجانب الجامع',
           ),
           validator: IraqiDeliveryDetails.validateLandmark,
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Icon(
-              _validPoint ? Icons.check_circle_outline : Icons.my_location,
-              color: AppColors.secondaryDark,
-              size: 20,
+        if (_locating)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              'جارٍ تحديد موقع التوصيل…',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _locating
-                    ? 'جارٍ تحديد نقطة التوصيل…'
-                    : _validPoint
-                    ? 'نقطة التوصيل داخل المنطقة المختارة'
-                    : 'حدد نقطة التوصيل لحساب المسافة',
-                style: const TextStyle(fontSize: 13),
-              ),
-            ),
-            if (_locating)
-              const SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-          ],
-        ),
-        Wrap(
-          spacing: 12,
-          children: [
-            TextButton.icon(
-              onPressed: _saving || _locating ? null : _useCurrent,
-              icon: const Icon(Icons.my_location, size: 18),
-              label: const Text('موقعي الحالي'),
-            ),
-            TextButton.icon(
-              onPressed: _saving ? null : _map,
-              icon: const Icon(Icons.map_outlined, size: 18),
-              label: const Text('تصحيح بالخريطة'),
-            ),
-          ],
-        ),
+          ),
         CheckboxListTile(
           value: _saveToBook,
           onChanged:
@@ -360,26 +444,27 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
               style: TextStyle(color: Colors.red.shade700, fontSize: 13),
             ),
           ),
-        FilledButton(
-          key: const ValueKey('confirm-delivery-details'),
-          onPressed: _validPoint && !_saving && !_locating ? _confirm : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFFEDF2FA),
-            foregroundColor: AppColors.secondaryDark,
-            minimumSize: const Size.fromHeight(44),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            textStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+        if (widget.showSubmitButton)
+          FilledButton(
+            key: const ValueKey('confirm-delivery-details'),
+            onPressed: _validPoint && !_saving && !_locating ? _confirm : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEDF2FA),
+              foregroundColor: AppColors.secondaryDark,
+              minimumSize: const Size.fromHeight(44),
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+            child: Text(
+              _saving ? 'جارٍ اعتماد العنوان…' : 'اعتماد عنوان التوصيل',
             ),
           ),
-          child: Text(
-            _saving ? 'جارٍ اعتماد العنوان…' : 'اعتماد عنوان التوصيل',
-          ),
-        ),
       ],
     ),
   );

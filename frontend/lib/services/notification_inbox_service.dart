@@ -59,6 +59,23 @@ class NotificationInboxService {
     }
   }
 
+  static Future<bool> acceptsPush(RemoteMessage message) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final raw = prefs.getString(_bindingKey);
+    if (raw == null) return false;
+    final binding = jsonDecode(raw) as Map<String, dynamic>;
+    final data = message.data;
+    final subject =
+        data['subjectId'] ??
+        data['customerId'] ??
+        data['userId'] ??
+        data['driverId'];
+    return subject == null ||
+        subject == binding['sub'] ||
+        subject == binding['legacyId'];
+  }
+
   static Future<InboxNotification?> recordPush(RemoteMessage message) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
@@ -88,8 +105,16 @@ class NotificationInboxService {
       body: message.notification?.body ?? data['body']?.toString() ?? '',
       createdAt: message.sentTime ?? DateTime.now(),
       type: data['type']?.toString() ?? '',
+      source:
+          data['eventId'] != null &&
+                  (id.startsWith('CN:') ||
+                      (data['type']?.toString().startsWith('wallet') ?? false))
+              ? 'server'
+              : 'local',
       orderId: orderId?.isNotEmpty == true ? orderId : null,
       orderNumber: data['orderNumber']?.toString(),
+      campaignId: data['campaignId']?.toString(),
+      sessionId: data['sessionId']?.toString(),
       target: data['action'] == 'open_wallet' ? 'wallet' : '',
     );
     final stored =
@@ -139,7 +164,14 @@ class NotificationInboxService {
       if (_scope != scope) return;
       for (final x in (r['notifications'] as List? ?? [])) {
         final n = InboxNotification.fromJson(Map<String, dynamic>.from(x));
-        merge[n.id] = n;
+        final previous = merge[n.id];
+        merge[n.id] =
+            previous?.isRead == true && !n.isRead
+                ? InboxNotification.fromJson({
+                  ...n.toJson(),
+                  'readAt': previous!.readAt!.toIso8601String(),
+                })
+                : n;
       }
       cursor = r['nextCursor']?.toString();
       error = null;

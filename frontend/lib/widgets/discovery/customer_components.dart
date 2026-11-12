@@ -393,18 +393,48 @@ class CustomerOrderActionBar extends StatelessWidget {
                   color: discoveryInk,
                 ),
               )
-              : Column(
-                mainAxisSize: MainAxisSize.min,
+              : Row(
+                textDirection: TextDirection.rtl,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'أضف إلى السلة',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  const Flexible(
+                    flex: 5,
+                    child: Text(
+                      'أضف إلى السلة',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                  Text(
-                    formatIqd(total),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                  const SizedBox(width: 10),
+                  Flexible(
+                    flex: 4,
+                    child: Container(
+                      key: const ValueKey('meal-total-label'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            onAdd == null
+                                ? const Color(0xFFDCE1E9)
+                                : const Color(0xFFFFDE66),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          formatIqd(total),
+                          textDirection: TextDirection.rtl,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
