@@ -40,3 +40,8 @@ __pycache__/
 # Local signing backups and generated deployment output
 **/*.jks.*
 **/*.keystore.*
+
+# macOS transfer metadata
+._*
+# Generated build directory, including SSD cache symlinks
+/frontend/build
