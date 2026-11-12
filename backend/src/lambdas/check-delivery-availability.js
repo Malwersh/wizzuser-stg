@@ -15,10 +15,11 @@
  * 7. Return availability result
  */
 
-const AWS = require('aws-sdk');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const { haversineDistance } = require('../utils/haversine');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 // Table name
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
@@ -58,12 +59,10 @@ exports.handler = async (event) => {
     console.log(`📍 Address: ${lat}, ${lng}`);
 
     // Step 1: Get business details
-    const businessResult = await dynamodb
-      .get({
+    const businessResult = await dynamodb.send(new GetCommand({
         TableName: BUSINESSES_TABLE,
         Key: { businessId },
-      })
-      .promise();
+      }));
 
     if (!businessResult.Item) {
       return errorResponse(404, 'BUSINESS_NOT_FOUND', 'المطعم غير موجود');

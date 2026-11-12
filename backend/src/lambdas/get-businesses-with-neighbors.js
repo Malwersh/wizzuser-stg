@@ -14,8 +14,10 @@
  * 6. Return combined results
  */
 
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, GetCommand, BatchGetCommand } = require('@aws-sdk/lib-dynamodb');
+
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -79,8 +81,7 @@ exports.handler = async (event) => {
 
     // Step 2: Get neighbor regions
     console.log('🔍 Querying neighbor regions...');
-    const neighborsResult = await dynamodb
-      .query({
+    const neighborsResult = await dynamodb.send(new QueryCommand({
         TableName: REGION_NEIGHBORS_TABLE,
         KeyConditionExpression: 'region_id = :rid',
         FilterExpression: 'is_delivery_possible = :possible AND distance <= :maxDist',
@@ -89,8 +90,7 @@ exports.handler = async (event) => {
           ':possible': true,
           ':maxDist': maxDistanceKm,
         },
-      })
-      .promise();
+      }));
 
     const neighbors = neighborsResult.Items || [];
     console.log(`🌐 Found ${neighbors.length} neighbor regions`);
@@ -162,12 +162,10 @@ exports.handler = async (event) => {
  */
 async function getBusinessesByRegion(regionId) {
   // Get listing
-  const listingResult = await dynamodb
-    .get({
+  const listingResult = await dynamodb.send(new GetCommand({
       TableName: REGION_LISTINGS_TABLE,
       Key: { region_id: regionId },
-    })
-    .promise();
+    }));
 
   if (!listingResult.Item || !listingResult.Item.businessIds) {
     return [];

@@ -1,8 +1,10 @@
-const AWS = require('aws-sdk');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
 const https = require('https');
 const url = require('url');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 function requireEnv(name) {
     const value = process.env[name];
@@ -50,8 +52,8 @@ async function processStreamRecord(record) {
         return;
     }
     
-    const oldImage = AWS.DynamoDB.Converter.unmarshall(record.dynamodb.OldImage);
-    const newImage = AWS.DynamoDB.Converter.unmarshall(record.dynamodb.NewImage);
+    const oldImage = unmarshall(record.dynamodb.OldImage);
+    const newImage = unmarshall(record.dynamodb.NewImage);
     
     // Check if status changed
     if (oldImage.status === newImage.status) {
@@ -72,7 +74,7 @@ async function sendMerchantNotification(order) {
         console.log(`🔍 Looking for merchant connections for store: ${order.storeId}`);
         
         // Query merchant WebSocket connections
-        const connections = await dynamodb.query({
+        const connections = await dynamodb.send(new QueryCommand({
             TableName: MERCHANT_ENDPOINTS_TABLE,
             KeyConditionExpression: 'merchantId = :merchantId AND endpointType = :endpointType',
             FilterExpression: 'isActive = :isActive',
@@ -81,7 +83,7 @@ async function sendMerchantNotification(order) {
                 ':endpointType': 'websocket',
                 ':isActive': true
             }
-        }).promise();
+        }));
         
         if (!connections.Items || connections.Items.length === 0) {
             console.log(`⚠️  No active WebSocket connections found for merchant: ${order.storeId}`);
