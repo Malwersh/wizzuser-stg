@@ -48,15 +48,7 @@ class _SupportAttachmentImageState extends State<SupportAttachmentImage> {
     return FutureBuilder<Uint8List>(
       future: _image,
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return TextButton(
-            onPressed: _load,
-            child: Text(
-              'تعذر تحميل الصورة؛ إعادة المحاولة',
-              style: TextStyle(color: widget.foregroundColor),
-            ),
-          );
-        }
+        if (snapshot.hasError) return _retry();
         if (!snapshot.hasData) {
           return const Padding(
             padding: EdgeInsets.all(12),
