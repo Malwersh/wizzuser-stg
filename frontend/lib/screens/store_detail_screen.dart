@@ -1,3 +1,4 @@
+import '../widgets/store_menu_offers.dart';
 import '../widgets/basket_invoice.dart';
 import '../widgets/rotating_search_hint.dart';
 import '../models/menu_classification_focus.dart';
@@ -1339,69 +1340,84 @@ class _StoreDetailScreenState extends State<StoreDetailScreen>
                 Expanded(
                   child: Material(
                     color: Colors.white,
-                    child: TabBar(
-                      controller: _tabController,
-                      isScrollable: true,
-                      labelColor: AppColors.secondary,
-                      unselectedLabelColor: Colors.black87,
-                      dividerColor: Colors.transparent,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      indicator: const UnderlineTabIndicator(
-                        borderSide: BorderSide(
-                          color: AppColors.secondary,
-                          width: 3,
+                    child: StoreMenuOffers(
+                      products:
+                          _categoryProducts.values.expand((p) => p).toList(),
+                      branch: widget.store.id,
+                      storeName: widget.store.name,
+                      available:
+                          (p) =>
+                              _canRestaurantAcceptOrders() &&
+                              _getDishAvailability(p).isAvailable,
+                      reason: (p) => _getDishAvailability(p).reasonText,
+                      onOpen: _openMenuProduct,
+                      onAdd: _addToCart,
+                      menuTabs: TabBar(
+                        controller: _tabController,
+                        isScrollable: true,
+                        labelColor: AppColors.secondary,
+                        unselectedLabelColor: Colors.black87,
+                        dividerColor: Colors.transparent,
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        indicator: const UnderlineTabIndicator(
+                          borderSide: BorderSide(
+                            color: AppColors.secondary,
+                            width: 3,
+                          ),
+                          insets: EdgeInsets.symmetric(horizontal: 12),
                         ),
-                        insets: EdgeInsets.symmetric(horizontal: 12),
-                      ),
-                      indicatorPadding: EdgeInsets.zero,
-                      labelStyle: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                      unselectedLabelStyle: const TextStyle(
-                        fontWeight: FontWeight.normal,
-                        fontSize: 14,
-                      ),
-                      tabAlignment: TabAlignment.start,
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 16),
-                      tabs:
-                          _categoryProducts.keys
-                              .map(
-                                (category) => Tab(
-                                  child: Text(
-                                    _displayCategoryTitle(
-                                      category,
-                                      maxChars: 22,
+                        indicatorPadding: EdgeInsets.zero,
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                        unselectedLabelStyle: const TextStyle(
+                          fontWeight: FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                        tabAlignment: TabAlignment.start,
+                        labelPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
+                        tabs:
+                            _categoryProducts.keys
+                                .map(
+                                  (category) => Tab(
+                                    child: Text(
+                                      _displayCategoryTitle(
+                                        category,
+                                        maxChars: 22,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
                                   ),
-                                ),
-                              )
-                              .toList(),
-                      onTap: (index) {
-                        final categoryName = _categoryProducts.keys.elementAt(
-                          index,
-                        );
-                        final key = _keys[categoryName];
-                        if (key?.currentContext != null) {
-                          _isTabTapScrolling = true;
-                          Scrollable.ensureVisible(
-                            key!.currentContext!,
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeInOut,
-                          ).then((_) {
-                            Future.delayed(
-                              const Duration(milliseconds: 120),
-                              () {
-                                _isTabTapScrolling = false;
-                              },
-                            );
-                          });
-                        }
-                        HapticFeedback.lightImpact();
-                      },
+                                )
+                                .toList(),
+                        onTap: (index) {
+                          final categoryName = _categoryProducts.keys.elementAt(
+                            index,
+                          );
+                          final key = _keys[categoryName];
+                          if (key?.currentContext != null) {
+                            _isTabTapScrolling = true;
+                            Scrollable.ensureVisible(
+                              key!.currentContext!,
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeInOut,
+                            ).then((_) {
+                              Future.delayed(
+                                const Duration(milliseconds: 120),
+                                () {
+                                  _isTabTapScrolling = false;
+                                },
+                              );
+                            });
+                          }
+                          HapticFeedback.lightImpact();
+                        },
+                      ),
                     ),
                   ),
                 ),

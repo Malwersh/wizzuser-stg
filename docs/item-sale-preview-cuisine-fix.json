@@ -1,0 +1,13 @@
+{
+  "status": "deployed_staging",
+  "issue": "Active per-item discount returned no itemPrices for classified menu products",
+  "rootCause": "Deployed menu-item-prices-361.js bundled product schema omitted cuisineIds although canonical orderGoodsPricing supports it",
+  "fix": "Added cuisineIds to known metadata fields in deployed preview bundle, preserving remaining artifact and configuration",
+  "function": "WizzUser-GetStoreDiscounts-staging",
+  "codeSha256": "KxVjlaQJJBQ8to0ubLh3GZQqKt7EKB23V8hS9wMnofg=",
+  "validation": {"automatedTests":11,"liveBefore":"itemPrices empty","liveAfter":"12000 -> 9750 IQD and 10000 -> 8000 IQD"},
+  "rounding": "Existing floor saving to 250 IQD increments preserved; 20% of 12000 is 2400, saving floors to 2250",
+  "dataChanges": false,
+  "merchantBasePrice": "Original catalog price remains unchanged; customer offer projection displays original and discounted price",
+  "humanVisualRetry": "Pending reopening restaurant in customer app"
+}
