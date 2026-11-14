@@ -19,3 +19,16 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Bundled from CentralPlatform deliveryQuoteRuntime.ts during release preparation
+backend/src/functions/delivery-quotes/runtime.js
+
+# Private local build/deployment evidence, outside flutter clean.
+/.local-build-evidence/
+
+# Python deployment-script caches
+__pycache__/
+*.pyc
+
+# Private local Lambda capture and diagnostic artifacts
+/backend/.tmp/

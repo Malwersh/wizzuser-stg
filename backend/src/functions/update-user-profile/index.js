@@ -1,5 +1,9 @@
+const {promotionConsent,notificationView,fenceNotificationSnapshot}=require('../shared/customer-promotion-consent-449');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { accountGuard } = require('../create-order/account-guard');
+const {CognitoIdentityProviderClient,GetUserCommand}=require('@aws-sdk/client-cognito-identity-provider');
+const cognito=new CognitoIdentityProviderClient({});
 
 const client = new DynamoDBClient({ 
     region: 'us-east-1'
@@ -7,7 +11,7 @@ const client = new DynamoDBClient({
 const dynamodb = DynamoDBDocumentClient.from(client);
 
 exports.handler = async (event) => {
-    console.log('Update User Profile Event:', JSON.stringify(event, null, 2));
+    console.log('Update profile request', {requestId:event.requestContext?.requestId});
     
     const headers = {
         'Content-Type': 'application/json',
@@ -38,6 +42,13 @@ exports.handler = async (event) => {
             };
         }
 
+        const guarded = await accountGuard({event,userId,
+            pool:process.env.USER_POOL_ID,clientId:process.env.USER_POOL_CLIENT_ID,
+            profilesTable:process.env.USERS_TABLE,
+            getUser:token=>cognito.send(new GetUserCommand({AccessToken:token})),
+            getProfile:async id=>(await dynamodb.send(new GetCommand({TableName:process.env.USERS_TABLE,Key:{userId:id},ConsistentRead:true}))).Item});
+        if (!guarded.condition) throw Object.assign(new Error('AUTH_REQUIRED'), {statusCode:401});
+
         // Parse request body
         let requestBody;
         try {
@@ -51,6 +62,9 @@ exports.handler = async (event) => {
                 })
             };
         }
+
+        if(!requestBody||typeof requestBody!=='object'||Array.isArray(requestBody))throw Object.assign(Error('INVALID_PROFILE'),{statusCode:400});
+        for(const field of ['marketing_consent','newsletter_subscription'])if(field in requestBody&&typeof requestBody[field]!=='boolean')throw Object.assign(Error('INVALID_CONSENT'),{statusCode:400});
 
         // Validate required fields (at least one field should be provided)
         const allowedFields = ['name', 'gender', 'birth_date', 'birthdate', 'marketing_consent', 'newsletter_subscription'];
@@ -72,7 +86,8 @@ exports.handler = async (event) => {
             TableName: process.env.USERS_TABLE || 'WizzUser_users_dev',
             Key: {
                 userId: userId
-            }
+            },
+            ConsistentRead: true
         };
 
         console.log('Checking if user exists:', getUserParams);
@@ -117,6 +132,10 @@ exports.handler = async (event) => {
         if (typeof requestBody.marketing_consent === 'boolean') {
             updateExpressionParts.push('marketing_consent = :marketing_consent');
             expressionAttributeValues[':marketing_consent'] = requestBody.marketing_consent;
+            updateExpressionParts.push('notification_settings = :unifiedNotifications');
+            expressionAttributeValues[':unifiedNotifications'] = {
+                ...notificationView(userResult.Item), promotion_notifications:requestBody.marketing_consent
+            };
         }
 
         // Handle newsletter subscription update
@@ -142,12 +161,19 @@ exports.handler = async (event) => {
             ReturnValues: 'ALL_NEW'
         };
 
+        // This condition is evaluated with the update, so a deletion lock acquired
+        // after the earlier read prevents recreating or changing the profile.
+        const fence = guarded.condition.ConditionCheck;
+        updateParams.ConditionExpression = fence.ConditionExpression;
+        Object.assign(expressionAttributeValues, fence.ExpressionAttributeValues);
+        Object.assign(expressionAttributeNames, fence.ExpressionAttributeNames);
+
         // Add ExpressionAttributeNames only if we have any
         if (Object.keys(expressionAttributeNames).length > 0) {
             updateParams.ExpressionAttributeNames = expressionAttributeNames;
         }
 
-        console.log('DynamoDB Update Params:', JSON.stringify(updateParams, null, 2));
+        if(typeof requestBody.marketing_consent==='boolean')fenceNotificationSnapshot(updateParams,userResult.Item);
         
         // Update the user profile
         const result = await dynamodb.send(new UpdateCommand(updateParams));
@@ -160,7 +186,8 @@ exports.handler = async (event) => {
             phone: result.Attributes.phone,
             birthdate: result.Attributes.birth_date || result.Attributes.birthdate,
             gender: result.Attributes.gender || 'male',
-            marketing_consent: result.Attributes.marketing_consent || false,
+            marketing_consent: promotionConsent(result.Attributes),
+            notification_settings: notificationView(result.Attributes),
             newsletter_subscription: result.Attributes.newsletter_subscription || false,
             created_at: result.Attributes.created_at,
             updated_at: result.Attributes.updated_at
@@ -180,7 +207,7 @@ exports.handler = async (event) => {
         console.error('Error updating user profile:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name === 'ConditionalCheckFailedException' ? 409 : 500),
             headers,
             body: JSON.stringify({
                 error: 'Internal server error',

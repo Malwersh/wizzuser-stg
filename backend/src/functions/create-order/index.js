@@ -1,13 +1,24 @@
+const {isTerminalOrderStatus}=require('../shared/legacy-order-policy');
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, TransactWriteCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const {offerContext} = require('../shared/offer-context');
+const { createStagingQuoteOrder, QuoteOrderError } = require('./quote-runtime/deliveryQuoteOrder');
 const { v4: uuidv4 } = require('uuid');
 const https = require('https');
+const {resolveDiscount} = require('../shared/discount-reservation');
+const {createStagingDeliveryPromotionSelection}=require('./quote-runtime/deliveryPromotionSelection');
+const {deliveryPromotionCustomerFacts}=require('./quote-runtime/deliveryPromotionCustomer');
+const {createStagingCommercialSource} = require('./quote-runtime/orderCommercialSource');
+const {createFinanceRollout}=require('./quote-runtime/financeRollout');
+const {moneyFromMinor} = require('./quote-runtime/money');
+const {createStagingOrderGoodsPricing} = require('./quote-runtime/orderGoodsPricing');
 
 const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_BASE_URL || '').trim();
 const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
 
 const client = new DynamoDBClient({});
-const dynamoDb = DynamoDBDocumentClient.from(client, {
+const baseDynamoDb = DynamoDBDocumentClient.from(client, {
     marshallOptions: {
         removeUndefinedValues: true
     }
@@ -25,6 +36,10 @@ function requireEnv(name) {
 const TABLE_NAME = process.env.WIZZORDERS_TABLE || 'WizzOrders';
 // Businesses table (used as fallback to fetch store address when frontend doesn't provide one)
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
+// Merchant discounts table (shared with the merchants app)
+const DISCOUNTS_TABLE = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
+// Platform promo codes table (written by the central platform)
+const PLATFORM_DISCOUNTS_TABLE = process.env.PLATFORM_DISCOUNTS_TABLE || 'WizzCentral_Platform_Discounts';
 const MERCHANT_WEBHOOK_URL = process.env.MERCHANT_WEBHOOK_URL;
 
 function postJson(urlString, headers, body, timeoutMs = 6000) {
@@ -95,7 +110,7 @@ async function sendMerchantOrderPush(payload) {
  * @returns {Object} Formatted address object
  */
 function formatDeliveryAddress(addressData, isGuestOrder = false) {
-    console.log('🏠 formatDeliveryAddress: Input data:', JSON.stringify(addressData, null, 2));
+    console.log('Delivery address formatting started');
     console.log('🏠 formatDeliveryAddress: isGuestOrder:', isGuestOrder);
     
     // Base address structure
@@ -208,6 +223,7 @@ function sendOrderToMerchant(order) {
             deliveryAddress: order.deliveryAddress,
             items: order.items,
             pricing: order.pricing,
+            discountId: order.discountId,
             notes: order.notes,
             deliveryType: order.deliveryType,
             paymentMethod: order.paymentMethod,
@@ -232,7 +248,8 @@ function sendOrderToMerchant(order) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(postData),
-                'User-Agent': 'WizzUser-Backend/1.0'
+                'User-Agent': 'WizzUser-Backend/1.0',
+                'x-merchant-webhook-key': process.env.MERCHANT_WEBHOOK_INTERNAL_KEY || ''
             },
             timeout: 10000 // 10 second timeout
         };
@@ -282,8 +299,9 @@ function sendOrderToMerchant(order) {
 /**
  * Lambda handler for creating a new order
  */
-exports.handler = async (event) => {
-    console.log('Event received:', JSON.stringify(event, null, 2));
+async function handleOrder321(event, pointDb=null) {
+    let dynamoDb=pointDb??baseDynamoDb;
+    console.log('Create order request received', {requestId:event.requestContext?.requestId});
     console.log('TABLE_NAME:', TABLE_NAME);
     console.log('Environment variables:', {
         WIZZORDERS_TABLE: process.env.WIZZORDERS_TABLE,
@@ -360,27 +378,14 @@ exports.handler = async (event) => {
             };
         }
 
-        // If an auth token exists, extract the Cognito subject (sub) as a stable identifier for push.
-        // Keep body.userId semantics unchanged for existing APIs.
-        const authHeader = (event.headers && (event.headers.Authorization || event.headers.authorization)) || '';
-        const bearer = String(authHeader).replace(/^Bearer\s+/i, '').trim();
-        let userSub = null;
-        if (bearer) {
-            try {
-                const parts = bearer.split('.');
-                if (parts.length >= 2) {
-                    const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-                    const json = Buffer.from(payloadB64, 'base64').toString('utf8');
-                    const payload = JSON.parse(json);
-                    if (payload && typeof payload.sub === 'string' && payload.sub.trim()) {
-                        userSub = payload.sub.trim();
-                        console.log('🔐 Resolved userSub from JWT sub:', userSub);
-                    }
-                }
-            } catch (e) {
-                console.warn('⚠️ Failed to decode JWT for userSub');
-            }
-        }
+        const profilesTable = requireEnv('USERS_TABLE');
+        requireEnv('USER_POOL_ID');
+        requireEnv('USER_POOL_CLIENT_ID');
+        const readOfferContext = () => offerContext(dynamoDb,event,body);
+        const currentOffers = await readOfferContext();
+        // Quote revalidation receives the same live profile/audience fences.
+        const readAccount = async () => (await readOfferContext()).guarded;
+        const userSub = currentOffers.identity?.sub || null;
 
         // Validate items array
         if (!Array.isArray(body.items) || body.items.length === 0) {
@@ -394,9 +399,47 @@ exports.handler = async (event) => {
             };
         }
 
+        // Local quoted flow is disabled until Quote API, checkout and deletion/IAM are deployed together.
+        const quoteMode = process.env.DELIVERY_QUOTE_MODE || 'OFF';
+        if (!['OFF', 'REQUIRED'].includes(quoteMode)) throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
+        if (quoteMode === 'OFF' && body.quoteId !== undefined) throw Object.assign(Error('QUOTE_NOT_ENABLED'), {statusCode: 409});
+        const commercialMode = process.env.COMMERCIAL_PRICING_MODE || 'OFF';
+        if ((commercialMode==='REQUIRED'||body.discountId||body.promoCode||body.platformDiscountId) &&
+            require('../shared/discount-contract').hasDiscountCustomizations(body.items))
+            throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
+        if (!['OFF','REQUIRED'].includes(commercialMode) || (commercialMode==='REQUIRED' && quoteMode!=='REQUIRED'))
+            throw Object.assign(Error('COMMERCIAL_NOT_CONFIGURED'),{statusCode:503});
+        const deliveryPromotionMode=process.env.DELIVERY_PROMOTION_MODE||'OFF';
+        if(!['OFF','REQUIRED'].includes(deliveryPromotionMode)||(deliveryPromotionMode==='REQUIRED'&&commercialMode!=='REQUIRED'))
+            throw Object.assign(Error('DELIVERY_PROMOTION_NOT_CONFIGURED'),{statusCode:503});
+        const previewRoute = event.resource === '/orders/commercial-preview';
+        if ((body.action==='preview_commercial') !== previewRoute) throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
+        if (body.action !== undefined && body.action !== 'preview_commercial') throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
+        if (commercialMode==='OFF' && (body.action==='preview_commercial'||body.commercialConsent!==undefined))
+            throw Object.assign(Error('COMMERCIAL_NOT_ENABLED'),{statusCode:409});
+        if(quoteMode==='REQUIRED'){const rollout=createFinanceRollout({db:dynamoDb});rollout.customer(body.storeId,userSub);if(body.action==='preview_commercial')rollout.admit(body.storeId,userSub);dynamoDb=rollout.db;}
+        let quotedOrder = null;
+        const quotedResponse = (saved, replayed) => ({statusCode: replayed ? 200 : 201, headers,
+            body: JSON.stringify({success: true, message: replayed ? 'Order already created' : 'Order created successfully',
+                orderId: saved.orderId, orderNumber: saved.orderNumber, order: customerOrderView(saved), replayed})});
+        if (quoteMode === 'REQUIRED') {
+            if (process.env.AWS_REGION !== 'us-east-1' || process.env.USER_POOL_ID !== 'us-east-1_TpyyrVkEE' || profilesTable !== 'WizzUser_users_staging' ||
+                TABLE_NAME !== 'WizzOrders' || BUSINESSES_TABLE !== 'WhizzMerchants_Businesses') {
+                throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
+            }
+            const service = createStagingQuoteOrder({enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1',db: dynamoDb, enableDeliveryFunding:deliveryPromotionMode==='REQUIRED', authenticateCustomer: async () => {
+                const live = await readAccount();
+                return {userId: body.userId, subjectId: live.sub, condition: live.condition};
+            }});
+            quotedOrder = await service.prepare({quoteId: body.quoteId, branchId: body.storeId,
+                addressId: body.deliveryAddress?.id, requestId: body.idempotencyKey, requestContent: body});
+            // Replay precedes the active-order query, which would otherwise reject this same persisted order.
+            if (quotedOrder.replayedOrder) return quotedResponse(quotedOrder.replayedOrder, true);
+        }
+
         // CRITICAL BUSINESS RULE: Check for active orders
         // Don't allow creating a new order if user has an active (incomplete) order
-        if (body.userId && body.userId !== null && body.userId !== 'guest') {
+        if (body.action !== 'preview_commercial' && body.userId && body.userId !== null && body.userId !== 'guest') {
             console.log('🔍 Checking for active orders for user:', body.userId);
             
             try {
@@ -409,14 +452,6 @@ exports.handler = async (event) => {
                 // heading_to_customer, ...) are treated as active by default.
                 // This enforces the "one active order per user" rule and reduces
                 // fraud (important for cash-on-delivery markets).
-                const terminalStatuses = ['delivered', 'cancelled', 'failed', 'expired', 'rejected'];
-                const isTerminalStatus = (status) => {
-                    if (!status) return false; // unknown/missing status => treat as active (safe side)
-                    const s = String(status).toLowerCase();
-                    if (s.startsWith('canceled_by_') || s.startsWith('cancelled_by_')) return true;
-                    return terminalStatuses.includes(s);
-                };
-                
                 // Query user's orders using GSI_User
                 const queryCommand = {
                     TableName: TABLE_NAME,
@@ -434,7 +469,7 @@ exports.handler = async (event) => {
                 if (result.Items && result.Items.length > 0) {
                     // Check if any order is active (not in a terminal/completed state)
                     const activeOrder = result.Items.find(order => 
-                        !isTerminalStatus(order.status)
+                        !isTerminalOrderStatus(order.status)
                     );
                     
                     if (activeOrder) {
@@ -469,11 +504,12 @@ exports.handler = async (event) => {
         }
 
         // Generate order ID and order number
-        const orderId = uuidv4();
+        const orderId = quotedOrder ? quotedOrder.orderId : uuidv4();
         const timestamp = Date.now();
         const orderNumber = `ORD${timestamp}`;
         const tripNumber = `TRP${timestamp}`;
         const createdAt = new Date().toISOString();
+        let merchantResponseBranch = null;
 
         // Helper function to generate bucket (b0-b9) from orderId hash for GSI distribution
         const generateBucket = (id) => {
@@ -497,11 +533,13 @@ exports.handler = async (event) => {
                 lineId: lineId,
                 skuId: item.id || item.skuId || item.productId,
                 itemId: item.id || item.itemId || item.productId,
+                categoryId: item.categoryId || item.category_id || null,
                 name: item.name || item.dishName || 'عنصر غير محدد',
                 quantity: quantity,
                 unitPrice: unitPrice,
                 // ✅ إضافة صورة الطبق من تطبيق المستخدم
                 imageUrl: item.image || item.imageUrl || null,
+                ...(Object.keys(require('../shared/discount-contract').discountOptionSelection(item)).length?{selectedOptions:require('../shared/discount-contract').discountOptionSelection(item)}:{}),
                 modifiers: (item.modifiers || []).map(mod => ({
                     id: mod.id || uuidv4(),
                     name: mod.name || '',
@@ -519,15 +557,88 @@ exports.handler = async (event) => {
             return sum + itemTotal + modifiersTotal;
         }, 0);
         
-        const serviceFee = Math.round((body.serviceFee || 0) * 1000);
+        const minimumPolicy=require('../shared/branch-minimum-order');
+        const minimumBranch=await minimumPolicy.read(dynamoDb,body.storeId);
+        let serviceFee = Math.round((body.serviceFee || 0) * 1000);
         const packagingFee = Math.round((body.packagingFee || 0) * 1000);
-        const deliveryFee = Math.round((body.deliveryFee || 10) * 1000); // Default 10 IQD
+        let deliveryFee = quotedOrder ? quotedOrder.deliveryFeeMinor : Math.round((body.deliveryFee ?? 10) * 1000); // Legacy only while quote mode is OFF
         const tax = Math.round((body.tax || 0) * 1000);
         const tip = Math.round((body.tip || 0) * 1000);
         const rounding = Math.round((body.rounding || 0) * 1000);
-        
-        // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding
-        const total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding;
+
+        const {orderOperation,catalogItems} = require('../shared/offer-eligibility');
+        const accountOrder = await orderOperation(currentOffers.customer);
+        let discountOperations = [
+            ...(currentOffers.guarded.condition ? [currentOffers.guarded.condition] : []),
+            ...(accountOrder ? [accountOrder] : []),
+            ...(currentOffers.addressCondition ? [currentOffers.addressCondition] : [])
+        ];
+        let discountItems = [];
+        if (body.discountId || body.promoCode || body.platformDiscountId || body.deliveryBenefitId || minimumPolicy.minimumOrderIqd(minimumBranch)!==null) {
+            if (require('../shared/discount-contract').hasDiscountCustomizations(body.items)) throw Object.assign(Error('UNSUPPORTED_DISCOUNT_ITEMS'),{statusCode:409});
+            const catalog = await createStagingOrderGoodsPricing({db:dynamoDb}).price({branchId:body.storeId,
+                items:body.items.map(require('../shared/discount-contract').discountGoodsSelection)});
+            if (catalog.goodsGross.minorAmount !== goodsSubtotal || catalog.lines.some((l,n)=>
+                processedItems[n]?.itemId!==l.productId || processedItems[n]?.unitPrice !== l.unitPrice.minorAmount))
+                throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            if(commercialMode!=='REQUIRED')minimumPolicy.assertMinimumOrder(minimumBranch,catalog.goodsGross.minorAmount);
+            catalog.lines.forEach((line,n)=>{if(line.lineId)processedItems[n].lineId=line.lineId;});
+            discountItems = catalogItems(catalog);
+            discountOperations.push(...catalog.conditions);
+        }
+        const resolvedDiscount = await resolveDiscount({db:dynamoDb,branchId:body.storeId,discountId:body.discountId,
+            promoCode:body.promoCode,platformDiscountId:body.platformDiscountId,subtotal:goodsSubtotal,
+            items:discountItems,deliveryFee,orderId,preview:body.action==='preview_commercial',...currentOffers});
+        discountOperations.push(...resolvedDiscount.operations,
+            ...await require('../shared/offer-attribution').attribution(dynamoDb,body.offerSlideId,resolvedDiscount.snapshot));
+        if(body.deliveryBenefitId&&resolvedDiscount.platformDeliveryBenefit)throw Object.assign(Error('BENEFIT_STACKING_DENIED'),{statusCode:409});
+        const selectedDeliveryBenefit=body.deliveryBenefitId?await require('../shared/platform-benefits').loadDelivery(dynamoDb,body.deliveryBenefitId,currentOffers):resolvedDiscount.platformDeliveryBenefit;
+        if(selectedDeliveryBenefit&&resolvedDiscount.snapshot)require('../shared/platform-benefits').assertStacking(resolvedDiscount.campaign,selectedDeliveryBenefit.campaign);
+        const discountFils = resolvedDiscount.amount;
+        if (resolvedDiscount.snapshot && body.action !== 'preview_commercial' &&
+            (typeof body.discount !== 'number' || !Number.isFinite(body.discount) || Math.round(body.discount*1000) !== discountFils))
+            throw Object.assign(Error('DISCOUNT_PREVIEW_CHANGED'),{statusCode:409});
+        // Enforce pricing equation: total = goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discount
+        let total = Math.max(0, goodsSubtotal + serviceFee + packagingFee + deliveryFee + tax + tip + rounding - discountFils);
+
+        let commercial = null;
+        if (commercialMode === 'REQUIRED') {
+            if (!['cod','cash','cash_on_delivery'].includes(String(body.paymentMethod).toLowerCase()) ||
+                processedItems.some(i=>i.modifiers.length) || packagingFee!==0 || tax!==0 || rounding!==0)
+                throw Object.assign(Error('COMMERCIAL_ORDER_UNSUPPORTED'),{statusCode:409});
+            const pricingReads=body.action==='preview_commercial'?require('./checkout-pricing-reads').createCheckoutPricingReads(dynamoDb):null;
+            const pricingDb=pricingReads?.db??dynamoDb;
+            // Commercial agreements are base terms, not stackable promotional benefits.
+            const agreementAwareSelection=deliveryPromotionMode==='REQUIRED'?createStagingDeliveryPromotionSelection({db:pricingDb,lifecycleReadMode:'CONDITION_CHECK',previewOnly:body.action==='preview_commercial',
+                agreementsOnly:!!selectedDeliveryBenefit||!!(resolvedDiscount.benefitReceipt&&!resolvedDiscount.campaign.benefit.allowGoodsStacking),
+                pricingRequest:quotedOrder.deliveryPromotionPricingRequest(),
+                customerFacts:()=>deliveryPromotionCustomerFacts(currentOffers,accountOrder)}):undefined;
+            const deliveryPromotion=selectedDeliveryBenefit?require('../shared/platform-benefits').deliverySelection(pricingDb,selectedDeliveryBenefit,quotedOrder.deliveryPromotionPricingRequest(),body.action==='preview_commercial',agreementAwareSelection):agreementAwareSelection;
+            commercial = await createStagingCommercialSource({cashRoundingRequired:process.env.CASH_ROUNDING_POLICY_MODE==='REQUIRED',db:pricingDb,deliveryPromotion,enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1'}).prepare({orderId,branchId:body.storeId,
+                items:body.items.map(require('../shared/discount-contract').discountGoodsSelection),
+                quote:{createdAt:quotedOrder.createdAt,expiresAt:quotedOrder.expiresAt,deliveryFeeMinor:deliveryFee,
+                    origin:quotedOrder.origin,destination:quotedOrder.destination,destinationRegionId:quotedOrder.destinationRegionId},
+                discount:resolvedDiscount.snapshot?{snapshot:resolvedDiscount.snapshot,campaign:resolvedDiscount.campaign}:null,
+                tip:moneyFromMinor(tip)});
+            if(commercial.calculation.allocationInput.goodsGross.minorAmount!==goodsSubtotal || commercial.goodsLines.some((l,n)=>processedItems[n]?.itemId!==l.productId || processedItems[n]?.unitPrice!==l.unitPrice.minorAmount))
+                throw Object.assign(Error('CART_PRICE_CHANGED'),{statusCode:409});
+            commercial.goodsLines.forEach((line,n)=>{if(line.lineId)processedItems[n].lineId=line.lineId;});
+            deliveryFee=commercial.calculation.allocationInput.customerDeliveryFee.minorAmount;
+            // Legacy compatibility only. A published cash policy supplies the audited
+            // effective service fee; disabled policy deliberately keeps exact totals.
+            if(!commercial.cashRounding && commercial.calculation.customerTotal.minorAmount % 250000 !== 0)
+                throw Object.assign(Error('CASH_TOTAL_DENOMINATION_UNSUPPORTED'),{statusCode:409});
+            if(body.action==='preview_commercial') return {statusCode:200,headers,body:JSON.stringify({success:true,
+                commercial:{schemaVersion:commercial.deliveryFunding?(commercial.deliveryAgreement?3:2):1,...(commercial.deliveryAgreement?{deliveryAgreement:commercial.deliveryAgreement}:{}),...(commercial.deliveryFunding?{referenceDeliveryFee:moneyFromMinor(quotedOrder.deliveryFeeMinor)}:{}),quoteId:body.quoteId,requestId:body.idempotencyKey,digest:commercial.digest,expiresAt:commercial.expiresAt,
+                    customerTotal:commercial.calculation.customerTotal,goodsGross:commercial.calculation.allocationInput.goodsGross,
+                    serviceFee:commercial.calculation.serviceFee.amount,discount:moneyFromMinor(discountFils),deliveryFee:moneyFromMinor(deliveryFee),driverTip:moneyFromMinor(tip)}})};
+            if(body.commercialConsent?.digest!==commercial.digest ||
+                body.commercialConsent?.customerTotalMinor!==commercial.calculation.customerTotal.minorAmount)
+                throw Object.assign(Error('COMMERCIAL_CONSENT_REQUIRED'),{statusCode:409});
+            serviceFee=commercial.calculation.serviceFee.amount.minorAmount;
+            total=commercial.calculation.customerTotal.minorAmount;
+            discountOperations.push(...commercial.operations,commercial.branchCondition);
+        }
 
         // Determine user fields and generate guestToken for guest orders
         const isGuestOrder = body.userId === null || body.userId === 'guest' || !body.userId;
@@ -619,6 +730,7 @@ exports.handler = async (event) => {
             
             if (businessResult && businessResult.Item) {
                 const business = businessResult.Item;
+                merchantResponseBranch = business;
 
                 // 🆕 Merchant push targeting
                 // Central Notifications stores device tokens keyed by a separate `subjectId`.
@@ -758,8 +870,26 @@ exports.handler = async (event) => {
                 tax: tax,
                 tip: tip,
                 rounding: rounding,
+                discount: discountFils,
                 total: total
             },
+
+            // Applied merchant discount (if any)
+            discountId: resolvedDiscount.snapshot?.source === 'MERCHANT' ? resolvedDiscount.snapshot.discountId : null,
+            promoCode: resolvedDiscount.snapshot?.source === 'PLATFORM' ? resolvedDiscount.campaign?.code || null : null,
+            offerSnapshot: resolvedDiscount.snapshot,
+            platformBenefitReceipt: resolvedDiscount.benefitReceipt || commercial?.platformBenefitReceipt || null,
+            platformDeliveryBenefitReceipt: commercial?.platformBenefitReceipt || null,
+            offerUsageReservation: {
+                schemaVersion: 1, userSub,
+                accountReserved: !!accountOrder,
+                customerReserved: resolvedDiscount.operations.some(op => op.Put?.TableName === 'staging-WizzOfferJourney' && op.Put.Item.sk?.startsWith('OFFER#')),
+                campaign: resolvedDiscount.snapshot && !resolvedDiscount.benefitReceipt ? {
+                    id: resolvedDiscount.snapshot.discountId, source: resolvedDiscount.snapshot.source,
+                    createdAt: resolvedDiscount.campaign.createdAt ?? resolvedDiscount.campaign.created_at ?? null
+                } : null
+            },
+            offerSlideId: body.offerSlideId || null,
             
             // Payment (ز)
             paymentMethod: body.paymentMethod || 'cod',
@@ -827,15 +957,73 @@ exports.handler = async (event) => {
             console.log('✅ Omitting scheduledAt for non-scheduled order (sparse index)');
         }
 
-        console.log('Order to be created:', JSON.stringify(order, null, 2));
+        if (quotedOrder) {
+            // Bind operational routing to the same points priced by the server.
+            order.restaurantLat = quotedOrder.origin.latitude;
+            order.restaurantLng = quotedOrder.origin.longitude;
+            order.deliveryAddress.lat = quotedOrder.destination.latitude;
+            order.deliveryAddress.lng = quotedOrder.destination.longitude;
+            order.distanceMeters = quotedOrder.distanceMeters;
+        }
+
+        if (resolvedDiscount.snapshot) order.appliedDiscount = resolvedDiscount.snapshot;
+        if (commercial) {
+            order.merchantId=commercial.merchantId;
+            order.financialSnapshot=commercial.financialSnapshot;
+            if(commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1')order.exceptionPolicy=require('./quote-runtime/orderExceptionPolicy').createOrderExceptionPolicy(order.createdAt);
+            order.commercialPricing={schemaVersion:commercial.schemaVersion,...(commercial.cashRounding?{cashRounding:commercial.cashRounding}:{}),...(commercial.deliveryAgreement?{deliveryAgreement:commercial.deliveryAgreement}:{}),...(commercial.deliveryCashRounding?{deliveryCashRounding:commercial.deliveryCashRounding}:{}),...(commercial.deliveryFunding?{deliveryFunding:commercial.deliveryFunding}:{}),digest:commercial.digest,agreement:commercial.agreement,
+                calculation:commercial.calculation,funding:{...commercial.funding,state:commercial.settlementModel==='FULL_CASH_AT_DELIVERY_V1'?'BUDGET_COMMITTED_WITH_ORDER':commercial.funding.holdId?'RESERVED_WITH_ORDER':'NOT_REQUIRED'}};
+        }
+
+        const receptionEnabled=process.env.MERCHANT_RESPONSE_MODE==='REQUIRED'&&!order.scheduled&&!order.scheduledAt;
+        if(receptionEnabled){
+            if(!merchantResponseBranch)throw Object.assign(Error('MERCHANT_RESPONSE_POLICY_UNAVAILABLE'),{statusCode:503});
+            if(merchantResponseBranch.ordersPausedUntil&&Date.parse(merchantResponseBranch.ordersPausedUntil)>Date.now())throw Object.assign(Error('BUSINESS_TEMPORARILY_PAUSED'),{statusCode:409});
+            const receptionPlatform=(await baseDynamoDb.send(new GetCommand({TableName:'staging-PlatformStaff',Key:{pk:'OPERATIONAL_SETTINGS#ORDER_RECEPTION',sk:'CURRENT'},ConsistentRead:true}))).Item;
+            Object.assign(order,require('../shared/merchant-response-policy').pendingFields(order,merchantResponseBranch,receptionPlatform));
+        }
+        console.log('Creating order', {orderId});
 
         // Save order to DynamoDB
-        const putCommand = new PutCommand({
-            TableName: TABLE_NAME,
-            Item: order
-        });
 
-        await dynamoDb.send(putCommand);
+
+        // Fence order creation against concurrent merchant/business closure,
+        // including guest orders. A read before the write is not sufficient.
+        const businessFences = [
+            {ConditionCheck: {TableName: 'staging-AccountDeletion', Key: {pk: 'BUSINESS_LIFECYCLE#MERCHANT#' + body.storeId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}},
+            {ConditionCheck: {TableName: BUSINESSES_TABLE, Key: {businessId: body.storeId}, ConditionExpression: 'attribute_exists(businessId) AND attribute_not_exists(deletionRequestId) AND isActive=:merchantActive AND (#merchantStatus=:merchantApproved OR #merchantStatus=:merchantLive) AND (attribute_not_exists(onboardingSchemaVersion) OR (onboardingComplete=:merchantActive AND acceptingOrders=:merchantActive)) AND (attribute_not_exists(platformSuspended) OR platformSuspended=:merchantBlocked) AND (attribute_not_exists(ordersBlocked) OR ordersBlocked=:merchantBlocked)', ExpressionAttributeNames: {'#merchantStatus':'status'}, ExpressionAttributeValues: {':merchantActive':true,':merchantApproved':'approved',':merchantLive':'active',':merchantBlocked':false}}},
+        ];
+        minimumPolicy.guard(businessFences[1].ConditionCheck,minimumBranch);
+        if(receptionEnabled){
+            const p=order.merchantResponsePolicy;
+            const due=p.autoAccept?Date.parse(createdAt):Date.parse(order.merchantAcceptanceDeadlineAt);
+            discountOperations.push({Put:{TableName:'staging-WalletLifecycle',Item:{operationId:'MERCHANT_RESPONSE#'+orderId,kind:'MERCHANT_RESPONSE',merchantResponseSchemaVersion:1,orderId,branchId:order.storeId,ownerId:merchantResponseBranch.ownerId,status:'PENDING',queuePartition:'MERCHANT_RESPONSE',nextAttemptAt:Math.floor(due/1000),createdAt},ConditionExpression:'attribute_not_exists(operationId)'}});
+            const condition={TableName:BUSINESSES_TABLE,Key:{businessId:order.storeId},ConditionExpression:'attribute_not_exists(#mrPaused)',ExpressionAttributeNames:{'#mrPaused':'ordersPausedUntil','#mrSettings':'orderReceptionSettings'},ExpressionAttributeValues:{}};
+            if(merchantResponseBranch.ordersPausedUntil!==undefined){condition.ConditionExpression='#mrPaused=:mrPaused AND #mrPaused<=:mrNow';Object.assign(condition.ExpressionAttributeValues,{':mrPaused':merchantResponseBranch.ordersPausedUntil,':mrNow':createdAt});}
+            if(merchantResponseBranch.orderReceptionSettings===undefined)condition.ConditionExpression+=' AND attribute_not_exists(#mrSettings)';
+            else {condition.ConditionExpression+=' AND #mrSettings=:mrSettings';condition.ExpressionAttributeValues[':mrSettings']=merchantResponseBranch.orderReceptionSettings;}
+            if(!Object.keys(condition.ExpressionAttributeValues).length)delete condition.ExpressionAttributeValues;
+            if(quotedOrder)discountOperations.push({ConditionCheck:condition});
+            else {const c=businessFences[1].ConditionCheck;c.ConditionExpression+=' AND ('+condition.ConditionExpression+')';Object.assign(c.ExpressionAttributeNames,condition.ExpressionAttributeNames);Object.assign(c.ExpressionAttributeValues,condition.ExpressionAttributeValues||{});}
+        }
+        try {
+            if (commercial && Date.now() >= Date.parse(commercial.expiresAt)) throw Object.assign(Error('COMMERCIAL_QUOTE_EXPIRED'),{statusCode:409});
+            if (resolvedDiscount.expiresAt !== null && resolvedDiscount.expiresAt !== undefined && Date.now() >= resolvedDiscount.expiresAt)
+                throw Object.assign(Error('DISCOUNT_EXPIRED'), {statusCode:409});
+            discountOperations = await require('./quote-runtime/productInventory').reserveProductInventory(dynamoDb,order,discountOperations);
+            if (quotedOrder) {
+                const saved = await quotedOrder.commit(order, discountOperations, commercial?.deliveryFunding);
+                if (saved.replayed) return quotedResponse(saved.order, true);
+                Object.assign(order, saved.order);
+            } else await dynamoDb.send(new TransactWriteCommand({TransactItems: [
+                ...businessFences,
+                ...discountOperations,
+                {Put: {TableName: TABLE_NAME, Item: order, ConditionExpression: 'attribute_not_exists(orderId)'}},
+            ]}));
+        } catch (e) {
+            if (e.name === 'TransactionCanceledException') throw Object.assign(new Error('ACCOUNT_OR_BUSINESS_UNAVAILABLE'), {statusCode: 409});
+            throw e;
+        }
 
         console.log('Order created successfully:', orderId);
 
@@ -899,7 +1087,7 @@ exports.handler = async (event) => {
             message: 'Order created successfully',
             orderId: orderId,
             orderNumber: orderNumber,
-            order: order
+            order: customerOrderView(order)
         };
 
         // Add guestToken to response for guest orders
@@ -920,12 +1108,14 @@ exports.handler = async (event) => {
         console.error('Error name:', error.name);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (['INSUFFICIENT_STOCK','GOODS_UNAVAILABLE'].includes(error.code||error.message)?409:error.name === 'DeliveryFundingReaderError' ? 503 : 500),
             headers: headers,
             body: JSON.stringify({
                 error: 'Failed to create order',
                 message: error.message,
                 errorName: error.name,
+                ...(error instanceof QuoteOrderError ? {code: error.code} :
+                    ['INSUFFICIENT_STOCK','GOODS_UNAVAILABLE','DELIVERY_POLICY_UNAVAILABLE','DELIVERY_POLICY_AUTHORITY_REVOKED','DELIVERY_POLICY_HISTORY_MISMATCH','PLATFORM_GOODS_EXPOSURE_LIMIT_REQUIRED','BENEFIT_EXHAUSTED', 'BENEFIT_EXPIRED', 'BENEFIT_PAUSED', 'BENEFIT_NOT_ELIGIBLE', 'BENEFIT_WRONG_BRANCH', 'BENEFIT_WRONG_REGION', 'BENEFIT_MINIMUM_ORDER', 'BENEFIT_DELIVERY_CAP_EXCEEDED', 'BENEFIT_DISTANCE_EXCEEDED', 'BENEFIT_NO_SAVINGS', 'BENEFIT_STACKING_DENIED', 'BENEFIT_LOGIN_REQUIRED','MINIMUM_ORDER_NOT_MET','INVALID_MINIMUM_ORDER','FINANCE_ROLLOUT_OUT_OF_SCOPE','FINANCE_ROLLOUT_ADMISSION_CLOSED','FINANCE_ROLLOUT_NOT_CONFIGURED','OFFER_ACCOUNT_REQUIRED','OFFER_ADDRESS_UNAVAILABLE','OFFER_HISTORY_UNAVAILABLE','OFFER_AUDIENCE_UNSUPPORTED','OFFER_NOT_ELIGIBLE','OFFER_WRONG_MERCHANT','OFFER_WRONG_REGION','OFFER_FIRST_ORDER_ONLY','OFFER_ALREADY_USED','OFFER_NO_SAVINGS','OFFER_LOGIN_REQUIRED','OFFER_CUSTOMER_LIMIT_UNSUPPORTED','OFFER_DELIVERY_POLICY_REQUIRED','OFFER_REGION_UNSUPPORTED','OFFER_MERCHANT_UNSUPPORTED','QUOTE_NOT_ENABLED','QUOTE_NOT_CONFIGURED','CART_PRICE_CHANGED','CASH_TOTAL_DENOMINATION_UNSUPPORTED','CASH_ROUNDING_POLICY_UNAVAILABLE','UNSUPPORTED_DISCOUNT_ITEMS','DISCOUNT_PREVIEW_CHANGED','DISCOUNT_UNAVAILABLE','COMMERCIAL_NOT_CONFIGURED','COMMERCIAL_NOT_ENABLED','COMMERCIAL_CONSENT_REQUIRED','COMMERCIAL_ORDER_UNSUPPORTED','COMMERCIAL_QUOTE_EXPIRED','COMMERCIAL_SOURCE_UNAVAILABLE','DISCOUNT_FUNDING_TERMS_CHANGED','DISCOUNT_FUNDING_UNAVAILABLE','FUNDING_WALLET_PRECISION_UNSUPPORTED','COMMERCIAL_DISCOUNT_UNSUPPORTED','DISCOUNT_FUNDING_UNAUTHORIZED','OTHER_COMMERCIAL_CHARGES_UNSUPPORTED'].includes(error.message) ? {code: error.message} : {}),
                 success: false
             })
         };
@@ -1069,3 +1259,14 @@ async function sendMerchantNotification(order) {
         throw error;
     }
 }
+
+// No HTTP field or Lambda context can supply a database override. Only this
+// module's point-preview composition invokes the private handler with one.
+exports.handler=async event=>{
+ let body;
+ if(event.httpMethod==='POST'&&!event.isBase64Encoded&&typeof event.body==='string'&&Buffer.byteLength(event.body)<=64000){try{body=JSON.parse(event.body);}catch(_){}}
+ if(body?.action==='preview_commercial')return handleOrder321(event,require('./point-invoice-321').readOnlyInvoiceDb323(baseDynamoDb));
+ if(body?.action!=='preview_commercial_point')return handleOrder321(event);
+ try{return await require('./point-invoice-321').prepare321({event,body,base:baseDynamoDb,run:handleOrder321,runtime:require('./point-invoice-runtime-321')});}
+ catch(e){console.warn('POINT_INVOICE_UNAVAILABLE',{code:e.code||e.name,reason:typeof e.message==='string'&&/^[A-Z0-9_]{3,100}$/.test(e.message)?e.message:'UNCLASSIFIED',frames:String(e.stack||'').match(/\/var\/task\/[A-Za-z0-9_./-]+:\d+:\d+/g)?.slice(0,4)||[]});return{statusCode:e.statusCode||503,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'},body:JSON.stringify({success:false,code:e.code||'POINT_INVOICE_UNAVAILABLE'})};}
+};

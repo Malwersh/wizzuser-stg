@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadDerivedRegionEligibility",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging"
+    },
+    {
+      "Sid": "ReadMerchantLifecycleEligibility",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem"],
+      "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion",
+      "Condition": {
+        "ForAllValues:StringLike": {
+          "dynamodb:LeadingKeys": [
+            "BUSINESS_LIFECYCLE#MERCHANT#*",
+            "ACCOUNT_LIFECYCLE#MERCHANT#*"
+          ]
+        }
+      }
+    }
+  ]
+}

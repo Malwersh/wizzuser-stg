@@ -3,7 +3,7 @@
  * Helper functions to auto-populate business metadata fields
  */
 
-const { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, QueryCommand, PutCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const h3 = require('h3-js');
 
 const H3_RESOLUTION = 9;
@@ -28,57 +28,14 @@ const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Busines
  * @returns {Promise<{regionId: string, h3Cell: string} | null>}
  */
 async function findRegionByH3(docClient, latitude, longitude) {
-  if (!latitude || !longitude) {
-    return null;
-  }
-  
-  try {
-    const lat = parseFloat(latitude);
-    const lng = parseFloat(longitude);
-    
-    // Generate H3 cell at resolution 9
-    const h3Cell = h3.latLngToCell(lat, lng, H3_RESOLUTION);
-    
-    // Try exact match
-    const result = await docClient.send(new GetCommand({
-      TableName: REGION_INDEX_TABLE,
-      Key: { index_cell_id: h3Cell }
-    }));
-    
-    if (result.Item) {
-      return {
-        regionId: result.Item.regionId,
-        h3Cell: h3Cell,
-        regionName: result.Item.region_name
-      };
-    }
-    
-    // Fallback to parent cells (lower resolutions)
-    for (let res = H3_RESOLUTION - 1; res >= 6; res--) {
-      const parentCell = h3.cellToParent(h3Cell, res);
-      
-      const parentResult = await docClient.send(new GetCommand({
-        TableName: REGION_INDEX_TABLE,
-        Key: { index_cell_id: parentCell }
-      }));
-      
-      if (parentResult.Item) {
-        return {
-          regionId: parentResult.Item.regionId,
-          h3Cell: parentCell,
-          regionName: parentResult.Item.region_name,
-          fallbackResolution: res
-        };
-      }
-    }
-    
-    console.warn(`No region found for coordinates: ${lat}, ${lng}`);
-    return null;
-    
-  } catch (error) {
-    console.error('Error in findRegionByH3:', error);
-    return null;
-  }
+  const lat=Number(latitude),lng=Number(longitude);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return null;
+  const resolve=require('./region-coverage-runtime-312').createRegionResolver({db:docClient,sdk:{GetCommand,QueryCommand},
+    tables:{regions:REGIONS_TABLE,derived:requireEnv('REGIONS_DERIVED_TABLE'),index:REGION_INDEX_TABLE}});
+  const region=await resolve({latitude:lat,longitude:lng});
+  if(!region)return null;
+  const metadata=(await docClient.send(new GetCommand({TableName:REGIONS_TABLE,Key:{regionId:region.regionId},ConsistentRead:true}))).Item;
+  return {regionId:region.regionId,h3Cell:region.cellId,regionPath:region.regionPath,regionName:metadata?.name_ar||metadata?.name||region.regionId};
 }
 
 /**

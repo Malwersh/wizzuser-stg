@@ -1,0 +1,21 @@
+{
+  "status": "BUILT_INSTALLED_LAUNCHED",
+  "nativeBuild": 243,
+  "cause": [
+    "Commercial basket delivery mounted independent StorefrontValue while shared invoice was pending",
+    "Periodic warmup retried unchanged failed invoices after cooldown"
+  ],
+  "fixes": [
+    "Commercial cart delivery uses shared invoice only; legacy fallback mounts only when commercial pricing is disabled",
+    "Automatic warmups stop on unchanged-context failure; manual retry and changed-context preparation remain available",
+    "Rejected/expired preview cannot silently leave loading without an error",
+    "Valid matching invoice and route cache reused; server expiry unchanged"
+  ],
+  "tests": {
+    "flutter": 25,
+    "financialWrites": 0
+  },
+  "noOrderOrDiscountUsagePerformed": true,
+  "manualUiRetest": "PENDING_AFTER_INSTALL",
+  "analyzer": "No errors or warnings; existing brace-style info only"
+}

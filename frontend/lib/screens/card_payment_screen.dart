@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 
@@ -48,16 +49,20 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) => AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(Icons.check_circle, color: Colors.green, size: 48),
-                SizedBox(height: 16),
-                Text('تمت إضافة البطاقة بنجاح!', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
+          builder:
+              (_) => AlertDialog(
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.check_circle, color: Colors.green, size: 48),
+                    SizedBox(height: 16),
+                    Text(
+                      'تمت إضافة البطاقة بنجاح!',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
         );
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
@@ -71,7 +76,9 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('معلومات البطاقة غير صحيحة، يرجى التحقق والمحاولة مجدداً'),
+              content: Text(
+                'معلومات البطاقة غير صحيحة، يرجى التحقق والمحاولة مجدداً',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -127,7 +134,11 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                   controller: _cardNumberController,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'رقم البطاقة'),
-                  validator: (v) => v == null || v.length < 12 ? 'أدخل رقم بطاقة صحيح' : null,
+                  validator:
+                      (v) =>
+                          v == null || v.length < 12
+                              ? 'أدخل رقم بطاقة صحيح'
+                              : null,
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -136,8 +147,14 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                       child: TextFormField(
                         controller: _expiryController,
                         keyboardType: TextInputType.datetime,
-                        decoration: const InputDecoration(labelText: 'تاريخ الانتهاء (MM/YY)'),
-                        validator: (v) => v == null || v.isEmpty ? 'أدخل تاريخ الانتهاء' : null,
+                        decoration: const InputDecoration(
+                          labelText: 'تاريخ الانتهاء (MM/YY)',
+                        ),
+                        validator:
+                            (v) =>
+                                v == null || v.isEmpty
+                                    ? 'أدخل تاريخ الانتهاء'
+                                    : null,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -146,7 +163,11 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                         controller: _cvvController,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'CVV'),
-                        validator: (v) => v == null || v.length < 3 ? 'أدخل CVV صحيح' : null,
+                        validator:
+                            (v) =>
+                                v == null || v.length < 3
+                                    ? 'أدخل CVV صحيح'
+                                    : null,
                       ),
                     ),
                   ],
@@ -154,11 +175,18 @@ class _CardPaymentScreenState extends State<CardPaymentScreen> {
                 const SizedBox(height: 32),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
+                    foregroundColor: readableForeground(AppColors.primary),
                     backgroundColor: AppColors.primary,
                     textStyle: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   onPressed: _handleAddCard,
-                  child: const Text('إضافة البطاقة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'إضافة البطاقة',
+                    style: TextStyle(
+                      color: const Color(0xFF00296B),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),

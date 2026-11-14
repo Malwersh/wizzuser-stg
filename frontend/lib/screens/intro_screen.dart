@@ -45,7 +45,7 @@ class _IntroScreenState extends State<IntroScreen> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth  = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -56,163 +56,187 @@ class _IntroScreenState extends State<IntroScreen> {
           children: [
             Column(
               children: [
-              const SizedBox(height: 60),
-              const Text(
-                "زاد",
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 2,
-                  shadows: [
-                    Shadow(
-                      color: Color(0x33FFD600), // تأثير أصفر خفيف
-                      offset: Offset(0, 0),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(25),
-                      topRight: Radius.circular(25),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 30),
-                      SizedBox(
-                        height: screenHeight * 0.45, // تقريباً 45٪ من الشاشة
-                        child: PageView.builder(
-                          controller: _controller,
-                          itemCount: slides.length,
-                          itemBuilder: (context, index) {
-                            final slide = slides[index];
-                            return Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  flex: 8,
-                                  child: Container(
-                                    width: screenWidth * 0.90,
-                                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(20),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black12,
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                      color: Colors.white,
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: Image.asset(
-                                        slide["image"]!,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Expanded(
-                                  flex: 2,
-                                  child:                                  Text(
-                                    slide["text"]!,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      color: AppColors.primary, // البنفسجي اللامع
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SmoothPageIndicator(
-                        controller: _controller,
-                        count: slides.length,
-                        effect: WormEffect(
-                          activeDotColor: AppColors.secondary, // الأصفر الكهربائي
-                          dotColor: Colors.grey.withOpacity(0.4),
-                          dotHeight: 12,
-                          dotWidth: 12,
-                          spacing: 8,
-                        ),
-                      ),
-                      const Spacer(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                        child: Column(
-                          children: [
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  if (!mounted) return;
-                                  final navigator = Navigator.of(context);
-                                  await navigator.push(
-                                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                                  );
-                                  // دع شاشة تسجيل الدخول تتولى التنقل بالكامل - لا حاجة لفعل أي شيء هنا
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primary, // البنفسجي اللامع
-                                  foregroundColor: AppColors.secondary,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  elevation: 2,
-                                  shadowColor: AppColors.primary.withOpacity(0.3),
-                                ),
-                                child: const Text(
-                                  'تسجيل الدخول',
-                                  style: TextStyle(color: Colors.white, fontSize: 16),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                onPressed: () async {
-                                  if (!mounted) return;
-                                  final navigator = Navigator.of(context);
-                                  await navigator.push(
-                                    MaterialPageRoute(builder: (_) => const RegisterScreenTabs()),
-                                  );
-                                  // دع شاشة التسجيل تتولى التنقل بالكامل - لا حاجة لفعل أي شيء هنا
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppColors.primary, // البنفسجي اللامع
-                                  side: BorderSide(color: AppColors.primary, width: 1.5),
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                child: const Text(
-                                  'إنشاء حساب جديد',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 30),
-                          ],
-                        ),
+                const SizedBox(height: 60),
+                const Text(
+                  "زاد",
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF00296B),
+                    letterSpacing: 2,
+                    shadows: [
+                      Shadow(
+                        color: Color(0x33FFD600), // تأثير أصفر خفيف
+                        offset: Offset(0, 0),
+                        blurRadius: 8,
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(25),
+                        topRight: Radius.circular(25),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 30),
+                        SizedBox(
+                          height: screenHeight * 0.45, // تقريباً 45٪ من الشاشة
+                          child: PageView.builder(
+                            controller: _controller,
+                            itemCount: slides.length,
+                            itemBuilder: (context, index) {
+                              final slide = slides[index];
+                              return Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    flex: 8,
+                                    child: Container(
+                                      width: screenWidth * 0.90,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(20),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black12,
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                        color: Colors.white,
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Image.asset(
+                                          slide["image"]!,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      slide["text"]!,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        color: const Color(
+                                          0xFF00296B,
+                                        ), // البنفسجي اللامع
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SmoothPageIndicator(
+                          controller: _controller,
+                          count: slides.length,
+                          effect: WormEffect(
+                            activeDotColor:
+                                AppColors.secondary, // الأصفر الكهربائي
+                            dotColor: Colors.grey.withOpacity(0.4),
+                            dotHeight: 12,
+                            dotWidth: 12,
+                            spacing: 8,
+                          ),
+                        ),
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    if (!mounted) return;
+                                    final navigator = Navigator.of(context);
+                                    await navigator.push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const LoginScreen(),
+                                      ),
+                                    );
+                                    // دع شاشة تسجيل الدخول تتولى التنقل بالكامل - لا حاجة لفعل أي شيء هنا
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        AppColors.primary, // البنفسجي اللامع
+                                    foregroundColor: AppColors.secondary,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                    elevation: 2,
+                                    shadowColor: AppColors.primary.withOpacity(
+                                      0.3,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'تسجيل الدخول',
+                                    style: TextStyle(
+                                      color: const Color(0xFF00296B),
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    if (!mounted) return;
+                                    final navigator = Navigator.of(context);
+                                    await navigator.push(
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => const RegisterScreenTabs(),
+                                      ),
+                                    );
+                                    // دع شاشة التسجيل تتولى التنقل بالكامل - لا حاجة لفعل أي شيء هنا
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor:
+                                        AppColors.primary, // البنفسجي اللامع
+                                    side: BorderSide(
+                                      color: AppColors.primary,
+                                      width: 1.5,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'إنشاء حساب جديد',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 30),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
             // زر التخطي المحسّن في أعلى يمين الشاشة
             Positioned(
@@ -221,11 +245,17 @@ class _IntroScreenState extends State<IntroScreen> {
               child: GestureDetector(
                 onTap: () => _showSkipConfirmation(context),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.secondary.withOpacity(0.15), // أصفر شفاف
                     borderRadius: BorderRadius.circular(25),
-                    border: Border.all(color: AppColors.secondary.withOpacity(0.4), width: 1),
+                    border: Border.all(
+                      color: AppColors.secondary.withOpacity(0.4),
+                      width: 1,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: AppColors.primary.withOpacity(0.1),
@@ -256,7 +286,10 @@ class _IntroScreenState extends State<IntroScreen> {
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.secondary, // الأصفر الكهربائي
                               borderRadius: BorderRadius.circular(12),
@@ -264,7 +297,7 @@ class _IntroScreenState extends State<IntroScreen> {
                             child: const Text(
                               'كضيف',
                               style: TextStyle(
-                                color: Colors.black,
+                                color: Colors.white,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -313,7 +346,7 @@ class _IntroScreenState extends State<IntroScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // أيقونة التصفح
                 Container(
                   width: 80,
@@ -329,7 +362,7 @@ class _IntroScreenState extends State<IntroScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // العنوان
                 const Text(
                   'تصفح كضيف؟',
@@ -340,7 +373,7 @@ class _IntroScreenState extends State<IntroScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // الوصف
                 Text(
                   'يمكنك تصفح التطبيق والطلب دون إنشاء حساب، لكن ستفوتك بعض الميزات الرائعة!',
@@ -352,7 +385,7 @@ class _IntroScreenState extends State<IntroScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // الميزات المفقودة
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -391,7 +424,7 @@ class _IntroScreenState extends State<IntroScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                
+
                 // الأزرار
                 Row(
                   children: [
@@ -428,7 +461,9 @@ class _IntroScreenState extends State<IntroScreen> {
                           Navigator.pop(context);
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
                           );
                         },
                         style: ElevatedButton.styleFrom(
@@ -470,29 +505,33 @@ class _IntroScreenState extends State<IntroScreen> {
       'العروض الحصرية',
     ];
 
-    return features.map((feature) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(
-            Icons.close,
-            color: AppColors.primary, // بنفسجي لامع
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              feature,
-              style: TextStyle(
-                color: Colors.grey[700],
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+    return features
+        .map(
+          (feature) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.close,
+                  color: AppColors.primary, // بنفسجي لامع
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    feature,
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
-    )).toList();
+        )
+        .toList();
   }
 
   // المتابعة كضيف
@@ -501,9 +540,9 @@ class _IntroScreenState extends State<IntroScreen> {
       // استخدام AppStateProvider لتسجيل الدخول كضيف
       final appState = Provider.of<AppStateProvider>(context, listen: false);
       await appState.loginAsGuest();
-      
+
       if (!mounted) return;
-      
+
       // ✅ التحديث: الانتقال إلى AddressGateScreen بدلاً من HomeScreen مباشرة
       // يجب على الضيف اختيار عنوان توصيل قبل عرض المطاعم
       Navigator.pushReplacement(

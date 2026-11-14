@@ -1,0 +1,27 @@
+{
+  "status": "IMPLEMENTED_TESTED",
+  "customerBuild": 307,
+  "homeHeaderActions": [
+    "Account",
+    "Address",
+    "Cart"
+  ],
+  "accountActionsAdded": [
+    "Wallet (existing authenticated wallet route)",
+    "Favorites (existing scoped favorite-store list)"
+  ],
+  "bottomTabs": {
+    "0": "home",
+    "2": "notifications",
+    "4": "orders"
+  },
+  "legacyRoutesPreserved": [
+    "1 favorite route remains for compatibility",
+    "5 account route remains for compatibility",
+    "Order notification target index 4 unchanged"
+  ],
+  "notifications": "Existing inbox screen with existing unread indicator moved to bottom navigation",
+  "tests": 6,
+  "financialOrSessionBackendChanges": false,
+  "selectedTabVisual": "Gold panel with rounded top corners, fading to white at bottom; navy icon and label, 220ms transition"
+}

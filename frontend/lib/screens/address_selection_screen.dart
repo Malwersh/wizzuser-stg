@@ -8,10 +8,14 @@ import '../services/address_service.dart';
 
 class AddressSelectionScreen extends StatefulWidget {
   final DetailedAddress? currentAddress;
+  final String? regionId;
+  final bool savedOnly;
 
   const AddressSelectionScreen({
     super.key,
     this.currentAddress,
+    this.regionId,
+    this.savedOnly=false,
   });
 
   @override
@@ -40,7 +44,7 @@ class _AddressSelectionScreenState extends State<AddressSelectionScreen> {
       await _addressService.fetchAddresses();
       
       // If no address is selected but there's a default address, select it
-      if (_selectedAddress == null && _addressService.defaultAddress != null) {
+      if (_selectedAddress == null && _addressService.defaultAddress != null && (widget.regionId==null||_addressService.defaultAddress!.regionId==widget.regionId)) {
         _selectedAddress = _addressService.defaultAddress;
       }
     } catch (e) {
@@ -131,7 +135,7 @@ class _AddressSelectionScreenState extends State<AddressSelectionScreen> {
   }
 
   Widget _buildAddressList(EnhancedAddressService addressService) {
-    final addresses = addressService.detailedAddresses;
+    final addresses = addressService.detailedAddresses.where((a)=>widget.regionId==null||a.regionId==widget.regionId).toList();
 
     if (addresses.isEmpty) {
       return _buildEmptyState();
@@ -139,13 +143,13 @@ class _AddressSelectionScreenState extends State<AddressSelectionScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: addresses.length + 1, // +1 for current location option
+      itemCount: addresses.length + (widget.savedOnly?0:1), // +1 for current location option
       itemBuilder: (context, index) {
-        if (index == 0) {
+        if (!widget.savedOnly && index == 0) {
           return _buildCurrentLocationTile();
         }
         
-        final address = addresses[index - 1];
+        final address = addresses[index - (widget.savedOnly?0:1)];
         return _buildAddressTile(address);
       },
     );

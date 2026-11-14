@@ -1,0 +1,20 @@
+{
+  "part": 387,
+  "status": "customer_api_published_verified",
+  "cause": "Merchant publish was denied GetItem on staging-PlatformStaff; central category mapping was correctly saved but absent from old immutable menu snapshot",
+  "change": "Read current central product/category classification mappings with published menu, without changing product price/content or publishing merchant draft",
+  "verification": {
+    "products": 17,
+    "pizzaProducts": 6,
+    "classifiedPizzaProducts": 6,
+    "catalogVersion": 4,
+    "unchangedPublishedVersion": "1793350150680_1a9de586e7e4",
+    "automatedTests": 4
+  },
+  "permissions": {
+    "customer": "GetItem restricted to HOME_DISCOVERY partition",
+    "merchant": "GetItem and ConditionCheckItem restricted to HOME_DISCOVERY partition"
+  },
+  "merchant_publish": "Permission corrected; no merchant draft published by agent",
+  "hosting": "instruction-only overlay deployment in progress"
+}

@@ -1,0 +1,12 @@
+{
+  "part": 268,
+  "scope": "staging simulator",
+  "status": "INSTALLED_AND_LAUNCHED",
+  "customerBuild": 218,
+  "cause": "Driver tip was included in discount validation identity although it is not a discount input; changing it invalidated the discount and disabled review.",
+  "fix": "Discount context excludes tip; final commercial consent context explicitly includes tip. Cart, account, branch, address and delivery fee guards retained.",
+  "testsPassed": 25,
+  "testsSkipped": 1,
+  "serverOrFinancialDataChanged": false,
+  "humanTipRetry": "PENDING"
+}

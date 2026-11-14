@@ -1,3 +1,4 @@
+import '../models/live_driver_point.dart';
 // lib/services/websocket_service.dart
 
 import 'dart:async';
@@ -38,6 +39,7 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   Timer? _heartbeatTimer;
+  bool _authReconnectPending = false;
   Timer? _reconnectTimer;
   Timer? _connectionTimeoutTimer;
   StreamSubscription<SessionState>? _sessionSubscription;
@@ -54,6 +56,8 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
   // ✅ NEW: Flag to prevent multiple simultaneous connection attempts
   bool _connectionInProgress = false;
 
+  final _driverPoints = StreamController<LiveDriverPoint>.broadcast();
+  Stream<LiveDriverPoint> get driverLocations => _driverPoints.stream;
   final Map<String, StreamController<OrderModel>> _orderStreams = {};
   
   // StreamController for business status updates
@@ -270,11 +274,19 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
         final sessionService = SessionService.instance;
         userId = sessionService.currentUserId;
         // 🔧 إصلاح: استخدام idToken بدلاً من accessToken للحصول على معرف المستخدم
-        token = sessionService.idToken;
+        // Refresh the authentication pair before reusing the ID token for WS.
+        // Reopening the app alone must not replay an expired cached token.
+        final freshAccess = await sessionService.getToken();
+        userId = sessionService.currentUserId;
+        token = freshAccess == null ? null : sessionService.idToken;
         debugPrint('WebSocket: معرف المستخدم: ${userId ?? "غير متاح"}');
         debugPrint('WebSocket: ID Token متاح: ${token != null ? "نعم" : "لا"}');
       } catch (e) {
         debugPrint('WebSocket: لا يمكن الحصول على بيانات المصادقة: $e');
+      }
+
+      if (SessionService.instance.isLoggedIn && (token == null || token.isEmpty)) {
+        throw StateError('Authenticated realtime session unavailable');
       }
 
       // إعداد معلومات الجهاز والتطبيق بطريقة آمنة للويب
@@ -796,6 +808,10 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
         case 'order_status_changed':
           _handleOrderStatusChange(data);
           break;
+        case 'driver_location':
+          final point = LiveDriverPoint.parse(data);
+          if (point != null) _driverPoints.add(point);
+          break;
         case 'delivery_update':
           _handleDeliveryUpdate(data);
           break;
@@ -826,6 +842,20 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
         case 'GUEST_ORDERS_UPDATE':
           debugPrint('WebSocket: 🎭 معالجة تحديث طلبات الضيف');
           _handleGuestOrdersUpdate(data);
+          break;
+        case 'auth_error':
+          if (_authReconnectPending) break;
+          _authReconnectPending = true;
+          final orderIds = _orderStreams.keys.toList();
+          unawaited(() async {
+            try {
+              await disconnect();
+              await Future<void>.delayed(const Duration(seconds: 2));
+              if (SessionService.instance.isLoggedIn && orderIds.isNotEmpty) {
+                await connectForOrder(orderIds.first);
+              }
+            } finally { _authReconnectPending = false; }
+          }());
           break;
         case 'error':
           debugPrint('WebSocket: خطأ من الخادم: ${data['message']}');
@@ -1022,19 +1052,9 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
       final order = await orderService.getOrderDetails(orderId);
       
       if (order != null) {
-        // Parse estimatedDeliveryTime if provided
-        DateTime? parsedDeliveryTime;
-        if (estimatedDeliveryTime != null && estimatedDeliveryTime.isNotEmpty) {
-          try {
-            parsedDeliveryTime = DateTime.parse(estimatedDeliveryTime);
-          } catch (e) {
-            debugPrint('WebSocket: خطأ في تحويل وقت التوصيل: $e');
-          }
-        }
-        
         final updatedOrder = order.copyWith(
-          status: newStatus,
-          estimatedDeliveryTime: parsedDeliveryTime,
+          status: order.status,
+          estimatedDeliveryTime: order.estimatedDeliveryTime,
         );
         
         _orderStreams[streamKey]!.add(updatedOrder);
@@ -1059,22 +1079,10 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
       if (order != null) {
         debugPrint('WebSocket: ✅ تم جلب بيانات الطلب $orderId بنجاح');
         
-        // Parse estimatedDeliveryTime string to DateTime if provided
-        DateTime? parsedDeliveryTime;
-        if (estimatedDeliveryTime != null && estimatedDeliveryTime.isNotEmpty) {
-          try {
-            parsedDeliveryTime = DateTime.parse(estimatedDeliveryTime);
-            debugPrint('WebSocket: تم تحويل وقت التوصيل المتوقع: $parsedDeliveryTime');
-          } catch (e) {
-            debugPrint('WebSocket: خطأ في تحويل وقت التوصيل المتوقع: $e');
-            parsedDeliveryTime = null;
-          }
-        }
-        
-        // Update the order status - Force the new status from WebSocket
+        // A fresh server read takes precedence over a delayed notification.
         final updatedOrder = order.copyWith(
-          status: newStatus, // Always use the status from WebSocket
-          estimatedDeliveryTime: parsedDeliveryTime,
+          status: order.status, // Canonical read wins over a delayed notification hint
+          estimatedDeliveryTime: order.estimatedDeliveryTime,
         );
         
         debugPrint('WebSocket: 📤 إرسال الطلب المحدث للمستمعين - ID: ${updatedOrder.id}, Status: ${updatedOrder.status.arabicName}');

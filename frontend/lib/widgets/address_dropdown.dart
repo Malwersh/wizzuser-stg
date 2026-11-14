@@ -73,7 +73,9 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
     if (isGuest || !hasDefaultAddress) {
       // تشغيل GPS تلقائياً
-      print('🌍 تشغيل GPS تلقائياً للمستخدم ${isGuest ? "الضيف" : "بدون عناوين"}');
+      print(
+        '🌍 تشغيل GPS تلقائياً للمستخدم ${isGuest ? "الضيف" : "بدون عناوين"}',
+      );
       await addressService.getCurrentLocationAddress();
     }
 
@@ -94,7 +96,7 @@ class _AddressDropdownState extends State<AddressDropdown> {
     // فحص العنوان وإظهار التحذير إن وجد
     if (addressToCheck != null && mounted) {
       final isAvailable = await _checkRegionAvailability(addressToCheck);
-      
+
       if (!isAvailable && !_isWarningDismissed && mounted) {
         // تأخير بسيط للتأكد من اكتمال بناء الواجهة
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -119,89 +121,92 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
     _removeWarningOverlay();
 
-    final RenderBox? renderBox = _dropdownKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _dropdownKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null || !mounted) return;
 
     final offset = renderBox.localToGlobal(Offset.zero);
     final size = renderBox.size;
 
     _warningOverlay = OverlayEntry(
-      builder: (context) => Positioned(
-        left: offset.dx + 10,
-        top: offset.dy + size.height + 5, // أسفل شريط العنوان مباشرة
-        child: Material(
-          color: Colors.transparent,
-          child: CustomPaint(
-            painter: TooltipPainter(),
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: size.width - 20,
-                minWidth: 250,
-              ),
-              padding: const EdgeInsets.only(
-                top: 20, // مساحة للسهم
-                left: 16,
-                right: 16,
-                bottom: 16,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
+      builder:
+          (context) => Positioned(
+            left: offset.dx + 10,
+            top: offset.dy + size.height + 5, // أسفل شريط العنوان مباشرة
+            child: Material(
+              color: Colors.transparent,
+              child: CustomPaint(
+                painter: TooltipPainter(),
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: size.width - 20,
+                    minWidth: 250,
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.info_outline_rounded,
-                    color: Colors.white,
-                    size: 20,
+                  padding: const EdgeInsets.only(
+                    top: 20, // مساحة للسهم
+                    left: 16,
+                    right: 16,
+                    bottom: 16,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _serviceWarningMessage ?? 'موقعك بعيد عن نطاق خدماتنا.\nيرجى اختيار عنوان داخل العراق.',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        height: 1.4,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () {
-                      if (mounted) {
-                        setState(() {
-                          _isWarningDismissed = true;
-                        });
-                        _removeWarningOverlay();
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        color: const Color(0xFF00296B),
+                        size: 20,
                       ),
-                      child: const Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: 16,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _serviceWarningMessage ??
+                              'موقعك بعيد عن نطاق خدماتنا.\nيرجى اختيار عنوان داخل العراق.',
+                          style: const TextStyle(
+                            color: const Color(0xFF00296B),
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
+                          if (mounted) {
+                            setState(() {
+                              _isWarningDismissed = true;
+                            });
+                            _removeWarningOverlay();
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
     );
 
     // تحقق مرة أخرى من أن الـ widget ما زال mounted قبل إدراج الـ overlay
@@ -212,13 +217,20 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
   bool _isOutsideIraq(String? address) {
     if (address == null) return false;
-    return !(address.contains('العراق') || address.contains('Iraq') ||
-        address.contains('بغداد') || address.contains('Baghdad') ||
-        address.contains('البصرة') || address.contains('Basra') ||
-        address.contains('أربيل') || address.contains('Erbil') ||
-        address.contains('النجف') || address.contains('Najaf') ||
-        address.contains('كربلاء') || address.contains('Karbala') ||
-        address.contains('الموصل') || address.contains('Mosul'));
+    return !(address.contains('العراق') ||
+        address.contains('Iraq') ||
+        address.contains('بغداد') ||
+        address.contains('Baghdad') ||
+        address.contains('البصرة') ||
+        address.contains('Basra') ||
+        address.contains('أربيل') ||
+        address.contains('Erbil') ||
+        address.contains('النجف') ||
+        address.contains('Najaf') ||
+        address.contains('كربلاء') ||
+        address.contains('Karbala') ||
+        address.contains('الموصل') ||
+        address.contains('Mosul'));
   }
 
   /// فحص توفر الخدمة في المنطقة عبر Region API
@@ -231,14 +243,16 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
     // فحص أولي: هل العنوان في العراق؟
     if (_isOutsideIraq(address.fullAddress)) {
-      _serviceWarningMessage = 'موقعك بعيد عن نطاق خدماتنا.\nيرجى اختيار عنوان داخل العراق.';
+      _serviceWarningMessage =
+          'موقعك بعيد عن نطاق خدماتنا.\nيرجى اختيار عنوان داخل العراق.';
       return false;
     }
 
     // إذا لم يكن هناك GPS coordinates، نفترض أنه صحيح
     if (address.latitude == null || address.longitude == null) {
-      print('⚠️ No GPS coordinates for address, skipping region check');
-      return true;
+      _serviceWarningMessage =
+          'حدد نقطة العنوان على الخريطة للتحقق من التوصيل.';
+      return false;
     }
 
     try {
@@ -250,33 +264,34 @@ class _AddressDropdownState extends State<AddressDropdown> {
 
       if (result == null) {
         // المنطقة غير موجودة في النظام
-        _serviceWarningMessage = 'عذراً، هذه المنطقة غير مخدومة حالياً.\nيرجى اختيار عنوان آخر.';
+        _serviceWarningMessage =
+            'عذراً، هذه المنطقة غير مخدومة حالياً.\nيرجى اختيار عنوان آخر.';
         return false;
       }
 
       // فحص حالة المنطقة
       if (!result.effective.isActive) {
-        _serviceWarningMessage = 'هذه المنطقة غير نشطة مؤقتاً.\nيرجى اختيار عنوان آخر.';
+        _serviceWarningMessage =
+            'هذه المنطقة غير نشطة مؤقتاً.\nيرجى اختيار عنوان آخر.';
         return false;
       }
 
       // فحص توفر خدمة التوصيل
       if (!result.effective.hasDelivery) {
-        _serviceWarningMessage = 'خدمة التوصيل غير متوفرة في هذه المنطقة.\nيرجى اختيار عنوان آخر.';
+        _serviceWarningMessage =
+            'خدمة التوصيل غير متوفرة في هذه المنطقة.\nيرجى اختيار عنوان آخر.';
         return false;
       }
 
-      // كل شيء تمام! 
+      // كل شيء تمام!
       print('✅ المنطقة محددة: ${result.region.nameAr} (${result.region.name})');
       print('✅ خدمة التوصيل متوفرة');
       _serviceWarningMessage = null;
       return true;
-
     } catch (e) {
       print('❌ Error checking region availability: $e');
-      // في حالة الخطأ، نسمح بالمرور لتجنب blocking المستخدم
-      _serviceWarningMessage = null;
-      return true;
+      _serviceWarningMessage = 'تعذر التحقق من تغطية العنوان. أعد المحاولة.';
+      return false;
     }
   }
 
@@ -286,7 +301,7 @@ class _AddressDropdownState extends State<AddressDropdown> {
       builder: (context, addressService, child) {
         String addressText = '';
         DetailedAddress? addressToCheck;
-        
+
         // أولوية العرض: العنوان المختار من المستخدم > العنوان الافتراضي > الموقع الحالي
         if (widget.selectedAddress != null) {
           // عرض العنوان المختار من المستخدم (له الأولوية القصوى)
@@ -298,11 +313,13 @@ class _AddressDropdownState extends State<AddressDropdown> {
           addressText = addressService.defaultAddress!.fullAddress;
           addressToCheck = addressService.defaultAddress;
           print('📍 عرض العنوان الافتراضي: ${addressText}');
-          
+
           // إشعار الشاشة الرئيسية بالعنوان الافتراضي تلقائياً
           Future.microtask(() {
-            if (mounted && widget.onAddressChanged != null && 
-                widget.selectedAddress?.id != addressService.defaultAddress?.id) {
+            if (mounted &&
+                widget.onAddressChanged != null &&
+                widget.selectedAddress?.id !=
+                    addressService.defaultAddress?.id) {
               widget.onAddressChanged!(addressService.defaultAddress!);
             }
           });
@@ -311,11 +328,13 @@ class _AddressDropdownState extends State<AddressDropdown> {
           addressText = addressService.currentLocationAddress!.fullAddress;
           addressToCheck = addressService.currentLocationAddress;
           print('📍 عرض الموقع الحالي (GPS): ${addressText}');
-          
+
           // إشعار الشاشة الرئيسية بالموقع الحالي
           Future.microtask(() {
-            if (mounted && widget.onAddressChanged != null &&
-                widget.selectedAddress?.id != addressService.currentLocationAddress?.id) {
+            if (mounted &&
+                widget.onAddressChanged != null &&
+                widget.selectedAddress?.id !=
+                    addressService.currentLocationAddress?.id) {
               widget.onAddressChanged!(addressService.currentLocationAddress!);
             }
           });
@@ -324,12 +343,16 @@ class _AddressDropdownState extends State<AddressDropdown> {
         } else {
           addressText = 'اختر العنوان';
         }
-        
+
         // فحص توفر الخدمة في المنطقة (async)
-        if (addressToCheck != null && !_isWarningDismissed && _warningOverlay == null) {
+        if (addressToCheck != null &&
+            !_isWarningDismissed &&
+            _warningOverlay == null) {
           Future.microtask(() async {
             if (mounted) {
-              final isAvailable = await _checkRegionAvailability(addressToCheck);
+              final isAvailable = await _checkRegionAvailability(
+                addressToCheck,
+              );
               if (!isAvailable && mounted) {
                 _showWarningTooltip();
               }
@@ -410,17 +433,18 @@ class _AddressDropdownState extends State<AddressDropdown> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => AddressBottomSheet(
-        addressService: addressService,
-        onAddressSelected: (address) {
-          print('✅ تم اختيار عنوان: ${address.fullAddress}');
-          // إشعار الشاشة الرئيسية بالعنوان الجديد
-          if (widget.onAddressChanged != null) {
-            widget.onAddressChanged!(address);
-          }
-          Navigator.pop(context);
-        },
-      ),
+      builder:
+          (context) => AddressBottomSheet(
+            addressService: addressService,
+            onAddressSelected: (address) {
+              print('✅ تم اختيار عنوان: ${address.fullAddress}');
+              // إشعار الشاشة الرئيسية بالعنوان الجديد
+              if (widget.onAddressChanged != null) {
+                widget.onAddressChanged!(address);
+              }
+              Navigator.pop(context);
+            },
+          ),
     );
   }
 }
@@ -520,9 +544,7 @@ class AddressBottomSheet extends StatelessWidget {
                 child: Consumer<EnhancedAddressService>(
                   builder: (context, addressService, child) {
                     if (addressService.isLoading) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
+                      return const Center(child: CircularProgressIndicator());
                     }
 
                     if (addressService.error != null) {
@@ -581,41 +603,49 @@ class AddressBottomSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildCurrentLocationButton(BuildContext context, EnhancedAddressService addressService) {
+  Widget _buildCurrentLocationButton(
+    BuildContext context,
+    EnhancedAddressService addressService,
+  ) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: InkWell(
-        onTap: addressService.isLoadingLocation ? null : () async {
-          print('🎯 النقر على زر الموقع الحالي...');
-          await addressService.getCurrentLocationAddress();
-          print('📍 نتيجة GPS: ${addressService.currentLocationAddress?.fullAddress}');
-          print('❌ خطأ GPS: ${addressService.locationError}');
-          
-          if (addressService.currentLocationAddress != null &&
-              addressService.locationError == null) {
-            print('✅ إرسال الموقع الحالي إلى الشاشة الرئيسية');
-            onAddressSelected(addressService.currentLocationAddress!);
-          } else if (addressService.locationError != null) {
-            print('⚠️ فشل الحصول على الموقع: ${addressService.locationError}');
-            // عرض رسالة خطأ للمستخدم
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(addressService.locationError!),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            }
-          }
-        },
+        onTap:
+            addressService.isLoadingLocation
+                ? null
+                : () async {
+                  print('🎯 النقر على زر الموقع الحالي...');
+                  await addressService.getCurrentLocationAddress();
+                  print(
+                    '📍 نتيجة GPS: ${addressService.currentLocationAddress?.fullAddress}',
+                  );
+                  print('❌ خطأ GPS: ${addressService.locationError}');
+
+                  if (addressService.currentLocationAddress != null &&
+                      addressService.locationError == null) {
+                    print('✅ إرسال الموقع الحالي إلى الشاشة الرئيسية');
+                    onAddressSelected(addressService.currentLocationAddress!);
+                  } else if (addressService.locationError != null) {
+                    print(
+                      '⚠️ فشل الحصول على الموقع: ${addressService.locationError}',
+                    );
+                    // عرض رسالة خطأ للمستخدم
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(addressService.locationError!),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }
+                },
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border.all(
-              color: AppColors.primary.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
             borderRadius: BorderRadius.circular(12),
             color: AppColors.primary.withValues(alpha: 0.05),
           ),
@@ -629,7 +659,7 @@ class AddressBottomSheet extends StatelessWidget {
                 ),
                 child: const Icon(
                   Icons.my_location,
-                  color: Colors.white,
+                  color: const Color(0xFF00296B),
                   size: 20,
                 ),
               ),
@@ -651,20 +681,15 @@ class AddressBottomSheet extends StatelessWidget {
                     if (addressService.isLoadingLocation) ...[
                       const Text(
                         'جاري تحديد الموقع...',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ] else if (addressService.locationError != null) ...[
                       Text(
                         addressService.locationError!,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.red,
-                        ),
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
                       ),
-                    ] else if (addressService.currentLocationAddress != null) ...[
+                    ] else if (addressService.currentLocationAddress !=
+                        null) ...[
                       Text(
                         addressService.currentLocationAddress!.fullAddress,
                         style: const TextStyle(
@@ -677,10 +702,7 @@ class AddressBottomSheet extends StatelessWidget {
                     ] else ...[
                       const Text(
                         'اضغط لتحديد موقعك',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ],
@@ -710,21 +732,25 @@ class AddressBottomSheet extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             border: Border.all(
-              color: address.isDefault
-                  ? AppColors.primary.withValues(alpha: 0.5)
-                  : AppColors.primary.withValues(alpha: 0.2),
+              color:
+                  address.isDefault
+                      ? AppColors.primary.withValues(alpha: 0.5)
+                      : AppColors.primary.withValues(alpha: 0.2),
             ),
             borderRadius: BorderRadius.circular(12),
-            color: address.isDefault
-                ? AppColors.primary.withValues(alpha: 0.05)
-                : Colors.white,
+            color:
+                address.isDefault
+                    ? AppColors.primary.withValues(alpha: 0.05)
+                    : Colors.white,
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _getAddressTypeColor(address.addressType).withValues(alpha: 0.1),
+                  color: _getAddressTypeColor(
+                    address.addressType,
+                  ).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: _getAddressTypeColor(address.addressType),
@@ -765,7 +791,7 @@ class AddressBottomSheet extends StatelessWidget {
                             child: const Text(
                               'افتراضي',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: const Color(0xFF00296B),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -777,10 +803,7 @@ class AddressBottomSheet extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       address.fullAddress,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -793,82 +816,114 @@ class AddressBottomSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: PopupMenuButton<String>(
-                  onSelected: (value) => _handleAddressAction(context, value, address),
+                  onSelected:
+                      (value) => _handleAddressAction(context, value, address),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   color: Colors.white,
                   elevation: 8,
-                  itemBuilder: (context) => [
-                    if (!address.isDefault)
-                      PopupMenuItem(
-                        value: 'set_default',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.star, size: 18, color: Colors.amber),
+                  itemBuilder:
+                      (context) => [
+                        if (!address.isDefault)
+                          PopupMenuItem(
+                            value: 'set_default',
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 4,
                               ),
-                              const SizedBox(width: 12),
-                              const Text('تعيين كافتراضي'),
-                            ],
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.star,
+                                      size: 18,
+                                      color: Colors.amber,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text('تعيين كافتراضي'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 4,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit,
+                                    size: 18,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text('تعديل'),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.edit, size: 18, color: Colors.blue),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 4,
                             ),
-                            const SizedBox(width: 12),
-                            const Text('تعديل'),
-                          ],
-                        ),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.delete, size: 18, color: Colors.red),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete,
+                                    size: 18,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'حذف',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            const Text('حذف', style: TextStyle(color: Colors.red)),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                      ],
                   icon: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       color: Colors.grey[100],
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.more_vert, color: Colors.grey, size: 16),
+                    child: const Icon(
+                      Icons.more_vert,
+                      color: Colors.grey,
+                      size: 16,
+                    ),
                   ),
                 ),
               ),
@@ -888,9 +943,7 @@ class AddressBottomSheet extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            border: Border.all(
-              color: AppColors.primary.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
             borderRadius: BorderRadius.circular(12),
             color: AppColors.primary.withValues(alpha: 0.05),
           ),
@@ -905,7 +958,7 @@ class AddressBottomSheet extends StatelessWidget {
                 ),
                 child: const Icon(
                   Icons.add,
-                  color: Colors.white,
+                  color: const Color(0xFF00296B),
                   size: 20,
                 ),
               ),
@@ -925,7 +978,11 @@ class AddressBottomSheet extends StatelessWidget {
     );
   }
 
-  void _handleAddressAction(BuildContext context, String action, DetailedAddress address) {
+  void _handleAddressAction(
+    BuildContext context,
+    String action,
+    DetailedAddress address,
+  ) {
     final addressService = context.read<EnhancedAddressService>();
 
     switch (action) {
@@ -953,130 +1010,131 @@ class AddressBottomSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       backgroundColor: Colors.white,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle indicator
-            Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-
-            // Icon and title
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.delete_outline,
-                color: Colors.red,
-                size: 48,
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            const Text(
-              'تأكيد الحذف',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Text(
-              'هل أنت متأكد من حذف عنوان "${address.name}"؟',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[700],
-                height: 1.4,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              'لا يمكن التراجع عن هذا الإجراء.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // Buttons
-            Row(
+      builder:
+          (context) => Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey[600],
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                    child: const Text(
-                      'إلغاء',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                // Handle indicator
+                Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
 
-                const SizedBox(width: 12),
-
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      await addressService.deleteAddress(address.id);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.secondary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'حذف',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                // Icon and title
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 48,
                   ),
                 ),
+
+                const SizedBox(height: 20),
+
+                const Text(
+                  'تأكيد الحذف',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Text(
+                  'هل أنت متأكد من حذف عنوان "${address.name}"؟',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[700],
+                    height: 1.4,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'لا يمكن التراجع عن هذا الإجراء.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[500],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.grey[600],
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                        ),
+                        child: const Text(
+                          'إلغاء',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await addressService.deleteAddress(address.id);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.secondary,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'حذف',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
               ],
             ),
-
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
@@ -1085,9 +1143,7 @@ class AddressBottomSheet extends StatelessWidget {
     final addressService = context.read<EnhancedAddressService>();
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const AddAddressScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const AddAddressScreen()),
     ).then((result) {
       // إذا تم إضافة عنوان جديد بنجاح، حدث الشاشة الرئيسية
       if (result == true) {
@@ -1146,9 +1202,10 @@ class AddressBottomSheet extends StatelessWidget {
 class TooltipPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.primary
-      ..style = PaintingStyle.fill;
+    final paint =
+        Paint()
+          ..color = AppColors.primary
+          ..style = PaintingStyle.fill;
 
     // رسم مثلث صغير في الأعلى (السهم المؤشر)
     final path = Path();

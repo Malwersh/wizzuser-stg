@@ -1,0 +1,17 @@
+{
+  "part": 410,
+  "status": "installed-simulator",
+  "build": 369,
+  "changes": [
+    "Home becomes results mode for filters, topic, activity, search or explicit sorting",
+    "Hide slideshow and managed/legacy recommendation sections while results mode is active",
+    "Show result count, pending state and reset control including zero results",
+    "Reset all three strips, sorting, price band and search with stale filter request invalidation",
+    "Use shorter images in vertical filtered results"
+  ],
+  "verification": {
+    "automatedTests": 18,
+    "iosBuild": "passed",
+    "analyzer": "No errors/warnings; existing info-level notices"
+  }
+}

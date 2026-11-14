@@ -1,0 +1,57 @@
+{
+  "release": 348,
+  "date": "2026-10-29",
+  "status": "STAGING_INVOICE_POINT_PREVIEW_CONFIRMED_DRIVER_COORDINATES_REMOVED",
+  "driver": {
+    "cityAndCountryOnly": true,
+    "rawCoordinatesNeverDisplayed": true,
+    "fallback": "موقعك المحدد على الخريطة",
+    "releaseBuildInstalledOnRealIphone": true,
+    "commit": "c8e060e"
+  },
+  "customerInvoice": {
+    "causes": [
+      "Point invoice bundled SDK commands were incompatible with host document-client middleware during account profile reads.",
+      "Published discount-contract module lacked hasDiscountCustomizations, discountOptionSelection and discountGoodsSelection required by the order handler.",
+      "Owned platform-benefits module and its runtime were absent from the deployed package; detected by package dependency audit."
+    ],
+    "fixes": [
+      "Normalize permitted read commands and ConditionCheck-only transactions to the host SDK without bypassing account or quote checks.",
+      "Publish current item contract and the two missing tracked invoice dependencies.",
+      "Show domain failures separately from genuine HTTP-client/time-out connection failures in the cart."
+    ],
+    "publication": {
+      "name": "WizzUser-CreateOrder-staging",
+      "baseHash": "d20s3Hr4khgJ/6Ue9z+k55u499qlxZQwtYWjsMAIjxY=",
+      "hash": "70z4biC+IdKkGryfr+F82S9KzI7FIl61ELBKP1Nwa+Q=",
+      "changedEntries": [
+        "functions/create-order/index.js",
+        "functions/create-order/point-invoice-321.js",
+        "functions/shared/discount-contract.js",
+        "functions/shared/platform-benefits-runtime.js",
+        "functions/shared/platform-benefits.js"
+      ],
+      "unrelatedEntriesPreserved": true,
+      "settingsAndPermissionsUnchanged": true,
+      "previousHash": "fBhKTCUKKr0g03C5EsTNeMqTNfi6yj5PSbvxXVilPp0=",
+      "contractExportsVerified": true
+    },
+    "verification": {
+      "actualSavedBasketPreview": "POINT_INVOICE_READY from the real customer app after deployment",
+      "customerTotalIqd": 14000,
+      "basketAtVerification": "4 items; do not assume this equals the earlier 5-item screenshot",
+      "ownedDependencyAuditModules": 14,
+      "missingDependencies": 0,
+      "humanContinueAndOrderSubmission": "PENDING_USER_RETRY; no order submitted by this audit"
+    }
+  },
+  "tests": {
+    "driverNotice": 3,
+    "pointInvoiceFlutter": 7,
+    "backendPointReadOnlyAndSdkInterop": 7,
+    "discountRegression": 29,
+    "platformBenefitStacking": 3
+  },
+  "financialAndOrderBusinessMutationsExecuted": false,
+  "next": "User continues current basket; then resume genuine realtime offer/card/audio acceptance before M05."
+}

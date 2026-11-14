@@ -1,0 +1,23 @@
+{
+  "part": 401,
+  "status": "implemented",
+  "build": 357,
+  "findings": [
+    "Favorites read raw access token without SessionService refresh",
+    "Reads merged local deleted records and ignored authoritative empty results",
+    "Concurrent refresh and mutation could overwrite hearts; no per-store coalescing",
+    "Saved stores screen did not listen to model changes"
+  ],
+  "changes": [
+    "Use refreshed authentication token and canonical current account id",
+    "Shared account-scoped state with late-response guards",
+    "Authoritative successful server reads; cache preserved on failed reads",
+    "Verify ambiguous failed writes before rollback; no blind write retry",
+    "Per-store mutation coalescing and reactive saved stores screen"
+  ],
+  "verification": {
+    "automatedTests": 17,
+    "build": "iOS simulator passed",
+    "historicalError": "No matching error returned in queried AddFavorite log events; exact first failure not established"
+  }
+}

@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 // lib/screens/email_verification_screen.dart
 import 'package:flutter/material.dart';
 import 'dart:developer' as developer;
@@ -32,11 +33,13 @@ class EmailVerificationScreen extends StatefulWidget {
   });
 
   @override
-  State<EmailVerificationScreen> createState() => _EmailVerificationScreenState();
+  State<EmailVerificationScreen> createState() =>
+      _EmailVerificationScreenState();
 }
 
 class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
-  final TextEditingController _verificationCodeController = TextEditingController();
+  final TextEditingController _verificationCodeController =
+      TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -49,7 +52,9 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   Future<void> _sendVerificationCode() async {
     try {
       // لا نقوم بإعادة إرسال تلقائي عند فتح الشاشة.
-      developer.log('📧 Email verification screen opened for: ${widget.email} (tempUserId=${widget.userId ?? ''})');
+      developer.log(
+        '📧 Email verification screen opened for: ${widget.email} (tempUserId=${widget.userId ?? ''})',
+      );
     } catch (e) {
       setState(() {
         _errorMessage = 'فشل في إرسال رمز التحقق: $e';
@@ -65,9 +70,10 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
       return;
     }
 
-    final tempUserId = (widget.userId != null && widget.userId!.trim().isNotEmpty)
-        ? widget.userId!.trim()
-        : '';
+    final tempUserId =
+        (widget.userId != null && widget.userId!.trim().isNotEmpty)
+            ? widget.userId!.trim()
+            : '';
 
     if (tempUserId.isEmpty) {
       setState(() {
@@ -93,26 +99,30 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         );
 
         if (result['success'] == true) {
-          developer.log('✅ Email verified successfully (tempUserId=$tempUserId)');
+          developer.log(
+            '✅ Email verified successfully (tempUserId=$tempUserId)',
+          );
           if (!mounted) return;
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (_) => const LoginScreen(),
-            ),
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
           );
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ?? 'تم تأكيد البريد الإلكتروني. يمكنك تسجيل الدخول الآن'),
+              content: Text(
+                result['message'] ??
+                    'تم تأكيد البريد الإلكتروني. يمكنك تسجيل الدخول الآن',
+              ),
               backgroundColor: Colors.green,
             ),
           );
         } else {
           if (!mounted) return;
           setState(() {
-            _errorMessage = result['error'] ?? result['message'] ?? 'فشل التحقق من الرمز';
+            _errorMessage =
+                result['error'] ?? result['message'] ?? 'فشل التحقق من الرمز';
           });
         }
       } else {
@@ -154,7 +164,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             const Icon(
               Icons.email_outlined,
               size: 80,
-              color: AppColors.primary,
+              color: const Color(0xFF00296B),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -169,10 +179,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
             Text(
               'لقد أرسلنا رمز التحقق إلى\n${widget.email}',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 32),
             TextField(
@@ -212,33 +219,39 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _verifyCode,
                 style: ElevatedButton.styleFrom(
+                  foregroundColor: readableForeground(AppColors.primary),
                   backgroundColor: AppColors.primary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text(
-                        'تحقق',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                child:
+                    _isLoading
+                        ? const CircularProgressIndicator(
+                          color: const Color(0xFF00296B),
+                        )
+                        : const Text(
+                          'تحقق',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF00296B),
+                          ),
                         ),
-                      ),
               ),
             ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: () async {
-                final tempUserId = (widget.userId != null && widget.userId!.isNotEmpty)
-                    ? widget.userId!
-                    : '';
+                final tempUserId =
+                    (widget.userId != null && widget.userId!.isNotEmpty)
+                        ? widget.userId!
+                        : '';
 
                 if (tempUserId.isEmpty) {
                   setState(() {
-                    _errorMessage = 'لا يمكن إعادة الإرسال: معرف المستخدم غير متوفر';
+                    _errorMessage =
+                        'لا يمكن إعادة الإرسال: معرف المستخدم غير متوفر';
                   });
                   return;
                 }
@@ -259,13 +272,18 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   if (result['success'] == true) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(result['message'] ?? 'تم إعادة إرسال الرمز'),
+                        content: Text(
+                          result['message'] ?? 'تم إعادة إرسال الرمز',
+                        ),
                         backgroundColor: Colors.green,
                       ),
                     );
                   } else {
                     setState(() {
-                      _errorMessage = result['error'] ?? result['message'] ?? 'فشل في إعادة إرسال الرمز';
+                      _errorMessage =
+                          result['error'] ??
+                          result['message'] ??
+                          'فشل في إعادة إرسال الرمز';
                     });
                   }
                 } catch (e) {
@@ -282,7 +300,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               },
               child: const Text(
                 'إعادة إرسال الرمز',
-                style: TextStyle(color: AppColors.primary),
+                style: TextStyle(color: const Color(0xFF00296B)),
               ),
             ),
           ],

@@ -1,15 +1,20 @@
+import 'dart:ui' as ui;
+import '../widgets/account_overview.dart';
+import 'orders_screen.dart';
+import 'wallet_transfer_screen.dart';
+import 'customer_legal_screen.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'package:provider/provider.dart';
 import 'dart:developer' as developer;
 import '../providers/app_state_provider.dart';
 import '../services/user_profile_service.dart';
+import '../services/session_service.dart';
 import '../services/logout_service.dart';
 import 'login_screen.dart';
 import 'register_screen_tabs.dart';
 import 'addresses_screen.dart';
-import 'change_email_phone_screen.dart';
-import 'change_password_screen.dart';
+import 'verified_phone_screen.dart';
 import 'notification_settings_screen.dart';
 import 'language_settings_screen.dart';
 import 'country_settings_screen.dart';
@@ -18,8 +23,9 @@ import 'personal_info_screen.dart';
 
 class ImprovedAccountScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final WidgetBuilder? favoritesBuilder;
 
-  const ImprovedAccountScreen({super.key, this.onBack});
+  const ImprovedAccountScreen({super.key, this.onBack, this.favoritesBuilder});
 
   @override
   State<ImprovedAccountScreen> createState() => _ImprovedAccountScreenState();
@@ -29,14 +35,19 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
   Map<String, dynamic>? userProfile;
   bool isLoadingProfile = false;
   String? profileError;
+  String? _profileOwner;
+  int _profileGeneration = 0;
   bool _hasLoadedOnce = false; // 🔧 إضافة فلاج لتجنب التحميل المتكرر
-  bool _isDisposed = false; // 🔧 إضافة فلاج للتأكد من عدم استدعاء setState بعد dispose
+  bool _isDisposed =
+      false; // 🔧 إضافة فلاج للتأكد من عدم استدعاء setState بعد dispose
   bool _isLoggingOut = false; // 🔧 فلاج لمنع تكرار محاولات تسجيل الخروج
 
   @override
   void initState() {
     super.initState();
     developer.log('🔧 ImprovedAccountScreen initState() called');
+    _profileOwner = SessionService.instance.currentUserId;
+    SessionService.instance.addListener(_onSessionChanged);
     _initializeAndLoadProfile();
   }
 
@@ -49,6 +60,8 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
   @override
   void dispose() {
+    SessionService.instance.removeListener(_onSessionChanged);
+    _profileGeneration++;
     _isDisposed = true; // 🔧 منع أي setState بعد dispose
     super.dispose();
   }
@@ -59,89 +72,67 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     await _loadUserProfile();
   }
 
-  Future<void> _loadUserProfile() async {
-    final appState = Provider.of<AppStateProvider>(context, listen: false);
-    
-    // 🔧 فحوصات الأمان الأساسية
-    if (!mounted || _isDisposed) return;
-    
-    // 🔧 منع التحميل المتكرر
-    if (_hasLoadedOnce) {
-      developer.log('⚠️ تم تجنب التحميل المتكرر', name: 'IMPROVED_ACCOUNT');
+  void _onSessionChanged() {
+    final owner = SessionService.instance.currentUserId;
+    if (owner == _profileOwner || !mounted) return;
+    _profileOwner = owner;
+    _profileGeneration++;
+    setState(() {
+      userProfile = null;
+      _hasLoadedOnce = false;
+      profileError = null;
+    });
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile({bool force = false}) async {
+    if (!mounted || _isDisposed || (_hasLoadedOnce && !force)) return;
+    final owner = SessionService.instance.currentUserId;
+    final generation = ++_profileGeneration;
+    if (owner == null || !SessionService.instance.isLoggedIn) {
+      setState(() {
+        userProfile = null;
+        isLoadingProfile = false;
+      });
       return;
     }
-    
-    // 🔧 تحميل البروفايل للمستخدمين المسجلين فقط
-    if (appState.isLoggedIn && appState.userData != null) {
-      if (mounted && !_isDisposed) {
-        setState(() {
-          isLoadingProfile = true;
-          profileError = null;
-        });
-      }
-
-      try {
-        final userId = appState.userData!['userId'] ?? 
-                      appState.userData!['user_id'] ?? 
-                      appState.userData!['email'];
-        
-        if (userId != null) {
-          final profile = await UserProfileService.getUserProfile(userId.toString());
-          if (mounted && !_isDisposed) {
-            setState(() {
-              userProfile = profile;
-              isLoadingProfile = false;
-              _hasLoadedOnce = true;
-            });
-          }
-        } else {
-          if (mounted && !_isDisposed) {
-            setState(() {
-              profileError = 'لم يتم العثور على معرف المستخدم';
-              isLoadingProfile = false;
-              _hasLoadedOnce = true;
-            });
-          }
-        }
-      } catch (e) {
-        if (mounted && !_isDisposed) {
-          setState(() {
-            profileError = 'خطأ في جلب بيانات المستخدم: $e';
-            isLoadingProfile = false;
-            _hasLoadedOnce = true;
-          });
-        }
-      }
-    } else {
-      // للضيوف أو غير المسجلين
-      if (mounted && !_isDisposed) {
-        setState(() {
-          userProfile = null;
-          isLoadingProfile = false;
-          profileError = null;
-          _hasLoadedOnce = true;
-        });
-      }
+    setState(() {
+      isLoadingProfile = true;
+      profileError = null;
+    });
+    final profile = await UserProfileService.getUserProfile(owner);
+    if (!mounted ||
+        _isDisposed ||
+        generation != _profileGeneration ||
+        owner != SessionService.instance.currentUserId) {
+      return;
     }
+    setState(() {
+      userProfile = profile;
+      isLoadingProfile = false;
+      _hasLoadedOnce = profile != null;
+      profileError = profile == null ? 'تعذر تحديث معلومات الحساب' : null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: widget.onBack != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.black),
-                onPressed: widget.onBack,
-              )
-            : null,
+        leading:
+            widget.onBack != null
+                ? IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.black),
+                  onPressed: widget.onBack,
+                )
+                : null,
         title: const Text(
           'حسابي',
           style: TextStyle(
-            color: Colors.black,
+            color: AppColors.secondaryDark,
             fontSize: 22,
             fontWeight: FontWeight.bold,
           ),
@@ -156,6 +147,21 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             child: Column(
               children: [
                 _buildUserInfoCard(appState),
+                if (profileError != null)
+                  TextButton.icon(
+                    onPressed:
+                        isLoadingProfile
+                            ? null
+                            : () => _loadUserProfile(force: true),
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: AppColors.secondaryDark,
+                    ),
+                    label: Text(
+                      '$profileError · إعادة المحاولة',
+                      style: const TextStyle(color: AppColors.secondaryDark),
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 _buildOptionsMenu(appState),
               ],
@@ -168,188 +174,65 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
   Widget _buildUserInfoCard(AppStateProvider appState) {
     final isLoggedIn = appState.isLoggedIn;
-    final userData = appState.userData;
+    final userData = SessionService.instance.currentUser ?? appState.userData;
 
     // إصلاح: عرض البيانات من المصادر الصحيحة
-    final userName = userData?['name'] ?? userData?['username'] ?? userData?['userName'] ?? 'مستخدم';
-    final userEmail = userData?['email'] ?? userData?['userEmail'] ?? 'غير محدد';
-    
-    // 🔧 إصلاح: إزالة الـ developer.log من build methods لتجنب اللوب اللانهائي
+    final userName =
+        userData?['name'] ??
+        userData?['username'] ??
+        userData?['userName'] ??
+        'مستخدم';
+    final userPhone = [
+          userProfile?['phone'],
+          userData?['phone'],
+          userData?['phoneNumber'],
+          userData?['phone_number'],
+          userData?['userPhone'],
+        ]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere(
+          (value) => value.isNotEmpty,
+          orElse: () => 'رقم الهاتف غير مضاف',
+        );
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // أيقونة المستخدم
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(50),
-              border: Border.all(
-                color: Colors.white,
-                width: 3,
-              ),
-            ),
-            child: Icon(
-              isLoggedIn ? Icons.person : Icons.person_outline,
-              size: 50,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 20),
-          
-          // معلومات المستخدم
-          if (isLoggedIn) ...[
-            Text(
-              userName,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                userEmail,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black,
-                  fontWeight: FontWeight.w500,
+    if (isLoggedIn) {
+      final name = [userProfile?['name'], userProfile?['fullName'], userName]
+          .map((v) => v?.toString().trim() ?? '')
+          .firstWhere((v) => v.isNotEmpty, orElse: () => 'حسابي');
+      return AccountOverview(
+        name: name,
+        phone: userPhone,
+        photoUrl:
+            (userProfile?['photoUrl'] ?? userData?['photoUrl'])?.toString(),
+        onFavorites:
+            widget.favoritesBuilder == null
+                ? null
+                : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: widget.favoritesBuilder!),
                 ),
-              ),
+        onWallet:
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WalletTransferScreen()),
             ),
-          ] else ...[
-            // 🔧 إصلاح: عرض تصميم الضيف دائماً للمستخدمين غير المسجلين
-            const Text(
-              'مرحباً ضيفنا الكريم',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+        onOrders:
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OrdersScreen()),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'أنت تتصفح كضيف - سجل للحصول على تجربة أفضل!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.secondary.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.star, color: Colors.black, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'مستخدم ضيف',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(Icons.star, color: Colors.black, size: 20),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'سجّل حساباً واحفظ طلباتك المفضلة\nواحصل على عروض خاصة!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            // أزرار تسجيل الدخول وإنشاء الحساب
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _navigateToLogin(),
-                    icon: const Icon(Icons.login, size: 20),
-                    label: const Text('تسجيل الدخول'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _navigateToRegister(),
-                    icon: const Icon(Icons.person_add, size: 20),
-                    label: const Text('إنشاء حساب'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.secondary,
-                      side: const BorderSide(color: Colors.white, width: 2),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+      );
+    }
+
+    return GuestAccountOverview(
+      onLogin: _navigateToLogin,
+      onRegister: _navigateToRegister,
     );
   }
 
   Widget _buildOptionsMenu(AppStateProvider appState) {
     final isLoggedIn = appState.isLoggedIn;
-    
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -378,19 +261,13 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             ),
             _buildDivider(),
             _buildMenuItem(
-              icon: Icons.email,
-              title: 'تغيير البريد/الهاتف',
-              onTap: () => _navigateToChangeEmailPhone(),
-            ),
-            _buildDivider(),
-            _buildMenuItem(
-              icon: Icons.lock,
-              title: 'تغيير كلمة المرور',
-              onTap: () => _navigateToChangePassword(),
+              icon: Icons.phone,
+              title: 'تغيير الهاتف',
+              onTap: () => _navigateToChangePhone(),
             ),
             _buildDivider(),
           ],
-          
+
           _buildMenuItem(
             icon: Icons.notifications,
             title: 'إعدادات الإشعارات',
@@ -407,8 +284,21 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
             icon: Icons.public,
             title: 'الدولة والمنطقة',
             onTap: () => _navigateToCountrySettings(),
-            ),
-          
+          ),
+
+          _buildDivider(),
+          _buildMenuItem(
+            icon: Icons.policy_outlined,
+            title: 'السياسات والشروط',
+            onTap:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CustomerLegalScreen(),
+                  ),
+                ),
+          ),
+
           if (isLoggedIn) ...[
             _buildDivider(),
             _buildMenuItem(
@@ -459,8 +349,9 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
               ),
             ),
             Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
+              Icons.chevron_left,
+              textDirection: ui.TextDirection.ltr,
+              size: 20,
               color: Colors.grey[400],
             ),
           ],
@@ -485,7 +376,7 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
 
     try {
       final success = await LogoutService.performSecureLogout(context);
-      
+
       if (success) {
         // إعادة تعيين الحالة المحلية بأمان
         _hasLoadedOnce = false;
@@ -518,50 +409,47 @@ class _ImprovedAccountScreenState extends State<ImprovedAccountScreen> {
     // 🔧 إصلاح نهائي: استخدام push عادي بدلاً من pushAndRemoveUntil لتجنب تعارض التنقل
     // بعد تسجيل الدخول بنجاح، ستتولى شاشة تسجيل الدخول نفسها التنقل الصحيح
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const LoginScreen()));
   }
 
   void _navigateToRegister() {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const RegisterScreenTabs()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const RegisterScreenTabs()));
   }
 
-  void _navigateToPersonalInfo() {
+  Future<void> _navigateToPersonalInfo() async {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const PersonalInfoScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const PersonalInfoScreen()));
+    if (mounted) await _loadUserProfile(force: true);
   }
 
   void _navigateToAddresses() {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const AddressesScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const AddressesScreen()));
   }
 
-  void _navigateToChangeEmailPhone() {
+  Future<void> _navigateToChangePhone() async {
     if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ChangeEmailPhoneScreen()),
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const VerifiedPhoneScreen()),
     );
-  }
-
-  void _navigateToChangePassword() {
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ChangePasswordScreen()),
-    );
+    if (mounted) await _loadUserProfile(force: true);
   }
 
   void _navigateToNotificationSettings() {
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()),
+      MaterialPageRoute(
+        builder: (context) => const NotificationSettingsScreen(),
+      ),
     );
   }
 

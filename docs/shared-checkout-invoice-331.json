@@ -1,0 +1,68 @@
+{
+  "part": 331,
+  "status": "IMPLEMENTED_SIMULATOR241_INSTALLED",
+  "scope": "Client shared invoice preparation and review cancellation; no deployed backend/policy changes.",
+  "preparation": [
+    "Existing basket starts preparation from home/restaurant/cart when account and saved destination are available",
+    "250ms quiet debounce combines basket edits",
+    "Single-flight whole-invoice requests and independent single-flight route lookup",
+    "Same valid destination quote reused for quantity/tip/benefit changes",
+    "No empty-basket final fee invented on app launch"
+  ],
+  "cache": {
+    "lifetime": "Server supplied expiry only, never extended locally",
+    "storage": "Volatile memory,12 invoices and12 route quotes; bounded retry records",
+    "scope": [
+      "account",
+      "branch",
+      "saved address identity and exact coordinates",
+      "item identity/quantity/price/selection fields",
+      "payment method",
+      "tip",
+      "discount/promotion/benefit identifiers"
+    ],
+    "displayMetadata": "Address/store label formatting does not generate another price request",
+    "refresh": "Foreground quiet refresh near expiry; valid displayed snapshot survives refresh failure; quote expiry still blocks approval. Background requests have their own read-only controller.",
+    "retry": "Cooldown prevents repeated request loops; minimum-order hint is separate from a network error."
+  },
+  "checkout": [
+    "Cart displays effective service and final total from shared authoritative invoice",
+    "Checkout reuses prepared quote/invoice; no extra storefront pricing request",
+    "Review uses unexpired matching prepared proposal/request ID; no redundant preview merely to open or close review",
+    "Review dismissal returns cancelled=true and no error notification, pending attempt, order or offer reservation",
+    "Fresh reviewed proposal feeds same shared invoice displayed underneath",
+    "Final order request retains original server consent digest, quote/agreement/policy/catalog/funding/version fences",
+    "Expired context renews; definite precommit rejections invalidate cached snapshot; ambiguous results retain original pending recovery",
+    "Successful order clears shared price cache"
+  ],
+  "tests": {
+    "flutterCurrentPassed": 52,
+    "specializedScopedBuildSkipped": 1,
+    "flutterLegacyPassed": 29,
+    "actualBackendHandlerAcceptancePassed": 13,
+    "newServerCases": "NONE/MERCHANT/PLATFORM delivery funding: same prepared price/request ID survives final customer/store metadata and replay creates exactly one mocked order",
+    "coverage": [
+      "duplicate screen loads",
+      "concurrent distinct baskets share route",
+      "quantity/tip/discount invalidation",
+      "account and destination isolation",
+      "ignore old asynchronous results",
+      "retain valid snapshot after refresh failure",
+      "close/reopen review with zero additional preview/order requests",
+      "final-send-only HTTP request and ambiguous-result pending retention",
+      "expired snapshot renews before review",
+      "failure cooldown",
+      "OrderService dismissal is not an error"
+    ],
+    "verification": "All financial writes are mocked. No real order, wallet movement or discount usage performed for tests.",
+    "analyzer": "No errors or warnings in changed files; informational style findings remain."
+  },
+  "native": {
+    "build": 241,
+    "mode": "debug simulator",
+    "target": "09DA4C20-FD4B-446E-8C2F-9D04E5CFC206",
+    "dataPreserved": true,
+    "installed": true
+  },
+  "limitations": "A first uncached price still needs server response; only actual basket/eligible agreement inputs produce a final service charge. Expiry or material input changes require a new validated invoice."
+}

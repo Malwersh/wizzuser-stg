@@ -1,4 +1,5 @@
-const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { PrivateOrderApiClient: ApiGatewayManagementApiClient } = require('../../private-order-delivery-346');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand, ScanCommand, DeleteCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -283,6 +284,7 @@ function getStatusMessage(status) {
  * Lambda handler that uses the enhanced function
  */
 exports.handler = async (event) => {
+  if(event.source==='wizz.driver-location-438')return require('../../live-trip-438').broadcast(docClient,event);
   console.log('Enhanced WebSocket Send Update Handler');
   console.log('Event:', JSON.stringify(event, null, 2));
   

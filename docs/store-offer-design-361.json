@@ -1,0 +1,12 @@
+{
+  "part": 361,
+  "changes": [
+    "Active category underline with navy text, no filled pill",
+    "Compact offer card opens full conditions and campaign image in bottom sheet",
+    "Horizontal scoped-product offer rail; original unit price retained because redemption is order-scoped"
+  ],
+  "tests": 9,
+  "testResult": "passed",
+  "backendChanged": false,
+  "note": "Basket-wide fixed discounts excluded from item rail; item/category targeting validated against branch and dates"
+}

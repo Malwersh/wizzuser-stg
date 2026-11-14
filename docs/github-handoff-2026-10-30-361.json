@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-30",
+  "part": 361,
+  "repo": "wizzuser-stg",
+  "sourceBranch": "feature/malwersh/bootstrap",
+  "mirrorBranch": "integration/team-sync-20261030",
+  "approvalTarget": "staging-main",
+  "state": "READY_FOR_COLLEAGUE_REVIEW_AFTER_PUSH",
+  "baseCommit": "34ced9d8cc2a54d304ee6dbe32e9a39a3297094b",
+  "includesDesignSource": true,
+  "includesBackendAndTests": true,
+  "scope": [
+    "Flexible managed home-section selection and discovery rules",
+    "Store design: compact photo hero, rounded body, inline delivery/minimum/preparation strip, underlined menu tabs and photo menu cards",
+    "Offer detail sheets and scoped meal offers rail",
+    "Authoritative per-piece markdown mode, original and net prices, scoped expiring projections, cart/invoice linkage"
+  ],
+  "tests": [
+    "35 backend tests passed",
+    "34 customer Flutter tests passed",
+    "iOS simulator build passed; installed on iPhone 16 Pro",
+    "Home selection tests and previous verified home-rules checks retained"
+  ],
+  "deployment": "See item-markdown-publication-361.json and home-rules-publication-361.json in central repository; staging already updated, no need for blind full redeployment.",
+  "humanOrderAcceptance": "A new per-piece offer and complete order still need the agreed human acceptance test. No test campaign or financial records were fabricated.",
+  "pullInstructions": [
+    "Approve and merge the open PR into staging-main, then git pull --ff-only origin staging-main",
+    "For review before merge: fetch origin and use feature/malwersh/bootstrap; pulling staging-main before approval will not include these commits"
+  ],
+  "files": [
+    {
+      "path": "backend/src/functions/create-order/index.js",
+      "sha256": "ce3797ac1885c6506170ec137692580ce87afe1f649ba2e042e6c9f922f64a6f"
+    },
+    {
+      "path": "backend/src/functions/shared/discount-contract.js",
+      "sha256": "e5c98401bd6f9d379ce4d23c960e75ce9fd0724b4a1fa7c764bc9c371688325f"
+    },
+    {
+      "path": "backend/src/functions/shared/discount-engine.js",
+      "sha256": "8f1da0d2eac1878bc692067a68178f817b3c99533fdeca65e9434ed601598a13"
+    },
+    {
+      "path": "backend/src/functions/shared/discount-list.js",
+      "sha256": "1fe623aac7a9da4a5381e3c7d4d1d979bc5357ca17021165f48bf2f1a7c7e090"
+    },
+    {
+      "path": "backend/src/functions/shared/discount-reservation.js",
+      "sha256": "c1e7a57e626830163d4ed34d47315c6c9ae24ea5ead2bbf5354b291daaa8e637"
+    },
+    {
+      "path": "backend/template.yaml",
+      "sha256": "e14d2a5b8355a22d420de095bc72e856f0ef616bb555809ce27ab76adb66cac5"
+    },
+    {
+      "path": "backend/test/discount-public-api.test.cjs",
+      "sha256": "6d62abfc202c6633ffb208cbbec0b9585eb0d7a60222c2e381804467345b1199"
+    },
+    {
+      "path": "frontend/lib/models/home_layout.dart",
+      "sha256": "edea0285319210e0dbbbebd158c7404ff35dd2c3503a5d3fa78569d5c0366d73"
+    },
+    {
+      "path": "frontend/lib/models/store_discount.dart",
+      "sha256": "7d4639db4c2e83107c75159f0cbd7de1e9f3fbeff15fe04cf1163b0ff8567dda"
+    },
+    {
+      "path": "frontend/lib/screens/dish_detail_screen.dart",
+      "sha256": "3d230743883bde6a6b423dad357930cf309d97c8bf7b09ce3c0d16aecf8a8a56"
+    },
+    {
+      "path": "frontend/lib/screens/home_screen.dart",
+      "sha256": "a919ad9fcf408cbb5bbe68b330eec9fcf3adf34dcbc126492130e24e40c1f235"
+    },
+    {
+      "path": "frontend/lib/screens/store_detail_screen.dart",
+      "sha256": "9862f38bfabe4ae5c3e499f8131b1d9ea0055b4987f4dfbffcc19cd85783c6da"
+    },
+    {
+      "path": "frontend/lib/services/home_slideshow_service.dart",
+      "sha256": "67558d1a79c0825c9bb3dc8e3aeaba8a8d2ce4d57f9ddd23923f8e0ac23d1e83"
+    },
+    {
+      "path": "frontend/lib/services/order_service.dart",
+      "sha256": "7bb929a2b857bd109731954598907191eab38934389a92cbcfd80a08ee8f79ec"
+    },
+    {
+      "path": "frontend/lib/services/point_invoice_321.dart",
+      "sha256": "645b910b6d3c24aac2476fa8c86d1aac8f83c715a98936faacf924ade69b840a"
+    },
+    {
+      "path": "frontend/lib/widgets/basket_invoice.dart",
+      "sha256": "8d43a31c5ae5281c5a7aeed583080ab1343297f55297e5db5b5720a6e34db051"
+    },
+    {
+      "path": "frontend/lib/widgets/basket_line_card.dart",
+      "sha256": "2f9af4dcc4c7f5e3b3a922efe612865a8fe2ef63d4b0e98f948cf438c9abaedc"
+    },
+    {
+      "path": "frontend/lib/widgets/restaurant_menu_components.dart",
+      "sha256": "1a83bee584f1966df1fb09599e698ef89e8421ad84bc436a5aab22c08d67f61a"
+    },
+    {
+      "path": "frontend/lib/widgets/storefront_value.dart",
+      "sha256": "1ad94736b6b172f190ebf587bc9ff2660825b933b8e3f40f25ffad52bebb92c5"
+    },
+    {
+      "path": "frontend/test/restaurant_menu_components_test.dart",
+      "sha256": "93d80115a5daa28f6d527aab38a4228c86904f67ad9be6fdf2ccaccbd1dab00d"
+    },
+    {
+      "path": "frontend/test/restaurant_summary_test.dart",
+      "sha256": "7790c97c9fd8f86bb81dcc9b37e2773875f4071fd68fa551f9baf93ef6428ad0"
+    },
+    {
+      "path": "backend/src/functions/shared/menu-item-prices.js",
+      "sha256": "829a8db5cb3f33bddd316b8f0a91f218962a42c5239d2cb12eb4daa044f43a78"
+    },
+    {
+      "path": "backend/test/item-markdown.test.cjs",
+      "sha256": "c9e4bffa0fa74058fb23397fa09e0c4d2e231d4e98667bf476812c53dc6189f1"
+    },
+    {
+      "path": "docs/item-markdown-implementation-361.json",
+      "sha256": "ed2a3d5bee4d8305eb3808abdf791d4d3110ff4953a197af59067ae1e1153f61"
+    },
+    {
+      "path": "docs/store-design-361-uber-inspired.json",
+      "sha256": "fee16d9583bd7544aab1b06f7a0ca38896e9670c7a0350da3fa5486230407e3c"
+    },
+    {
+      "path": "docs/store-offer-design-361.json",
+      "sha256": "fbda42d89f5730d1628ca647ea2160f0cc42c0c87b9b1f90d3cf0db06740a16b"
+    },
+    {
+      "path": "frontend/lib/services/menu_offer_pricing.dart",
+      "sha256": "a476ec7c245d13ca48a39e4623b393c03b0c78bde3a2d30a8749fe8ced120c45"
+    },
+    {
+      "path": "frontend/lib/widgets/menu_item_price.dart",
+      "sha256": "da3f486f3b3c61e40b573ff88012f833d12fa081984af072822a702b59e9af36"
+    },
+    {
+      "path": "frontend/test/home_section_selection_test.dart",
+      "sha256": "dc118a60fa7e10dd36c6161086f6dc2995ccf0b5aa1aae0ad78e4917b5e1ea6f"
+    },
+    {
+      "path": "frontend/test/menu_offer_pricing_test.dart",
+      "sha256": "b65ff47210bf64c56ac32df83d04878c15def46c50d3edd19c29211d83f2d2a5"
+    },
+    {
+      "path": "frontend/test/menu_offer_scope_test.dart",
+      "sha256": "cc3d5afd58980490ba0bb16736c75c09c2f3b3f620a2445ccf48c1c97de36846"
+    }
+  ]
+}
