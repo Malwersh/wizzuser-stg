@@ -323,7 +323,12 @@ function createStagingQuoteOrder(options) {
                                 ExpressionAttributeNames: { '#digest': 'digest' }, ExpressionAttributeValues: { ':digest': row.digest, ':used': consumption, ':now': at } } },
                         { Put: { TableName: 'WizzOrders', Item: order, ConditionExpression: 'attribute_not_exists(PK)' } },
                         ...operations]);
-                    // No duplicate-item checks: branch eligibility/deletion checks are already in the quote reference fences.
+                    // Amend the existing condition so a quote issued before a pause cannot create a new order.
+                    const intake = items.find(item => item.ConditionCheck?.TableName === 'WhizzMerchants_Businesses' &&
+                      item.ConditionCheck.Key?.businessId === row.branchId)?.ConditionCheck;
+                    if (!intake) return fail('INVALID_QUOTE_ORDER');
+                    intake.ConditionExpression = '(' + intake.ConditionExpression + ') AND attribute_not_exists(orderIntakeDeletionRequestId) AND (attribute_not_exists(orderIntakeTransferExpiresAt) OR orderIntakeTransferExpiresAt<=:orderIntakeNow)';
+                    intake.ExpressionAttributeValues = { ...intake.ExpressionAttributeValues, ':orderIntakeNow': Date.parse(at) };
                     if (items.length > 100 || Buffer.byteLength(JSON.stringify(items)) > 3500000 || Buffer.byteLength(JSON.stringify(order)) > 300000)
                         return fail('INVALID_QUOTE_ORDER');
                     try {
