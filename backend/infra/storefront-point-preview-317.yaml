@@ -44,6 +44,9 @@ Resources:
             Condition:
               ForAllValues:StringLike:
                 dynamodb:LeadingKeys: ['PUBLIC_POINT_PREVIEW#*']
+          - Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]
+            Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionNeighbors_staging
   PointResource:
     Type: AWS::ApiGateway::Resource
     Properties:

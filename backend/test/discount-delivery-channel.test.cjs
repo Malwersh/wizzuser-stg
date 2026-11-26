@@ -11,6 +11,7 @@ function load(file,env,db,extra={}) {
  const modules={
   '@aws-sdk/client-dynamodb':{DynamoDBClient:class{}},
   '@aws-sdk/lib-dynamodb':{GetCommand,QueryCommand,ScanCommand,DynamoDBDocumentClient:{from:()=>db}},
+  '../create-order/quote-runtime/checkoutTables':require('../src/functions/create-order/quote-runtime/checkoutTables'),
   './discount-engine':engine,'./discount-contract':contract,
   './campaign-version':require('../src/functions/shared/campaign-version'),
   './offer-eligibility':{eligibility:async()=>({}),catalogItems:()=>[]},

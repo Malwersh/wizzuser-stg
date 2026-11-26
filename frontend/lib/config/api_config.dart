@@ -5,17 +5,20 @@ class ApiConfig {
   static const String baseUrl = String.fromEnvironment(
     'API_URL',
     // IMPORTANT: no trailing slash; endpoints are defined with leading '/'
-    defaultValue: 'https://4jut6787c8.execute-api.us-east-1.amazonaws.com/staging',
+    defaultValue: isProduction ? '' : 'https://4jut6787c8.execute-api.us-east-1.amazonaws.com/staging',
   );
   static const String webSocketUrl =
-    String.fromEnvironment('WEBSOCKET_URL', defaultValue: 'wss://igcrhwc84c.execute-api.us-east-1.amazonaws.com/staging');
+    String.fromEnvironment('WEBSOCKET_URL', defaultValue: isProduction ? '' : 'wss://igcrhwc84c.execute-api.us-east-1.amazonaws.com/staging');
 
   // 🔔 CentralPlatform Notifications API (shared push service)
   static const String centralPushApiBaseUrl = String.fromEnvironment(
     'CENTRAL_PUSH_API_BASE_URL',
     // IMPORTANT: no trailing slash
-    defaultValue: 'https://x066k4dftk.execute-api.us-east-1.amazonaws.com/staging',
+    defaultValue: isProduction ? '' : 'https://x066k4dftk.execute-api.us-east-1.amazonaws.com/staging',
   );
+  static const String pushDeviceRegistryBaseUrl = isProduction
+      ? 'https://zfpd4wpdrf.execute-api.us-east-1.amazonaws.com/production'
+      : centralPushApiBaseUrl;
   
   // 🔄 NEW Cognito Configuration - Updated to match current backend stack
   static const String cognitoUserPoolId =
@@ -61,6 +64,13 @@ class ApiConfig {
   static const String environment =
       String.fromEnvironment('ENVIRONMENT', defaultValue: 'staging');
   static const bool isProduction = environment == 'prod' || environment == 'production';
+
+  static const String platformBenefitsBaseUrl = String.fromEnvironment(
+    'PLATFORM_BENEFITS_API_URL',
+    defaultValue: isProduction
+        ? 'https://cczvmelvd6.execute-api.us-east-1.amazonaws.com/production'
+        : baseUrl,
+  );
   
   // ⏱️ Timeout Settings
   static const Duration apiTimeout = Duration(seconds: 30);

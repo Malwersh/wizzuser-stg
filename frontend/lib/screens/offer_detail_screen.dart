@@ -70,7 +70,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     });
     try {
       final result = await _service.details(
-        widget.slide.id,
+        widget.slide.standalone ? widget.slide.targetId : widget.slide.id,
         standalone: widget.slide.standalone,
         offerSource: widget.slide.offerSource,
         merchantId: merchantId,
@@ -323,7 +323,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                               }
                               PendingOffer.select(
                                 PendingOffer(
-                                  widget.slide.standalone
+                                  widget.slide.standalone && widget.slide.id == widget.slide.targetId
                                       ? ''
                                       : widget.slide.id,
                                   merchant!,

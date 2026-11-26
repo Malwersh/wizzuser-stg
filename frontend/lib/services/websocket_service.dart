@@ -302,9 +302,13 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
         'deviceId': deviceId,
       };
       
-      // استخدام ID Token إذا كان متاحاً (للمستخدمين المسجلين)
+      Map<String, String>? headers;
       if (token != null && token.isNotEmpty && token != 'temp_token') {
-        queryParams['token'] = token;
+        if (ApiConfig.isProduction && !kIsWeb) {
+          headers = {'Authorization': 'Bearer $token'};
+        } else {
+          queryParams['token'] = token;
+        }
         debugPrint('WebSocket: ✅ سيتم استخدام ID Token لتتبع الطلب');
         // 🔧 إصلاح: لا ترسل userId عند وجود token، دع Backend يستخرجه من Token
       } else {
@@ -321,15 +325,15 @@ class WebSocketService extends ChangeNotifier with WidgetsBindingObserver {
           .join('&');
       final wsUrl = '$_baseWsUrl?$queryString';
       
-      debugPrint('WebSocket: محاولة الاتصال لتتبع الطلب بـ $wsUrl');
+      debugPrint('WebSocket: محاولة الاتصال لتتبع الطلب');
 
       // إنشاء قناة WebSocket مع معالجة أفضل للأخطاء
       debugPrint('WebSocket: إنشاء WebSocketChannel لتتبع الطلب...');
       
       try {
-        _channel = IOWebSocketChannel.connect(
-          wsUrl, // Use wsUrl string directly, not Uri.parse()
-        );
+        _channel = kIsWeb
+            ? WebSocketChannel.connect(Uri.parse(wsUrl))
+            : IOWebSocketChannel.connect(wsUrl, headers: headers);
         
         debugPrint('WebSocket: تم إنشاء WebSocketChannel لتتبع الطلب بنجاح، بدء الاستماع...');
         

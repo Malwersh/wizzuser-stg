@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:jwt_decoder/jwt_decoder.dart';
+import '../config/api_config.dart';
 import 'session_service.dart';
 
 class WalletTransferException implements Exception {
@@ -11,20 +13,39 @@ class WalletTransferException implements Exception {
 }
 
 class WalletTransferService {
+  static const _baseUrl = String.fromEnvironment(
+    'WALLET_TRANSFER_API_URL',
+    defaultValue: ApiConfig.isProduction
+        ? ''
+        : 'https://z14s5f8oxh.execute-api.us-east-1.amazonaws.com/staging',
+  );
+  static const productionInboxUrl =
+      'https://0mar06hzr1.execute-api.us-east-1.amazonaws.com/production';
+
   Future<Map<String, dynamic>> call(
     String path, {
     Map<String, String>? query,
     Map<String, dynamic>? body,
+    String? expectedSubject,
   }) async {
+    final isInbox = path == 'notifications';
+    final baseUrl = isInbox && ApiConfig.isProduction
+        ? productionInboxUrl
+        : _baseUrl;
+    if (baseUrl.isEmpty) {
+      throw WalletTransferException('خدمة التحويل غير متاحة حاليًا.');
+    }
     final token = await SessionService.instance.getToken();
-    if (token == null) {
+    if (token == null ||
+        (expectedSubject != null &&
+            JwtDecoder.decode(token)['sub'] != expectedSubject)) {
       throw WalletTransferException(
         'يرجى تسجيل الدخول مجددًا',
         'REAUTH_REQUIRED',
       );
     }
     final uri = Uri.parse(
-      'https://z14s5f8oxh.execute-api.us-east-1.amazonaws.com/staging/wallet/transfers/$path',
+      '$baseUrl/wallet/transfers/$path',
     ).replace(queryParameters: query);
     final headers = {
       'Authorization': 'Bearer $token',

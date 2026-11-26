@@ -7,7 +7,9 @@ import '../config/api_config.dart';
 /// خدمة إدارة المفضلة - تتصل بـ API المفضلة المنشور في AWS
 class FavoritesService {
   static String get _baseUrl {
-    final url = ApiConfig.baseUrl;
+    final url = ApiConfig.isProduction
+        ? 'https://mdqlmnqahc.execute-api.us-east-1.amazonaws.com/production'
+        : ApiConfig.baseUrl;
     if (url.isEmpty) {
       throw StateError('Missing API_URL (dart-define)');
     }

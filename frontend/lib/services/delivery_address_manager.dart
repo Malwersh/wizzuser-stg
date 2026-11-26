@@ -132,11 +132,13 @@ class DeliveryAddressManager {
   /// إيجاد المنطقة من الإحداثيات باستخدام API الخلفية
   Future<Map<String, dynamic>> _findRegionByCoordinates(
     double latitude,
-    double longitude,
-  ) async {
+    double longitude, {
+    String? preferredRegionId,
+  }) async {
     final result = await RegionResolverService().resolvePoint(
       lat: latitude,
       lng: longitude,
+      preferredRegionId: preferredRegionId,
       throwOnFailure: true,
     );
     if (result == null || !result.effective.isDeliveryAvailable)
@@ -153,6 +155,7 @@ class DeliveryAddressManager {
     final r = await _findRegionByCoordinates(
       address.latitude,
       address.longitude,
+      preferredRegionId: address.regionId,
     );
     return address.copyWith(
       regionId: r['region_id'],

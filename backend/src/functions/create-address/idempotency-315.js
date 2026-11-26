@@ -12,6 +12,7 @@ exports.replay=async({db,GetCommand,table,userId,intent,data})=>{
  if(!intent)return null;
  const row=(await db.send(new GetCommand({TableName:table,Key:{addressId:intent.addressId},ConsistentRead:true}))).Item;
  if(!row)return null;
- if(row.userId!==userId||row.creationRequestHash!==intent.hash||row.latitude!==data.latitude||row.longitude!==data.longitude)throw Object.assign(Error('ADDRESS_REQUEST_CHANGED'),{statusCode:409});
+ const regionChanged=data.save_to_address_book!==undefined&&data.region_id&&row.regionId!==data.region_id;
+ if(row.userId!==userId||row.creationRequestHash!==intent.hash||row.latitude!==data.latitude||row.longitude!==data.longitude||regionChanged)throw Object.assign(Error('ADDRESS_REQUEST_CHANGED'),{statusCode:409});
  return row;
 };

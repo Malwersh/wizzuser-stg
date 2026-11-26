@@ -1,3 +1,4 @@
+import '../config/api_config.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'session_service.dart';
@@ -8,7 +9,12 @@ class RatingException implements Exception {
 }
 
 class OrderRatingService {
-  static const defaultEndpoint = String.fromEnvironment('RATINGS_API_URL', defaultValue: 'https://hozgpdv0kg.execute-api.us-east-1.amazonaws.com/staging');
+  static const defaultEndpoint = String.fromEnvironment(
+    'RATINGS_API_URL',
+    defaultValue: ApiConfig.isProduction
+        ? 'https://x2uwye27hj.execute-api.us-east-1.amazonaws.com/production'
+        : 'https://hozgpdv0kg.execute-api.us-east-1.amazonaws.com/staging',
+  );
   final http.Client client;
   final Future<String?> Function() token;
   final String? Function() owner;

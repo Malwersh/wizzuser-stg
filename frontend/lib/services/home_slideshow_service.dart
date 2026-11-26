@@ -1,3 +1,4 @@
+import '../config/api_config.dart';
 import '../models/home_layout.dart';
 import '../models/home_promotion.dart';
 import 'dart:convert';
@@ -25,8 +26,16 @@ class HomeSlideshowService {
   static const baseUrl = String.fromEnvironment(
     'SLIDESHOW_API_URL',
     defaultValue:
-        'https://7oum9md7v6.execute-api.us-east-1.amazonaws.com/staging/staff/public/home-slideshow',
+        ApiConfig.isProduction ? '' : 'https://7oum9md7v6.execute-api.us-east-1.amazonaws.com/staging/staff/public/home-slideshow',
   );
+  static const _productionLayoutUrl = String.fromEnvironment(
+    'HOME_LAYOUT_API_URL',
+    defaultValue:
+        'https://96kw5cw8e8.execute-api.us-east-1.amazonaws.com/production/customer/home-layout',
+  );
+  static const layoutUrl = ApiConfig.isProduction
+      ? _productionLayoutUrl
+      : baseUrl;
   static final _sessionId = const Uuid().v4();
   Future<HomeSlideshowFeed> load({
     String? regionId,
@@ -35,12 +44,14 @@ class HomeSlideshowService {
     final region = regionId ?? _regionId;
     final session = SessionService();
     final token = session.isLoggedIn ? await session.getToken() : null;
-    if (session.isLoggedIn && token == null)
+    if (session.isLoggedIn && token == null) {
       throw StateError('Session unavailable');
+    }
     final response = await (_client?.get ?? http.get)(
-          Uri.parse(baseUrl).replace(
+          Uri.parse(layoutUrl).replace(
             queryParameters: {
               'layoutVersion': '3',
+              if (ApiConfig.isProduction) 'slideActions': '3',
               if (priceBusinessIds != null)
                 'priceBusinessIds': priceBusinessIds.join(','),
               if (region != null && region.isNotEmpty) 'regionId': region,
@@ -109,6 +120,7 @@ class HomeSlideshowService {
   }
 
   Future<void> track(String slideId, String type) async {
+    if (!ApiConfig.isProduction && baseUrl.isEmpty) return;
     try {
       await _request(
         'slideshow-events',
@@ -124,11 +136,19 @@ class HomeSlideshowService {
   }) async {
     final session = SessionService();
     final token = session.isLoggedIn ? await session.getToken() : null;
-    if (session.isLoggedIn && token == null)
+    if (session.isLoggedIn && token == null) {
       throw StateError('Session unavailable');
+    }
     final region = _regionId;
-    final uri = Uri.parse(baseUrl).replace(
-      path: Uri.parse(baseUrl).path.replaceFirst('home-slideshow', route),
+    final productionHomeRequest = ApiConfig.isProduction &&
+        (route == 'slideshow-events' || query.containsKey('headerOffers') ||
+            query.containsKey('campaigns') ||
+            query.containsKey('campaignId'));
+    final endpoint = Uri.parse(productionHomeRequest ? layoutUrl : baseUrl);
+    final uri = endpoint.replace(
+      path: productionHomeRequest
+          ? endpoint.path
+          : endpoint.path.replaceFirst('home-slideshow', route),
       queryParameters: {
         ...query,
         if (region != null) 'regionId': region,
@@ -148,8 +168,9 @@ class HomeSlideshowService {
               body: jsonEncode(body),
             ))
         .timeout(const Duration(seconds: 20));
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw StateError('العرض غير متاح حالياً لهذا الحساب أو العنوان');
+    }
     return Map<String, dynamic>.from(jsonDecode(response.body));
   }
 }

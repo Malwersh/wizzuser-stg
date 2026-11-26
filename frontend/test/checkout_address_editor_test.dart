@@ -18,6 +18,7 @@ class FakeResolver extends RegionResolverService {
   FakeResolver(this.id);
   @override
   Future<RegionResolveResult?> resolvePoint({
+    String? preferredRegionId,
     required double lat,
     required double lng,
     bool throwOnFailure = false,

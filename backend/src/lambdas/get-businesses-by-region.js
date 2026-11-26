@@ -1,35 +1,17 @@
-/**
- * Lambda: Get Businesses By Region
- * API: GET /api/businesses?region_id=region_najaf_manathera&page=0&limit=20
- * 
- * Purpose: Fetch restaurants for a specific region using RegionListings
- * الغرض: جلب المطاعم لمنطقة محددة باستخدام RegionListings
- * 
- * Flow:
- * 1. Get region_id from query params
- * 2. Query WhizzMerchants_RegionListings
- * 3. Batch get businesses from WhizzMerchants_Businesses
- * 4. Filter active/open restaurants
- * 5. Apply pagination
- * 6. Return results with listingVersion
- */
+'use strict';
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand, BatchGetCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 
 // Table names
-const REGION_LISTINGS_TABLE = process.env.REGION_LISTINGS_TABLE || 'WhizzMerchants_RegionListings';
+const regions = require('../utils/customer-regions-313');
+const { haversineDistance } = require('../utils/haversine');
+const { buildNeighboringRestaurants, previewPageSize } = require('../utils/neighboring-restaurants');
 const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Businesses';
 
-/**
- * Lambda handler
- */
-exports.handler = async (event) => {
-  console.log('🍽️ Get Businesses By Region');
-  console.log('Event:', JSON.stringify(event, null, 2));
-
+async function list(event, nearby) {
   try {
     // Extract parameters
     const {
@@ -39,99 +21,112 @@ exports.handler = async (event) => {
       limit = '20',
       category,
       new: newOnly,
-      sort = 'default',
+      sort = nearby ? 'distance' : 'default',
+      radius_km: requestedRadius = '20',
     } = event.queryStringParameters || {};
 
     let region_id=requestedRegionId;
     // Validate region_id
-    if (!region_id) {
+    if (!nearby && !region_id) {
       return errorResponse(400, 'MISSING_REGION_ID', 'region_id is required');
     }
 
-    const pageNum = Number(page), limitNum = Math.min(Number(limit),50);
-    if(!Number.isInteger(pageNum)||pageNum<0||!Number.isInteger(limitNum)||limitNum<1)return errorResponse(400,'INVALID_PAGINATION','اختر صفحة وعدد نتائج صالحين.'); // Max 50 per page
+    const pageNum = Number(page), requestedLimit = Math.min(Number(limit), nearby ? 100 : 50);
+    if(!Number.isInteger(pageNum)||pageNum<0||!Number.isInteger(requestedLimit)||requestedLimit<1)return errorResponse(400,'INVALID_PAGINATION','اختر صفحة وعدد نتائج صالحين.'); // Max 50 per page
 
-    console.log(`🗺️ Region: ${region_id}`);
-    console.log(`📄 Page: ${pageNum}, Limit: ${limitNum}`);
-
-    const regionApi=require('../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
-    if(latitude!==undefined||longitude!==undefined)region_id=(await regionApi.resolve(Number(latitude),Number(longitude))).regionId;
-    const regionPath=await regionApi.ancestry(region_id);
-
-    // Step 1: Scan WhizzMerchants_Businesses with filter on regionId
-    // Note: This is not optimal - TODO: Add GSI on regionId for better performance
-    console.log('⚡ Scanning businesses table with regionId filter...');
-    
-    const box=require('../utils/customer-regions-313').bounds(regionPath[3].base.geometry);
-    const businesses=[];let cursor;
-    do {const result=await dynamodb.send(new ScanCommand({TableName:BUSINESSES_TABLE,FilterExpression:'isActive = :active AND ((latitude BETWEEN :s AND :n AND longitude BETWEEN :w AND :e) OR (#addr.latitude BETWEEN :s AND :n AND #addr.longitude BETWEEN :w AND :e))',ExpressionAttributeNames:{'#addr':'address'},ExpressionAttributeValues:{':active':true,':s':box.south,':n':box.north,':w':box.west,':e':box.east},...(cursor?{ExclusiveStartKey:cursor}:{})}));businesses.push(...result.Items||[]);cursor=result.LastEvaluatedKey;}while(cursor);
-    const selectedShape=regionPath[3].base.geometry;
-    for(let i=businesses.length-1;i>=0;i--){const b=businesses[i],lat=b.latitude??b.address?.latitude,lng=b.longitude??b.address?.longitude;if(typeof lat!=='number'||typeof lng!=='number'||!require('../utils/customer-regions-313').contains(selectedShape,lat,lng))businesses.splice(i,1);else businesses[i]={...b,regionId:region_id};}
-    console.log(`📊 Found ${businesses.length} businesses in region ${region_id}`);
-
-    if (businesses.length === 0) {
-      return successResponse({
-        businesses: [],
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: 0,
-          hasMore: false,
-        },
-        region: {
-          region_id,
-          region_name_ar: null,
-          listingVersion: Date.now(),
-        },
-      });
+    const sdk = { GetCommand, QueryCommand, ScanCommand };
+    const regionApi = regions.create({ db: dynamodb, sdk, tables: {
+      regions: process.env.REGIONS_TABLE, derived: process.env.REGIONS_DERIVED_TABLE, index: process.env.REGION_INDEX_TABLE,
+    } });
+    const hasCoordinates = latitude !== undefined || longitude !== undefined;
+    if ((nearby || hasCoordinates) && (!String(latitude ?? '').trim() || !String(longitude ?? '').trim())) {
+      return errorResponse(400, 'MISSING_PARAMETERS', 'latitude and longitude are required');
+    }
+    const radiusKm = Number(requestedRadius);
+    if (nearby && (!Number.isFinite(radiusKm) || radiusKm <= 0)) return errorResponse(400,'INVALID_RADIUS','اختر مسافة بحث صالحة.');
+    const point = hasCoordinates ? { latitude: Number(latitude), longitude: Number(longitude) } : null;
+    const resolved = point ? await regionApi.resolve(point.latitude, point.longitude, requestedRegionId) : null;
+    if (resolved) region_id = resolved.regionId;
+    const deliveryCheck = buildNeighboringRestaurants({ db: dynamodb, sdk, regionApi,
+      sourceIp: event.requestContext?.identity?.sourceIp || event.requestContext?.http?.sourceIp });
+    if (deliveryCheck && !point) {
+      return errorResponse(400, 'DELIVERY_POINT_REQUIRED', 'حدد نقطة التوصيل لعرض المطاعم المتاحة.');
+    }
+    let coverage;
+    try { coverage = await deliveryCheck?.prepare(region_id, point); }
+    catch (error) {
+      console.warn('Delivery coverage lookup unavailable', { error: error.name });
+      return errorResponse(503, 'DELIVERY_CHECK_UNAVAILABLE', 'تعذر التحقق من المطاعم التي توصل إلى عنوانك. حاول مجددًا.');
     }
 
-    // Step 2: Apply additional filters
-    let filteredBusinesses = businesses;
-
-    // Apply category filter
-    if (category) {
-      filteredBusinesses = filteredBusinesses.filter((b) => b.category === category);
-    }
-
-    // Apply new restaurants filter
-    if (newOnly === 'true') {
-      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      filteredBusinesses = filteredBusinesses.filter((b) => {
-        const createdAt = b.createdAt || 0;
-        return createdAt > thirtyDaysAgo;
-      });
-    }
-
-    // Step 3: Sort businesses
+    const regionPath = resolved?.path || await regionApi.ancestry(region_id);
+    const footprint = regionPath[3].base.geometry;
+    const box = coverage?.box ?? regions.bounds(footprint);
+    const entries = [];
+    const seen = new Set();
+    const newSince = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    let cursor;
+    if (!deliveryCheck || coverage) do {
+      const batch = await dynamodb.send(new ScanCommand({ TableName: BUSINESSES_TABLE,
+        FilterExpression: 'isActive = :active AND ((latitude BETWEEN :s AND :n AND longitude BETWEEN :w AND :e) OR (#addr.latitude BETWEEN :s AND :n AND #addr.longitude BETWEEN :w AND :e))',
+        ExpressionAttributeNames: { '#addr': 'address' },
+        ExpressionAttributeValues: { ':active': true, ':s': box.south, ':n': box.north, ':w': box.west, ':e': box.east },
+        ...(cursor ? { ExclusiveStartKey: cursor } : {}),
+      }));
+      for (const business of batch.Items || []) {
+        if (!business.businessId || seen.has(business.businessId) || (category && business.category !== category) ||
+            (deliveryCheck && (business.acceptingOrders === false || business.ordersBlocked === true)) ||
+            (nearby && business.acceptingOrders !== true) ||
+            (newOnly === 'true' && !(business.createdAt > newSince))) continue;
+        const lat = business.latitude ?? business.address?.latitude, lng = business.longitude ?? business.address?.longitude;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const local = regions.contains(footprint, lat, lng);
+        const entry = local ? {
+          business: { ...business, regionId: region_id },
+          distanceKm: point && haversineDistance(point.latitude, point.longitude, lat, lng),
+        } : deliveryCheck?.candidate(coverage, business, lat, lng);
+        if (entry && (!coverage || entry.distanceKm <= coverage.maxKm) && (!nearby || entry.distanceKm <= radiusKm)) {
+          seen.add(business.businessId);
+          entries.push(entry);
+        }
+      }
+      cursor = batch.LastEvaluatedKey;
+    } while (cursor);
     if (sort === 'rating') {
-      filteredBusinesses.sort((a, b) => (b.customerRating ?? b.rating ?? 0) - (a.customerRating ?? a.rating ?? 0));
+      entries.sort((a, b) => (b.business.customerRating ?? b.business.rating ?? 0) - (a.business.customerRating ?? a.business.rating ?? 0));
+    } else if (coverage || nearby) {
+      entries.sort((a, b) => a.distanceKm - b.distanceKm || a.business.businessId.localeCompare(b.business.businessId));
     } else if (sort === 'delivery_time') {
-      filteredBusinesses.sort((a, b) => (a.deliveryTime || 999) - (b.deliveryTime || 999));
+      entries.sort((a, b) => (a.business.deliveryTime || 999) - (b.business.deliveryTime || 999));
     }
+    const limitNum = deliveryCheck ? Math.min(requestedLimit, previewPageSize) : requestedLimit;
+    const start = pageNum * limitNum;
+    const pageEntries = entries.slice(start, start + limitNum);
+    let qualified = pageEntries.map(row => row.business);
+    if (deliveryCheck && pageEntries.length) {
+      try { qualified = await deliveryCheck.qualify(coverage, pageEntries); }
+      catch (error) {
+        console.warn('Delivery eligibility check unavailable', { error: error.name });
+        return errorResponse(503, 'DELIVERY_CHECK_UNAVAILABLE', 'تعذر التحقق من المطاعم التي توصل إلى عنوانك. حاول مجددًا.');
+      }
+    }
+    const byId = new Map(qualified.map(row => [row.businessId, row]));
+    const businesses = pageEntries.flatMap(row => {
+      const business = byId.get(row.business.businessId);
+      return business ? [nearby ? { ...business, distance: Number(row.distanceKm.toFixed(2)) } : business] : [];
+    });
+    if (deliveryCheck && sort === 'delivery_time') businesses.sort((a, b) => (a.deliveryTime || 999) - (b.deliveryTime || 999));
 
-    // Step 4: Apply pagination
-    const total = filteredBusinesses.length;
-    const startIndex = pageNum * limitNum;
-    const endIndex = startIndex + limitNum;
-    const paginatedBusinesses = filteredBusinesses.slice(startIndex, endIndex);
-
-    console.log(`✅ Returning ${paginatedBusinesses.length} of ${total} businesses (page ${pageNum})`);
-
-    // Step 5: Build response
     return successResponse({
-      businesses: paginatedBusinesses,
+      businesses,
       pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        hasMore: endIndex < total,
+        page: pageNum, limit: limitNum, total: deliveryCheck ? null : entries.length,
+        ...(deliveryCheck ? { candidateTotal: entries.length } : {}),
+        hasMore: start + limitNum < entries.length,
       },
-      region: {
-        region_id,
-        region_name_ar: null,
-        listingVersion: Date.now(),
-      },
+      region: { region_id, region_name_ar: null, listingVersion: Date.now() },
+      ...(nearby ? { search: { center: point, radius_km: radiusKm, total: deliveryCheck ? null : entries.length, returned: businesses.length } } : {}),
+      ...(deliveryCheck ? { includesNeighborRegions: qualified.some(business => business.isNeighborRegion) } : {}),
     });
   } catch (error) {
     if(error.status)return errorResponse(error.status,error.code,error.status===404?'الخدمة غير متاحة في هذه المنطقة حاليًا.':'تعذر التحقق من المنطقة.');
@@ -140,48 +135,10 @@ exports.handler = async (event) => {
       message: error.message,
     });
   }
-};
-
-/**
- * Batch get businesses from DynamoDB
- */
-async function batchGetBusinesses(businessIds) {
-  if (businessIds.length === 0) return [];
-
-  const businesses = [];
-
-  // DynamoDB batchGet limit is 100 items
-  const chunks = chunkArray(businessIds, 100);
-
-  for (const chunk of chunks) {
-    const keys = chunk.map((id) => ({ businessId: id }));
-
-    const result = await dynamodb.send(new BatchGetCommand({
-        RequestItems: {
-          [BUSINESSES_TABLE]: {
-            Keys: keys,
-          },
-        },
-      }));
-
-    if (result.Responses && result.Responses[BUSINESSES_TABLE]) {
-      businesses.push(...result.Responses[BUSINESSES_TABLE]);
-    }
-  }
-
-  return businesses;
 }
 
-/**
- * Split array into chunks
- */
-function chunkArray(array, size) {
-  const chunks = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}
+exports.handler = event => list(event, false);
+exports.nearby = event => list(event, true);
 
 /**
  * Success response helper

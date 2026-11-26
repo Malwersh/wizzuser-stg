@@ -2,7 +2,8 @@
 const {GetCommand,ScanCommand}=require('@aws-sdk/lib-dynamodb');
 const {preparePlatformBenefit,platformBenefitBalance,platformBenefitEligibility}=require('./platform-benefits-runtime');
 const {fence}=require('./campaign-version');
-const TABLE='WizzCentral_Platform_Discounts';
+const {checkoutTables}=require('../create-order/quote-runtime/checkoutTables');
+const TABLE=checkoutTables(process.env).platformDiscounts;
 const fail=code=>{throw Object.assign(Error(code),{statusCode:409});};
 async function facts(context,branchId,goodsMinor,roadMeters){
  if(!context.identity?.sub||context.guarded?.sub!==context.identity.sub||!context.guarded.condition)fail('BENEFIT_LOGIN_REQUIRED');

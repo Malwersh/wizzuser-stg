@@ -13,6 +13,7 @@ const {createStagingCommercialSource} = require('./quote-runtime/orderCommercial
 const {createFinanceRollout}=require('./quote-runtime/financeRollout');
 const {moneyFromMinor} = require('./quote-runtime/money');
 const {createStagingOrderGoodsPricing} = require('./quote-runtime/orderGoodsPricing');
+const {checkoutTables}=require('./quote-runtime/checkoutTables');
 
 const CENTRAL_NOTIFICATIONS_BASE_URL = String(process.env.CENTRAL_NOTIFICATIONS_BASE_URL || '').trim();
 const CENTRAL_NOTIFICATIONS_INTERNAL_KEY = String(process.env.CENTRAL_NOTIFICATIONS_INTERNAL_KEY || '').trim();
@@ -338,6 +339,20 @@ async function handleOrder321(event, pointDb=null) {
             };
         }
 
+        const tables=checkoutTables(process.env);
+        const production=tables.orders==='wizz-production-Orders';
+        if(production&&(event.requestContext?.stage!=='production'||
+            !['/orders','/orders/commercial-preview'].includes(event.resource)||
+            event.httpMethod!=='POST'||
+            TABLE_NAME!==tables.orders||BUSINESSES_TABLE!==tables.branches||
+            process.env.USERS_TABLE!==tables.customers||process.env.ADDRESSES_TABLE!==tables.addresses||
+            process.env.USER_POOL_ID!=='us-east-1_rNtNKVsVf'||process.env.USER_POOL_CLIENT_ID!=='3e8p0ouglrprpd0a3pc91du0hg'||
+            process.env.DELIVERY_QUOTE_MODE!=='REQUIRED'||process.env.COMMERCIAL_PRICING_MODE!=='REQUIRED'||
+            process.env.FINANCIAL_SETTLEMENT_MODEL!=='FULL_CASH_AT_DELIVERY_V1'||
+            process.env.FINANCE_GENERAL_RELEASE_MODE!=='REQUIRED'||process.env.MERCHANT_RESPONSE_MODE!=='REQUIRED')) {
+            throw Object.assign(Error('QUOTE_NOT_CONFIGURED'),{statusCode:503});
+        }
+
         // Parse request body
         let body;
         if (typeof event.body === 'string') {
@@ -381,6 +396,7 @@ async function handleOrder321(event, pointDb=null) {
         const profilesTable = requireEnv('USERS_TABLE');
         requireEnv('USER_POOL_ID');
         requireEnv('USER_POOL_CLIENT_ID');
+        if(production&&(!body.userId||body.userId==='guest'))throw Object.assign(Error('AUTH_REQUIRED'),{statusCode:401,code:'AUTH_REQUIRED'});
         const readOfferContext = () => offerContext(dynamoDb,event,body);
         const currentOffers = await readOfferContext();
         // Quote revalidation receives the same live profile/audience fences.
@@ -417,14 +433,14 @@ async function handleOrder321(event, pointDb=null) {
         if (body.action !== undefined && body.action !== 'preview_commercial') throw Object.assign(Error('INVALID_ORDER_ACTION'),{statusCode:400});
         if (commercialMode==='OFF' && (body.action==='preview_commercial'||body.commercialConsent!==undefined))
             throw Object.assign(Error('COMMERCIAL_NOT_ENABLED'),{statusCode:409});
-        if(quoteMode==='REQUIRED'){const rollout=createFinanceRollout({db:dynamoDb});rollout.customer(body.storeId,userSub);if(body.action==='preview_commercial')rollout.admit(body.storeId,userSub);dynamoDb=rollout.db;}
+        if(quoteMode==='REQUIRED'){const rollout=createFinanceRollout({db:dynamoDb,checkout:true});rollout.customer(body.storeId,userSub);if(body.action==='preview_commercial')rollout.admit(body.storeId,userSub);dynamoDb=rollout.db;}
         let quotedOrder = null;
         const quotedResponse = (saved, replayed) => ({statusCode: replayed ? 200 : 201, headers,
             body: JSON.stringify({success: true, message: replayed ? 'Order already created' : 'Order created successfully',
                 orderId: saved.orderId, orderNumber: saved.orderNumber, order: customerOrderView(saved), replayed})});
         if (quoteMode === 'REQUIRED') {
-            if (process.env.AWS_REGION !== 'us-east-1' || process.env.USER_POOL_ID !== 'us-east-1_TpyyrVkEE' || profilesTable !== 'WizzUser_users_staging' ||
-                TABLE_NAME !== 'WizzOrders' || BUSINESSES_TABLE !== 'WhizzMerchants_Businesses') {
+            if (!production&&(process.env.AWS_REGION !== 'us-east-1' || process.env.USER_POOL_ID !== 'us-east-1_TpyyrVkEE' ||
+                profilesTable !== tables.customers || TABLE_NAME !== tables.orders || BUSINESSES_TABLE !== tables.branches)) {
                 throw Object.assign(Error('QUOTE_NOT_CONFIGURED'), {statusCode: 503});
             }
             const service = createStagingQuoteOrder({enableFullCash:process.env.FINANCIAL_SETTLEMENT_MODEL==='FULL_CASH_AT_DELIVERY_V1',db: dynamoDb, enableDeliveryFunding:deliveryPromotionMode==='REQUIRED', authenticateCustomer: async () => {
@@ -497,6 +513,7 @@ async function handleOrder321(event, pointDb=null) {
                 
             } catch (error) {
                 console.error('⚠️ Error checking active orders:', error);
+                if(production)throw Object.assign(Error('ACTIVE_ORDER_CHECK_UNAVAILABLE'),{statusCode:503});
                 // In case of error checking active orders, we should still allow order creation
                 // but log the error for monitoring
                 console.warn('Proceeding with order creation despite active order check error');
@@ -590,7 +607,7 @@ async function handleOrder321(event, pointDb=null) {
             promoCode:body.promoCode,platformDiscountId:body.platformDiscountId,subtotal:goodsSubtotal,
             items:discountItems,deliveryFee,orderId,preview:body.action==='preview_commercial',...currentOffers});
         discountOperations.push(...resolvedDiscount.operations,
-            ...await require('../shared/offer-attribution').attribution(dynamoDb,body.offerSlideId,resolvedDiscount.snapshot));
+            ...(body.action === 'preview_commercial' ? [] : await require('../shared/offer-attribution').attribution(dynamoDb,body.offerSlideId,resolvedDiscount.snapshot)));
         if(body.deliveryBenefitId&&resolvedDiscount.platformDeliveryBenefit)throw Object.assign(Error('BENEFIT_STACKING_DENIED'),{statusCode:409});
         const selectedDeliveryBenefit=body.deliveryBenefitId?await require('../shared/platform-benefits').loadDelivery(dynamoDb,body.deliveryBenefitId,currentOffers):resolvedDiscount.platformDeliveryBenefit;
         if(selectedDeliveryBenefit&&resolvedDiscount.snapshot)require('../shared/platform-benefits').assertStacking(resolvedDiscount.campaign,selectedDeliveryBenefit.campaign);
@@ -883,7 +900,7 @@ async function handleOrder321(event, pointDb=null) {
             offerUsageReservation: {
                 schemaVersion: 1, userSub,
                 accountReserved: !!accountOrder,
-                customerReserved: resolvedDiscount.operations.some(op => op.Put?.TableName === 'staging-WizzOfferJourney' && op.Put.Item.sk?.startsWith('OFFER#')),
+                customerReserved: resolvedDiscount.operations.some(op => op.Put?.TableName === tables.journey && op.Put.Item.sk?.startsWith('OFFER#')),
                 campaign: resolvedDiscount.snapshot && !resolvedDiscount.benefitReceipt ? {
                     id: resolvedDiscount.snapshot.discountId, source: resolvedDiscount.snapshot.source,
                     createdAt: resolvedDiscount.campaign.createdAt ?? resolvedDiscount.campaign.created_at ?? null
@@ -979,7 +996,7 @@ async function handleOrder321(event, pointDb=null) {
         if(receptionEnabled){
             if(!merchantResponseBranch)throw Object.assign(Error('MERCHANT_RESPONSE_POLICY_UNAVAILABLE'),{statusCode:503});
             if(merchantResponseBranch.ordersPausedUntil&&Date.parse(merchantResponseBranch.ordersPausedUntil)>Date.now())throw Object.assign(Error('BUSINESS_TEMPORARILY_PAUSED'),{statusCode:409});
-            const receptionPlatform=(await baseDynamoDb.send(new GetCommand({TableName:'staging-PlatformStaff',Key:{pk:'OPERATIONAL_SETTINGS#ORDER_RECEPTION',sk:'CURRENT'},ConsistentRead:true}))).Item;
+            const receptionPlatform=(await baseDynamoDb.send(new GetCommand({TableName:tables.policy,Key:{pk:'OPERATIONAL_SETTINGS#ORDER_RECEPTION',sk:'CURRENT'},ConsistentRead:true}))).Item;
             Object.assign(order,require('../shared/merchant-response-policy').pendingFields(order,merchantResponseBranch,receptionPlatform));
         }
         console.log('Creating order', {orderId});
@@ -990,14 +1007,14 @@ async function handleOrder321(event, pointDb=null) {
         // Fence order creation against concurrent merchant/business closure,
         // including guest orders. A read before the write is not sufficient.
         const businessFences = [
-            {ConditionCheck: {TableName: 'staging-AccountDeletion', Key: {pk: 'BUSINESS_LIFECYCLE#MERCHANT#' + body.storeId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}},
+            {ConditionCheck: {TableName: tables.deletion, Key: {pk: 'BUSINESS_LIFECYCLE#MERCHANT#' + body.storeId, sk: 'META'}, ConditionExpression: 'attribute_not_exists(pk)'}},
             {ConditionCheck: {TableName: BUSINESSES_TABLE, Key: {businessId: body.storeId}, ConditionExpression: 'attribute_exists(businessId) AND attribute_not_exists(deletionRequestId) AND attribute_not_exists(orderIntakeDeletionRequestId) AND (attribute_not_exists(orderIntakeTransferExpiresAt) OR orderIntakeTransferExpiresAt<=:intakeNow) AND isActive=:merchantActive AND (#merchantStatus=:merchantApproved OR #merchantStatus=:merchantLive) AND (attribute_not_exists(onboardingSchemaVersion) OR (onboardingComplete=:merchantActive AND acceptingOrders=:merchantActive)) AND (attribute_not_exists(platformSuspended) OR platformSuspended=:merchantBlocked) AND (attribute_not_exists(ordersBlocked) OR ordersBlocked=:merchantBlocked)', ExpressionAttributeNames: {'#merchantStatus':'status'}, ExpressionAttributeValues: {':merchantActive':true,':merchantApproved':'approved',':merchantLive':'active',':merchantBlocked':false,':intakeNow':Date.now()}}},
         ];
         minimumPolicy.guard(businessFences[1].ConditionCheck,minimumBranch);
         if(receptionEnabled){
             const p=order.merchantResponsePolicy;
             const due=p.autoAccept?Date.parse(createdAt):Date.parse(order.merchantAcceptanceDeadlineAt);
-            discountOperations.push({Put:{TableName:'staging-WalletLifecycle',Item:{operationId:'MERCHANT_RESPONSE#'+orderId,kind:'MERCHANT_RESPONSE',merchantResponseSchemaVersion:1,orderId,branchId:order.storeId,ownerId:merchantResponseBranch.ownerId,status:'PENDING',queuePartition:'MERCHANT_RESPONSE',nextAttemptAt:Math.floor(due/1000),createdAt},ConditionExpression:'attribute_not_exists(operationId)'}});
+            discountOperations.push({Put:{TableName:tables.lifecycle,Item:{operationId:'MERCHANT_RESPONSE#'+orderId,kind:'MERCHANT_RESPONSE',merchantResponseSchemaVersion:1,orderId,branchId:order.storeId,ownerId:merchantResponseBranch.ownerId,status:'PENDING',queuePartition:'MERCHANT_RESPONSE',nextAttemptAt:Math.floor(due/1000),createdAt},ConditionExpression:'attribute_not_exists(operationId)'}});
             const condition={TableName:BUSINESSES_TABLE,Key:{businessId:order.storeId},ConditionExpression:'attribute_not_exists(#mrPaused)',ExpressionAttributeNames:{'#mrPaused':'ordersPausedUntil','#mrSettings':'orderReceptionSettings'},ExpressionAttributeValues:{}};
             if(merchantResponseBranch.ordersPausedUntil!==undefined){condition.ConditionExpression='#mrPaused=:mrPaused AND #mrPaused<=:mrNow';Object.assign(condition.ExpressionAttributeValues,{':mrPaused':merchantResponseBranch.ordersPausedUntil,':mrNow':createdAt});}
             if(merchantResponseBranch.orderReceptionSettings===undefined)condition.ConditionExpression+=' AND attribute_not_exists(#mrSettings)';
@@ -1142,34 +1159,18 @@ async function sendMerchantNotification(order) {
     
     try {
         const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-        const { DynamoDBDocumentClient, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+        const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
         const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
         
         const dynamoClient = new DynamoDBClient({});
         const docClient = DynamoDBDocumentClient.from(dynamoClient);
         
-        // Find active WebSocket connections for this merchant/business
-        // We need to scan with FilterExpression because businessId is not in any GSI key
-        // Alternative: query by userId if we can get it, but businessId is more reliable
-        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
-        
-        const scanParams = {
-            TableName: CONNECTIONS_TABLE,
-            FilterExpression: 'businessId = :businessId AND isActive = :active',
-            ExpressionAttributeValues: {
-                ':businessId': order.storeId,
-                ':active': true
-            }
-        };
-        
-        console.log('📡 Scanning for merchant WebSocket connections:', JSON.stringify(scanParams, null, 2));
-        
-        const scanResult = await docClient.send(new ScanCommand(scanParams));
-        let connections = scanResult.Items || [];
-        
-        // Filter out expired connections based on TTL
-        const currentTime = Math.floor(Date.now() / 1000);
-        connections = connections.filter(conn => !conn.ttl || conn.ttl > currentTime);
+        const { merchantOrderConnections } = require('./merchant-order-connections');
+        const connections = await merchantOrderConnections(docClient, {
+            businessesTable: BUSINESSES_TABLE,
+            connectionsTable: CONNECTIONS_TABLE,
+            businessId: order.storeId,
+        });
         
         console.log(`📡 Found ${connections.length} active WebSocket connections for merchant ${order.storeId}`);
         

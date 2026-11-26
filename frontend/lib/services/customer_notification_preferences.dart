@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../config.dart';
+import '../config/api_config.dart';
 import 'session_service.dart';
+import 'wallet_transfer_service.dart';
 
 class CustomerNotificationPreferences {
   final bool orders, promotions;
@@ -51,12 +52,19 @@ class CustomerNotificationPreferencesService {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
-    final path =
-        '${ApiConfig.baseUrl}/users/${Uri.encodeComponent(owner)}/${save == null ? 'profile' : 'preferences'}';
+    final production = ApiConfig.isProduction;
+    final uri =
+        production
+            ? Uri.parse(
+              '${WalletTransferService.productionInboxUrl}/wallet/transfers/notifications',
+            ).replace(queryParameters: {'view': 'preferences'})
+            : Uri.parse(
+              '${ApiConfig.baseUrl}/users/${Uri.encodeComponent(owner)}/${save == null ? 'profile' : 'preferences'}',
+            );
     final response = await (save == null
-            ? _client.get(Uri.parse(path), headers: headers)
-            : _client.put(
-              Uri.parse(path),
+            ? _client.get(uri, headers: headers)
+            : (production ? _client.post : _client.put)(
+              uri,
               headers: headers,
               body: jsonEncode({'notification_settings': save.toJson()}),
             ))

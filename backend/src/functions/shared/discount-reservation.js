@@ -4,8 +4,11 @@ const {normalizeDiscount, normalizePlatformPromo, validateDiscount, validatePlat
 const {validVersion}=require('./campaign-version');
 const {eligibility,catalogItems}=require('./offer-eligibility');
 const fail = (code='DISCOUNT_UNAVAILABLE') => {throw Object.assign(Error(code), {statusCode:409});};
-const merchantTable = process.env.DISCOUNTS_TABLE || 'WhizzMerchants_Discounts';
-const platformTable = process.env.PLATFORM_DISCOUNTS_TABLE || 'WizzCentral_Platform_Discounts';
+const {checkoutTables}=require('../create-order/quote-runtime/checkoutTables');
+const tables=checkoutTables(process.env);
+const production=tables.orders==='wizz-production-Orders';
+const merchantTable=production?tables.merchantDiscounts:(process.env.DISCOUNTS_TABLE||tables.merchantDiscounts);
+const platformTable=production?tables.platformDiscounts:(process.env.PLATFORM_DISCOUNTS_TABLE||tables.platformDiscounts);
 const fields = ['discountId','businessId','code','status','isActive','type','discountType','value','discountValue',
  'calculationMode','applicability','applicable_item_ids','applicable_category_ids','conditionalParameters','conditional_parameters',
  'validFrom','validTo','valid_from','valid_to','startDate','endDate','minimumOrderAmount','minimum_order_amount',

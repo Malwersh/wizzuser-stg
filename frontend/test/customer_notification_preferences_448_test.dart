@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:foodapp_user/services/customer_notification_preferences.dart';
+import 'package:foodapp_user/config/api_config.dart';
 
 void main() {
   test(
@@ -13,7 +14,17 @@ void main() {
         owner: () => 'owner',
         token: () async => 'fresh',
         client: MockClient((r) async {
-          expect(r.method, 'PUT');
+          expect(r.method, ApiConfig.isProduction ? 'POST' : 'PUT');
+          expect(
+            r.url.path,
+            ApiConfig.isProduction
+                ? '/production/wallet/transfers/notifications'
+                : '/staging/users/owner/preferences',
+          );
+          expect(
+            r.url.queryParameters['view'],
+            ApiConfig.isProduction ? 'preferences' : null,
+          );
           expect(r.headers['Authorization'], 'Bearer fresh');
           expect(
             jsonDecode(

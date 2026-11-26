@@ -32,7 +32,7 @@ class HomeSlide {
     final uri = Uri.parse(json['imageUrl'] as String);
     if ((uri.scheme != 'https' &&
             !(json['standalone'] == true && uri.toString().isEmpty)) ||
-        !['merchant', 'campaign', 'category'].contains(action['type'])) {
+        !['merchant', 'campaign', 'category', 'announcement'].contains(action['type'])) {
       throw const FormatException('Invalid slideshow destination');
     }
     return HomeSlide(

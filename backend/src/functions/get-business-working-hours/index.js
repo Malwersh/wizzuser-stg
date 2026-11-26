@@ -38,7 +38,7 @@ const handler = async (event) => {
         console.log(`Fetching working hours for business: ${businessId}`);
         // Query working hours from DynamoDB
         const command = new lib_dynamodb_1.QueryCommand({
-            TableName: 'WhizzMerchants_BusinessWorkingHours',
+            TableName: process.env.WORKING_HOURS_TABLE || 'WhizzMerchants_BusinessWorkingHours',
             KeyConditionExpression: 'businessId = :businessId',
             ExpressionAttributeValues: {
                 ':businessId': businessId,

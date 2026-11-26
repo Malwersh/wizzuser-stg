@@ -17,7 +17,6 @@ const REGION_LISTINGS_TABLE = process.env.REGION_LISTINGS_TABLE || 'WhizzMerchan
  * Handler function
  */
 exports.handler = async (event) => {
-  console.log('Event:', JSON.stringify(event, null, 2));
   
   try {
     const body = JSON.parse(event.body);

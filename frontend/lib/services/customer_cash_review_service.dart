@@ -1,3 +1,4 @@
+import '../config/api_config.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'session_service.dart';
@@ -8,7 +9,11 @@ class CustomerCashReviewService {
   static const base = String.fromEnvironment(
     'ORDER_SERVICE_URL',
     defaultValue:
-        'https://mqwom78d3c.execute-api.us-east-1.amazonaws.com/staging',
+        ApiConfig.isProduction ? '' : 'https://mqwom78d3c.execute-api.us-east-1.amazonaws.com/staging',
+  );
+  static const productionEndpoint = String.fromEnvironment(
+    'CUSTOMER_CASH_REVIEW_URL',
+    defaultValue: 'https://5ijjfzcxb8.execute-api.us-east-1.amazonaws.com/production/order/cash-review',
   );
   CustomerCashReviewService({
     http.Client? client,
@@ -25,7 +30,7 @@ class CustomerCashReviewService {
     }
     final response = await client
         .post(
-          Uri.parse('$base/order/cancel'),
+          Uri.parse(ApiConfig.isProduction ? productionEndpoint : '$base/order/cancel'),
           headers: {
             'Authorization': 'Bearer $credential',
             'Content-Type': 'application/json',

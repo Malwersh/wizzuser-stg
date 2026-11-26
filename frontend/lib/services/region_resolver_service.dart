@@ -9,6 +9,23 @@ class RegionResolutionException implements Exception {
   String toString() => 'تعذر التحقق من تغطية العنوان الآن. حاول مرة أخرى.';
 }
 
+class BoundaryRegionChoice {
+  final String id;
+  final String name;
+  final String district;
+  final String governorate;
+
+  const BoundaryRegionChoice(this.id, this.name, this.district, this.governorate);
+}
+
+class BoundaryRegionSelectionRequired extends RegionResolutionException {
+  final List<BoundaryRegionChoice> choices;
+  BoundaryRegionSelectionRequired(this.choices);
+
+  @override
+  String toString() => 'الموقع على الحد بين مناطق التوصيل. اختر منطقة العنوان.';
+}
+
 class RegionResolverService {
   final http.Client? _client;
   RegionResolverService({http.Client? client}) : _client = client;
@@ -23,6 +40,7 @@ class RegionResolverService {
   Future<RegionResolveResult?> resolvePoint({
     required double lat,
     required double lng,
+    String? preferredRegionId,
     bool throwOnFailure = false,
   }) async {
     try {
@@ -39,6 +57,8 @@ class RegionResolverService {
         queryParameters: {
           'latitude': lat.toString(),
           'longitude': lng.toString(),
+          if (preferredRegionId != null && preferredRegionId.isNotEmpty)
+            'preferred_region_id': preferredRegionId,
         },
       );
 
@@ -60,6 +80,28 @@ class RegionResolverService {
       if (response.statusCode != 200) {
         if (throwOnFailure) {
           final body = jsonDecode(response.body);
+          if (response.statusCode == 409 &&
+              body is Map &&
+              body['error'] == 'BOUNDARY_REGION_SELECTION_REQUIRED') {
+            final rows = body['details']?['regions'];
+            if (rows is List) {
+              final choices = [
+                for (final row in rows)
+                  if (row is Map &&
+                      row['region_id'] is String &&
+                      row['region_name_ar'] is String)
+                    BoundaryRegionChoice(
+                      row['region_id'],
+                      row['region_name_ar'],
+                      row['district']?.toString() ?? '',
+                      row['governorate']?.toString() ?? '',
+                    ),
+              ];
+              if (choices.isNotEmpty) {
+                throw BoundaryRegionSelectionRequired(choices);
+              }
+            }
+          }
           if (response.statusCode != 404 ||
               body is! Map ||
               body['error'] != 'REGION_NOT_FOUND') {
@@ -117,6 +159,9 @@ class RegionResolverService {
       if (throwOnFailure) {
         throw RegionResolutionException();
       }
+      return null;
+    } on RegionResolutionException {
+      if (throwOnFailure) rethrow;
       return null;
     } catch (e) {
       if (throwOnFailure) {

@@ -53,7 +53,7 @@ class InterfaceLayoutService {
     final region =
         BrowsingLocationService.instance.selection?.regionId ??
         DeliveryAddressManager.instance.activeAddress?.regionId;
-    final uri = Uri.parse(HomeSlideshowService.baseUrl).replace(
+    final uri = Uri.parse(HomeSlideshowService.layoutUrl).replace(
       queryParameters: {
         'surface': surface,
         'offerSlotsVersion': '1',

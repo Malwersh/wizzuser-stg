@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:foodapp_user/models/browsing_location.dart';
 import 'package:foodapp_user/services/browsing_location_service.dart';
+import 'package:foodapp_user/services/restaurant_fetching_service.dart';
 import 'package:foodapp_user/services/active_region_catalog.dart';
 import 'package:foodapp_user/screens/address_gate_screen.dart';
 import 'package:foodapp_user/widgets/location_picker_screen.dart';
@@ -32,6 +33,38 @@ ActiveRegionCatalog catalog([bool open = true]) => ActiveRegionCatalog(
 );
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  test('restaurant discovery sends the point selected for browsing', () async {
+    final pages = <String?>[];
+    final response = await http.runWithClient(
+      () => RestaurantFetchingService.instance.fetchRestaurantsForBrowsingLocation(
+        location: const BrowsingLocation(
+          regionId: 'r',
+          regionName: 'مركز المناذرة',
+          source: 'region',
+          latitude: 31.5,
+          longitude: 44.5,
+        ),
+      ),
+      () => MockClient((request) async {
+        final query = request.url.queryParameters;
+        expect(query['latitude'], '31.5');
+        expect(query['longitude'], '44.5');
+        expect(query['region_id'], 'r');
+        pages.add(query['page']);
+        final page = int.parse(query['page']!);
+        return http.Response(jsonEncode({
+          'success': true,
+          'data': {
+            'businesses': page == 0 ? [] : [{'businessId': 'covered'}],
+            'pagination': {'page': page, 'candidateTotal': 9, 'hasMore': page == 0},
+          },
+        }), 200);
+      }),
+    );
+    expect(pages, ['0', '1']);
+    expect(response.page, 1);
+    expect(response.businesses.single['businessId'], 'covered');
+  });
   test(
     'region selection persists confirmed point without saved address identity',
     () async {

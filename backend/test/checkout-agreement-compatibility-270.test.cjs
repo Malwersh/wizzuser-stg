@@ -1,7 +1,73 @@
-const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{createRequire}=require('node:module');
-const {runtime,C}=require('../../scripts/load-checkout-agreement-270.cjs'),{parseIqd:m}=require(C+'/backend/wallet-service/dist/money');
-const file='/private/tmp/checkout-270/runtime/_discount_review/user-create-order/index.js',s=fs.readFileSync('/private/tmp/checkout-270/writer-base.js','utf8'),at=s.indexOf('// ../wizzuser-stg/backend/src/functions/create-order/index.js');
-const old=Function('require','module','exports','__dirname',s.slice(0,at)+'\nreturn require_deliveryFundedAllocation();')(createRequire(file),{exports:{}},{},path.dirname(file));
-const value=policyId=>({allocationSchemaVersion:2,base:{allocationSchemaVersion:1,paymentMethod:'COD',goodsGross:m('10000'),merchantGoodsDiscount:m('500'),platformGoodsDiscount:m('0'),merchantCommission:m('700'),serviceFee:m('500'),customerDeliveryFee:m('1500'),driverEarning:m('4000'),driverTip:m('500'),merchantOtherCharges:m('0'),platformOtherCharges:m('0'),thirdPartyOtherCharges:m('0')},deliveryFunding:{policyPin:{policyId,version:1,termsHash:'a'.repeat(64)},allocation:{schemaVersion:1,referenceFee:m('4000'),customerFee:m('1500'),subsidy:m('2500'),merchantShare:m('0'),platformShare:m('2500')}}});
-test('existing ordinary and platform-benefit allocation outputs remain identical with discount and tip',()=>{for(const id of ['normal-policy','PLATFORM_BENEFIT#benefit-1'])assert.deepEqual(runtime.deliveryFundedAllocation.allocateDeliveryFundedOrder(value(id)),old.allocateDeliveryFundedOrder(value(id)));});
-test('platform compatibility does not admit arbitrary unsupported policy identities',()=>{for(const id of ['FOREIGN#policy','PLATFORM_BENEFIT#','PLATFORM_BENEFIT#FOREIGN#policy'])assert.throws(()=>runtime.deliveryFundedAllocation.allocateDeliveryFundedOrder(value(id)));});
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { allocateDeliveryFundedOrder } = require('../src/functions/create-order/quote-runtime/deliveryFundedAllocation');
+const { fromWholeIqd: money } = require('../src/functions/create-order/quote-runtime/money');
+
+function order(policyId) {
+  return {
+    allocationSchemaVersion: 2,
+    base: {
+      allocationSchemaVersion: 1,
+      paymentMethod: 'COD',
+      goodsGross: money(10000),
+      merchantGoodsDiscount: money(500),
+      platformGoodsDiscount: money(0),
+      merchantCommission: money(700),
+      serviceFee: money(500),
+      customerDeliveryFee: money(1500),
+      driverEarning: money(4000),
+      driverTip: money(500),
+      merchantOtherCharges: money(0),
+      platformOtherCharges: money(0),
+      thirdPartyOtherCharges: money(0),
+    },
+    deliveryFunding: {
+      policyPin: { policyId, version: 1, termsHash: 'a'.repeat(64) },
+      allocation: {
+        schemaVersion: 1,
+        referenceFee: money(4000),
+        customerFee: money(1500),
+        subsidy: money(2500),
+        merchantShare: money(0),
+        platformShare: money(2500),
+      },
+    },
+  };
+}
+
+test('ordinary and platform-benefit funding preserve the recorded cash, discount and tip allocation', () => {
+  const amounts = {
+    customerGoodsPayment: 9500, customerTotal: 12000, merchantGoodsEntitlement: 9500,
+    merchantPayable: 8800, merchantCommission: 700, thirdPartyPayable: 0,
+    driverEarningEntitlement: 4000, driverTipEntitlement: 500, driverTotalEntitlement: 4500,
+    deliveryMargin: -2500, deliverySurplus: 0, deliverySubsidy: 2500,
+    platformGoodsDiscountFunding: 0, platformSubsidy: 2500, platformNetContribution: -1300,
+    driverWalletHold: 10000, driverCashRetained: 2000, driverCashEarningRetained: 1500,
+    driverCashTipRetained: 500, driverWalletEarningCredit: 2500, driverWalletTipCredit: 0,
+    driverWalletCreditTotal: 2500, platformCollection: 10000, platformFundsAfterDriverCredit: 7500,
+    merchantPayableBeforeDeliverySupport: 8800, merchantDeliverySupport: 0,
+    platformDeliveryPromotionFunding: 2500, platformPromotionCashReservation: 2500,
+    referenceDeliveryFee: 4000, customerDeliveryFee: 1500, deliveryPromotionSubsidy: 2500,
+    baselineDeliveryMargin: 0, platformBaselineDeliverySubsidy: 0,
+    deliveryNetContribution: -2500, grossDeliveryShortfall: 2500,
+  };
+  for (const policyId of ['normal-policy', 'PLATFORM_BENEFIT#benefit-1']) {
+    const input = order(policyId);
+    const expected = Object.fromEntries(Object.entries(amounts).map(([field, value]) => [field, money(value)]));
+    assert.deepEqual(allocateDeliveryFundedOrder(input), {
+      ...expected,
+      ruleVersion: 'ORDER_ALLOCATION_V2_DELIVERY_FUNDING',
+      basis: 'SUCCESSFUL_DELIVERY_PROPOSAL',
+      paymentMethod: 'COD',
+      deliveryFundingPin: input.deliveryFunding.policyPin,
+    });
+  }
+});
+
+test('platform compatibility does not admit unsupported policy identities', () => {
+  for (const policyId of ['FOREIGN#policy', 'PLATFORM_BENEFIT#', 'PLATFORM_BENEFIT#FOREIGN#policy']) {
+    assert.throws(() => allocateDeliveryFundedOrder(order(policyId)), { code: 'INVALID_DELIVERY_FUNDED_ALLOCATION' });
+  }
+});

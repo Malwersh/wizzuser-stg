@@ -39,7 +39,22 @@ function handlerFixture({preview=false,totalMinor=3750000,catalogLines=null}={})
  const context={identity:{sub:'subject',userId:'customer',profile:{}},customer,regionIds:['region'],
   guarded:{sub:'subject',condition:{ConditionCheck:{TableName:'WizzUser_users_staging',Key:{userId:'customer'},ConditionExpression:'attribute_exists(userId)'}}},
   addressCondition:{ConditionCheck:{TableName:'WizzUser_addresses_staging',Key:{addressId:'address'},ConditionExpression:'attribute_exists(addressId)'}}};
- const db={async send(c){const q=c.input;if(q.TransactItems)throw Error('Unquoted write');if(q.TableName==='WizzCentral_Platform_Discounts')return {Item:raw()};if(q.TableName==='staging-WizzOfferJourney')return {};if(q.TableName==='WizzOrders')return {Items:[]};if(q.TableName==='WhizzMerchants_Businesses')return {Item:{businessId:'branch',latitude:31.9,longitude:44.4,regionId:'region'}};throw Error('Unexpected '+q.TableName);}};
+ const merchantCampaign={discountId:'m1',businessId:'branch',status:'active',type:'percentage',value:25,
+  version:1,usage_count:0,applicability:'specificCategories',applicable_category_ids:['cat']};
+ const db={async send(c){
+  const q=c.input;
+  if(q.TransactItems)throw Error('Unquoted write');
+  if(q.TableName==='WizzCentral_Platform_Discounts')return {Item:raw()};
+  if(q.TableName==='WhizzMerchants_Discounts'&&q.Key.discountId==='m1')return {Item:merchantCampaign};
+  if(q.TableName==='staging-WizzOfferJourney')return {};
+  if(q.TableName==='WizzOrders')return {Items:[]};
+  if(q.TableName==='WhizzMerchants_Businesses')return {Item:{businessId:'branch',latitude:31.9,longitude:44.4,regionId:'region'}};
+  if(q.TableName==='staging-MerchantPlatform'&&q.Key.pk==='BRANCH#branch'&&q.Key.sk==='INVENTORY_RESERVATION#order')return {};
+  if(q.TableName==='WhizzMerchants_Products'&&['one','two'].includes(q.Key.productId)) {
+   return {Item:{productId:q.Key.productId,businessId:'branch',isAvailable:true}};
+  }
+  throw Error('Unexpected '+q.TableName);
+ }};
  const catalog={goodsGross:{minorAmount:3000000},lines:[{productId:'one',quantity:1,unitPrice:{minorAmount:1000000}},{productId:'two',quantity:1,unitPrice:{minorAmount:2000000}}],conditions:['one','two'].map((id,i)=>({ConditionCheck:{Key:{productId:id},TableName:'WhizzMerchants_Products',ExpressionAttributeNames:{'#g1':'categoryId'},ExpressionAttributeValues:{':g1':i?'other':'cat'}}}))};
  if(catalogLines)catalog.lines=catalogLines;
  let selectedDiscount;const selectors=[];
@@ -64,6 +79,19 @@ test('actual commercial create handler preserves audience counters, targeted cam
 });
 test('actual commercial preview applies the same campaign eligibility without committing counters or order',async()=>{
  const f=handlerFixture({preview:true}),r=await f.invoke();assert.equal(r.statusCode,200,r.body);assert.equal(f.writes.length,0);assert.equal(f.discount().snapshot.amount,250000);
+});
+
+test('checkout commits merchant discount usage with the quoted order and includes it in the saved pricing',async()=>{
+ const f=handlerFixture(),result=await f.invoke({platformDiscountId:undefined,discountId:'m1'});
+ assert.equal(result.statusCode,201,result.body);
+ assert.equal(f.writes.length,1);
+ const [{order,operations}]=f.writes;
+ assert.equal(order.discountId,'m1');
+ assert.equal(order.offerSnapshot.source,'MERCHANT');
+ assert.equal(order.pricing.discount,250000);
+ const usage=operations.find(op=>op.Update?.TableName==='WhizzMerchants_Discounts').Update;
+ assert.equal(usage.Key.discountId,'m1');
+ assert.equal(usage.ExpressionAttributeValues[':next'],1);
 });
 
 

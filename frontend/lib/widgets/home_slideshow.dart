@@ -171,6 +171,7 @@ class _HomeSlideshowState extends State<HomeSlideshow>
               },
               itemBuilder: (context, index) {
                 final slide = _slides[index % count];
+                final tappable = slide.actionType != 'announcement';
                 return AnimatedBuilder(
                   animation: _controller,
                   builder: (context, child) {
@@ -187,15 +188,17 @@ class _HomeSlideshowState extends State<HomeSlideshow>
                   },
                   child: Semantics(
                     label: slide.title,
-                    button: true,
+                    button: tappable,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Material(
                         child: InkWell(
-                          onTap: () {
-                            _service.track(slide.id, 'tap');
-                            widget.onTap(slide);
-                          },
+                          onTap: tappable
+                              ? () {
+                                  _service.track(slide.id, 'tap');
+                                  widget.onTap(slide);
+                                }
+                              : null,
                           child: CachedNetworkImage(
                             imageUrl: slide.imageUrl,
                             cacheKey:

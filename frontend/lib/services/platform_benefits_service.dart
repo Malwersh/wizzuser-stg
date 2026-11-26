@@ -18,7 +18,7 @@ class PlatformBenefitsService {
     final addressId = DeliveryAddressManager.instance.activeAddress?.addressId;
     final response = await _client
         .get(
-          Uri.parse('${ApiConfig.baseUrl}/promo-codes/active').replace(
+          Uri.parse('${ApiConfig.platformBenefitsBaseUrl}/promo-codes/active').replace(
             queryParameters: {
               'benefits': '1',
               'userId': account,

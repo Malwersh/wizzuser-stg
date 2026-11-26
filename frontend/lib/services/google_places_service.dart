@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
 import '../config/google_places_config.dart';
+import 'production_address_search.dart';
+import 'region_resolver_service.dart';
 
 /// 🔥 Custom Google Places Service - بدون مكتبات خارجية
 /// يستخدم Google Places API مباشرة مع Session Token و Caching
@@ -17,7 +20,7 @@ class GooglePlacesService {
   
   GooglePlacesService({String? apiKey}) 
       : apiKey = apiKey ?? _getDefaultApiKey() {
-    _loadCache();
+    if (!ApiConfig.isProduction) _loadCache();
   }
   
   static String _getDefaultApiKey() {
@@ -57,7 +60,23 @@ class GooglePlacesService {
     String language = 'ar',
     List<String> countries = const ['iq'],
   }) async {
-    if (query.isEmpty) return [];
+    final search = query.trim();
+    if (search.isEmpty) return [];
+    if (ApiConfig.isProduction) {
+      if (search.length < 3 || search.length > 160) return [];
+      final response = await ProductionAddressSearch.request({'query': search});
+      final suggestions = response?['suggestions'] as List? ?? [];
+      return suggestions.map((row) {
+        final title = row['title'] as String;
+        final subtitle = row['subtitle'] as String;
+        return PlacePrediction(
+          placeId: row['placeId'] as String,
+          description: subtitle.isEmpty ? title : subtitle,
+          mainText: title,
+          secondaryText: subtitle,
+        );
+      }).toList();
+    }
     
     // تحقق من الـ Cache أولاً
     final cacheKey = '${query}_${language}_${countries.join(',')}';
@@ -119,6 +138,18 @@ class GooglePlacesService {
     required String placeId,
     String language = 'ar',
   }) async {
+    if (ApiConfig.isProduction) {
+      final response = await ProductionAddressSearch.request({'placeId': placeId});
+      final place = response?['place'] as Map<String, dynamic>?;
+      if (place == null) throw StateError('Place unavailable');
+      return PlaceDetails(
+        latitude: (place['latitude'] as num).toDouble(),
+        longitude: (place['longitude'] as num).toDouble(),
+        formattedAddress: place['formattedAddress'] as String,
+        name: place['name'] as String,
+        addressComponents: const {},
+      );
+    }
     try {
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/place/details/json'
@@ -163,6 +194,15 @@ class GooglePlacesService {
     required double longitude,
     String language = 'ar',
   }) async {
+    if (ApiConfig.isProduction) {
+      final coverage = await RegionResolverService().resolvePoint(
+        lat: latitude,
+        lng: longitude,
+        throwOnFailure: true,
+      );
+      if (coverage == null) throw StateError('Location outside delivery coverage');
+      return coverage.region.nameAr;
+    }
     try {
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/geocode/json'

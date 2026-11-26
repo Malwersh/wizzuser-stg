@@ -1,3 +1,4 @@
+import '../config/api_config.dart';
 import '../utils/iraqi_phone.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -25,7 +26,7 @@ class PhoneLinkService {
   static const baseUrl = String.fromEnvironment(
     'PHONE_LINK_API_URL',
     defaultValue:
-        'https://mawqyuutz4.execute-api.us-east-1.amazonaws.com/staging',
+        ApiConfig.isProduction ? '' : 'https://mawqyuutz4.execute-api.us-east-1.amazonaws.com/staging',
   );
   Future<Map<String, dynamic>> call(
     String path, [

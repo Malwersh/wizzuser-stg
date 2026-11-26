@@ -7,7 +7,7 @@ const client = new client_dynamodb_1.DynamoDBClient({});
 const docClient = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE || 'WhizzMerchants_Products';
 const PLATFORM_TABLE = process.env.MERCHANT_PLATFORM_TABLE || 'staging-MerchantPlatform';
-const GLOBAL_PRODUCTS_TABLE = 'WhizzMerchants_GlobalProducts';
+const GLOBAL_PRODUCTS_TABLE = process.env.GLOBAL_PRODUCTS_TABLE || 'WhizzMerchants_GlobalProducts';
 const LEGACY_CATEGORY_IDS = Object.freeze({
   'fb-main-courses-002': '4d3e103e-a8e7-4361-88ca-11219ed884b5',
   'fb-desserts-003': 'd7438f4e-9dda-4915-bbf3-29327101ae7d',

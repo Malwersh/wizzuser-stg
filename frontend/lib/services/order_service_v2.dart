@@ -42,12 +42,13 @@ class OrderServiceV2 extends ChangeNotifier {
     return url;
   }
 
-  // Order Service URL (للإلغاء فقط - cancel/unassign)
-  static const String _orderServiceUrl = String.fromEnvironment(
+  static const _stagingOrderServiceUrl = String.fromEnvironment(
     'ORDER_SERVICE_URL',
-    // Staging repo fallback: OrderService API Gateway (staging)
     defaultValue: 'https://mqwom78d3c.execute-api.us-east-1.amazonaws.com/staging',
   );
+  static const _cancellationUrl = ApiConfig.isProduction
+      ? String.fromEnvironment('ORDER_CANCELLATION_URL')
+      : _stagingOrderServiceUrl;
 
   List<OrderModel> _orders = [];
   OrderModel? _currentOrder;
@@ -919,12 +920,8 @@ class OrderServiceV2 extends ChangeNotifier {
   Future<bool> cancelOrder(String orderId, String reason) async {
     lastCancellationPending = false;
     lastCancellationMessage = null;
-    print('🔴 OrderService.cancelOrder():');
-    print('   - معرف الطلب: $orderId');
-    print('   - سبب الإلغاء: $reason');
 
     try {
-      // Get user ID from session
       final sessionService = SessionService.instance;
       final userId = sessionService.currentUserId;
 
@@ -937,19 +934,36 @@ class OrderServiceV2 extends ChangeNotifier {
         'canceledBy': 'customer',
         'reason': reason,
         'cancellationProtocolVersion': 1,
-        'idempotencyKey': _cancellationKeys.putIfAbsent(orderId, () => const Uuid().v4()),
+        'idempotencyKey': _cancellationKeys.putIfAbsent(
+          orderId,
+          () => const Uuid().v4(),
+        ),
         'requestedBy': userId ?? _guestToken,
-        if (_guestToken != null) 'guestToken': _guestToken,
+        if (!ApiConfig.isProduction && _guestToken != null)
+          'guestToken': _guestToken,
       });
 
-
-
-      final headers = await _getHeaders();
-      print('🔴 Request URL: $_orderServiceUrl/order/cancel');
+      final Map<String, String> headers;
+      if (ApiConfig.isProduction) {
+        if (_cancellationUrl.isEmpty) {
+          _setError('خدمة الإلغاء غير متاحة حاليًا.');
+          return false;
+        }
+        final access = await sessionService.getToken();
+        if (userId == null ||
+            access == null ||
+            sessionService.currentUserId != userId) {
+          _setError('أعد تسجيل الدخول إلى حسابك لإلغاء الطلب.');
+          return false;
+        }
+        headers = ApiConfig.getAuthHeaders(access);
+      } else {
+        headers = await _getHeaders();
+      }
 
       final response = await http
           .post(
-            Uri.parse('$_orderServiceUrl/order/cancel'),
+            Uri.parse('$_cancellationUrl/order/cancel'),
             headers: headers,
             body: requestBody,
           )
@@ -963,49 +977,41 @@ class OrderServiceV2 extends ChangeNotifier {
             },
           );
 
-      print('🔴 Response status: ${response.statusCode}');
-      print('🔴 Response body: ${response.body}');
-
       if (response.body.isEmpty) {
         throw Exception('الخادم لم يرجع أي بيانات');
       }
 
       final responseData = json.decode(response.body);
-      print(
-        '   - استجابة API: ${responseData['success']} - ${responseData['message']}',
-      );
-
+      if (ApiConfig.isProduction && sessionService.currentUserId != userId) {
+        return false;
+      }
       if (response.statusCode == 200 && responseData['success'] == true) {
-        if (responseData['cancellationStatus'] == 'REQUESTED' && responseData['cancelled'] == false) {
+        if (responseData['cancellationStatus'] == 'REQUESTED' &&
+            responseData['cancelled'] == false) {
           lastCancellationPending = true;
           lastCancellationMessage = responseData['message'] as String?;
           notifyListeners();
           return true;
         }
-        // تحديث الطلب في القائمة المحلية
+        if (ApiConfig.isProduction &&
+            (responseData['cancellationStatus'] != 'CANCELLED' ||
+                responseData['cancelled'] != true)) {
+          _setError('لم يؤكد الخادم إلغاء الطلب. حدّث حالة الطلب.');
+          return false;
+        }
         final index = _orders.indexWhere((o) => o.id == orderId);
-        print('   - موقع الطلب في القائمة: $index من ${_orders.length}');
 
         if (index != -1) {
-          final oldStatus = _orders[index].status;
-          _orders[index] = _orders[index].copyWith(
+          final cancelledOrder = _orders[index].copyWith(
             status: OrderStatus.cancelled,
             cancelReason: reason,
           );
-          print('   - تم تحديث الطلب: $oldStatus → ${_orders[index].status}');
-
-          // تحديث الطلب الحالي أيضاً إذا كان نفس الطلب الملغى
+          _orders[index] = cancelledOrder;
           if (_currentOrder?.id == orderId) {
-            _currentOrder = _orders[index];
-            print('   - تم تحديث _currentOrder أيضاً');
+            _currentOrder = cancelledOrder;
           }
-
-          print('   - استدعاء notifyListeners()...');
           notifyListeners();
-          _syncLiveActivity(_orders[index]);
-          print('   ✅ تم إلغاء الطلب بنجاح!');
-        } else {
-          print('   ⚠️ لم يتم العثور على الطلب في القائمة المحلية');
+          _syncLiveActivity(cancelledOrder);
         }
         return true;
       } else {
@@ -1013,7 +1019,6 @@ class OrderServiceV2 extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      print('   ❌ خطأ في إلغاء الطلب: $e');
       _setError('خطأ في إلغاء الطلب: ${e.toString()}');
       return false;
     }

@@ -51,7 +51,10 @@ exports.handler = async (event) => {
       return successResponse({regionId:id,nameAr:leaf.name_ar||leaf.name,geometry:leaf.geometry,bounds:require('../utils/customer-regions-313').bounds(leaf.geometry),version:leaf.version??null});
     }
     // Extract parameters
-    const { latitude, longitude, resolution } = event.queryStringParameters || {};
+    const { latitude, longitude, resolution, preferred_region_id } = event.queryStringParameters || {};
+    if(preferred_region_id!==undefined&&(typeof preferred_region_id!=='string'||!/^[A-Za-z0-9_.:-]{1,150}$/.test(preferred_region_id))){
+      return errorResponse(400,'INVALID_REGION','اختر منطقة صحيحة.');
+    }
 
     // Validate parameters
     if (!latitude || !longitude) {
@@ -71,31 +74,15 @@ exports.handler = async (event) => {
       return errorResponse(400, 'INVALID_LONGITUDE', 'Longitude must be between -180 and 180');
     }
 
-    console.log(`📍 Coordinates: ${lat}, ${lng}`);
     console.log(`🔍 H3 Resolution: ${h3Resolution}`);
 
     // H3 identifies candidates; the actual polygon and active hierarchy decide.
-    const resolve=require('../utils/region-coverage-runtime-312').createRegionResolver({db:dynamodb,sdk:{GetCommand,QueryCommand},
-      tables:{regions:REGIONS_TABLE,derived:requireEnv('REGIONS_DERIVED_TABLE'),index:REGION_INDEX_TABLE}});
-    const coverage=await resolve({latitude:lat,longitude:lng});
-    if(!coverage)return errorResponse(404,'REGION_NOT_FOUND','لا توجد منطقة خدمة متاحة لهذه الإحداثيات');
+    const {coverage,path:chain}=await publicRegions.resolve(lat,lng,preferred_region_id);
     const regionId=coverage.regionId,h3Cell=coverage.cellId;
 
-    // Step 3: Query WizzCentral_Regions for details
-    const regionResult = await dynamodb.send(new GetCommand({
-        TableName: REGIONS_TABLE,
-        Key: { regionId: regionId }, ConsistentRead:true,
-      }));
-
-    if (!regionResult.Item) {
-      console.log('⚠️ Region metadata not found');
-      return errorResponse(404, 'REGION_METADATA_NOT_FOUND', 'Region metadata not found');
-    }
-
-    const region = regionResult.Item;
+    const region = chain[3].base;
 
     // Step 4: Build response
-    const chain=await publicRegions.ancestry(regionId);
     const response = {
       schemaVersion:313,
       region_path:chain.map(r=>r.base.regionId),
@@ -117,6 +104,7 @@ exports.handler = async (event) => {
     return successResponse(response);
   } catch (error) {
     if(error.status===404)return errorResponse(404,'REGION_NOT_FOUND','الخدمة غير متاحة في هذه المنطقة حاليًا.');
+    if(error.code==='BOUNDARY_REGION_SELECTION_REQUIRED')return errorResponse(409,error.code,'الموقع على الحد بين مناطق التوصيل. اختر منطقة العنوان.',{regions:error.choices});
     if(error.code==='AMBIGUOUS_COVERAGE')return errorResponse(409,'REGION_BOUNDARIES_REVIEW_REQUIRED','حدود منطقة الخدمة تحتاج مراجعة من الإدارة.');
     console.error('REGION_LOOKUP_UNAVAILABLE',{code:error.code||error.name});
     return errorResponse(503,'REGION_LOOKUP_UNAVAILABLE','تعذر التحقق من منطقة الخدمة الآن. حاول مجددًا.');

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/browsing_location.dart';
 import '../models/delivery_address.dart';
 import '../models/restaurant_list_response.dart';
 import '../config.dart';
@@ -69,15 +70,27 @@ class RestaurantFetchingService {
         endpoint = '${ApiConfig.baseUrl}${ApiConfig.getNearbyBusinessesEndpoint}?${_buildQueryString(queryParams)}';
       }
       
-      final url = Uri.parse(endpoint);
-
-      debugPrint('   🌐 API: $url');
-
-      // Make request
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      ).timeout(Duration(seconds: 10));
+      var url = Uri.parse(endpoint);
+      final headers = await _getHeaders();
+      var response = await http.get(url, headers: headers).timeout(ApiConfig.apiTimeout);
+      while (response.statusCode == 200) {
+        final data = jsonDecode(response.body)['data'];
+        final paging = data?['pagination'];
+        final scannedPage = paging?['page'];
+        if (paging?['candidateTotal'] == null ||
+            paging?['hasMore'] != true ||
+            data?['businesses'] is! List ||
+            (data['businesses'] as List).isNotEmpty ||
+            scannedPage is! int ||
+            scannedPage != int.tryParse(url.queryParameters['page'] ?? '')) {
+          break;
+        }
+        url = url.replace(queryParameters: {
+          ...url.queryParameters,
+          'page': (scannedPage + 1).toString(),
+        });
+        response = await http.get(url, headers: headers).timeout(ApiConfig.apiTimeout);
+      }
 
       debugPrint('   📥 Response: ${response.statusCode}');
 
@@ -114,69 +127,27 @@ class RestaurantFetchingService {
     }
   }
 
-  /// Fetch restaurants by region ID only (for polling updates)
-  /// جلب المطاعم حسب معرف المنطقة فقط (للتحديثات التلقائية)
-  Future<RestaurantListResponse> fetchRestaurantsByRegion({
-    required String regionId,
+  Future<RestaurantListResponse> fetchRestaurantsForBrowsingLocation({
+    required BrowsingLocation location,
     int page = 0,
     int limit = 20,
-  }) async {
-    debugPrint('🍽️ جلب المطاعم للمنطقة: $regionId');
-
-    try {
-      final queryParams = <String, String>{
-        'region_id': regionId,
-        'page': page.toString(),
-        'limit': limit.toString(),
-      };
-
-      // ✅ إصلاح: إضافة baseUrl (كان يتم بناء URL نسبي مما يمنع الطلب الصحيح)
-      final fullEndpoint = '${ApiConfig.baseUrl}${ApiConfig.getBusinessesByRegionEndpoint}?${_buildQueryString(queryParams)}';
-      final url = Uri.parse(fullEndpoint);
-
-      debugPrint('   🌐 API: $url');
-
-      final response = await http.get(
-        url,
-        headers: await _getHeaders(),
-      ).timeout(Duration(seconds: 10));
-
-      debugPrint('   📥 Response: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final rawBody = response.body;
-        debugPrint('   🧾 Raw length: ${rawBody.length}');
-        final data = jsonDecode(rawBody) as Map<String, dynamic>;
-        debugPrint('   🔑 مفاتيح الاستجابة: ${data.keys.join(', ')}');
-        if (data['data'] is Map<String, dynamic>) {
-          final inner = data['data'] as Map<String, dynamic>;
-          final listLen = (inner['businesses'] as List<dynamic>?)?.length ?? 0;
-          debugPrint('   📊 عدد العناصر قبل التحويل: $listLen');
-        }
-
-        if (data['success'] == true) {
-          final result = RestaurantListResponse.fromApiResponse(data['data']);
-          debugPrint('   ✅ تم جلب ${result.length} مطعم (بعد التحويل)');
-          if (result.businesses.isNotEmpty) {
-            for (var i = 0; i < result.businesses.length; i++) {
-              final b = result.businesses[i] as Map<String, dynamic>;
-              debugPrint('      [$i] ${(b['businessName'] ?? b['business_name'] ?? 'غير معروف')} - ID: ${(b['businessId'] ?? b['business_id'] ?? '❌')}');
-            }
-          }
-          return result;
-        } else {
-          throw Exception(data['message'] ?? 'فشل جلب المطاعم');
-        }
-      } else if (response.statusCode == 404) {
-        debugPrint('   ⚠️ لا توجد مطاعم في هذه المنطقة');
-        return RestaurantListResponse.empty(regionId: regionId);
-      } else {
-        throw Exception('خطأ في الخادم: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('   ❌ خطأ في جلب المطاعم: $e');
-      rethrow;
+  }) {
+    if (!location.hasPoint) {
+      return Future.value(RestaurantListResponse.empty(regionId: location.regionId));
     }
+    return fetchRestaurantsByDeliveryAddress(
+      deliveryAddress: DeliveryAddress(
+        formattedAddress: location.addressText ?? location.regionName,
+        latitude: location.latitude!,
+        longitude: location.longitude!,
+        regionId: location.regionId,
+        regionNameAr: location.regionName,
+        city: location.regionName,
+        source: AddressSource.manual,
+      ),
+      page: page,
+      limit: limit,
+    );
   }
 
   /// Fetch nearby restaurants using coordinates directly

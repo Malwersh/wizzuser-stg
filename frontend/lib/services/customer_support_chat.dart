@@ -46,11 +46,11 @@ class _SocketTransport implements SupportTransport {
 class CustomerSupportChat extends ChangeNotifier {
   static const endpoint = String.fromEnvironment(
     'SUPPORT_CHAT_WS_URL',
-    defaultValue:
-        ApiConfig.environment == 'production' ||
-                ApiConfig.environment != 'staging'
-            ? ''
-            : 'wss://vzvnqu5jhl.execute-api.us-east-1.amazonaws.com/staging',
+    defaultValue: ApiConfig.environment == 'production'
+        ? 'wss://x7o502lmzk.execute-api.us-east-1.amazonaws.com/production'
+        : ApiConfig.environment == 'staging'
+            ? 'wss://vzvnqu5jhl.execute-api.us-east-1.amazonaws.com/staging'
+            : '',
   );
   final String orderId, fixedSessionId;
   final Future<SupportIdentity> Function() identity;
@@ -93,8 +93,9 @@ class CustomerSupportChat extends ChangeNotifier {
   final http.Client? imageClient;
   static const attachmentsEndpoint = String.fromEnvironment(
     'SUPPORT_ATTACHMENTS_API_URL',
-    defaultValue:
-        ApiConfig.environment == 'staging'
+    defaultValue: ApiConfig.environment == 'production'
+        ? 'https://rdrpzzb1kc.execute-api.us-east-1.amazonaws.com/production/support/attachments'
+        : ApiConfig.environment == 'staging'
             ? 'https://5ytyphpnkc.execute-api.us-east-1.amazonaws.com/staging/support/attachments'
             : '',
   );

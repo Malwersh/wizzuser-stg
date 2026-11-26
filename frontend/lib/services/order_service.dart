@@ -732,7 +732,7 @@ class OrderService extends ChangeNotifier {
     try {
       final response = await http
           .get(
-            Uri.parse('$_baseUrl/promo-codes/active').replace(
+            Uri.parse('${ApiConfig.platformBenefitsBaseUrl}/promo-codes/active').replace(
               queryParameters: {
                 if (SessionService.instance.isLoggedIn)
                   'userId': SessionService.instance.currentUserId!,
@@ -848,7 +848,7 @@ class OrderService extends ChangeNotifier {
     try {
       final response = await http
           .post(
-            Uri.parse('$_baseUrl/promo-codes/validate'),
+            Uri.parse('${ApiConfig.platformBenefitsBaseUrl}/promo-codes/validate'),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
@@ -935,7 +935,7 @@ class OrderService extends ChangeNotifier {
     try {
       final response = await http
           .get(
-            Uri.parse('$_baseUrl/business/$storeId/discounts').replace(
+            Uri.parse('${ApiConfig.platformBenefitsBaseUrl}/business/$storeId/discounts').replace(
               queryParameters: {
                 if (SessionService.instance.isLoggedIn)
                   'userId': SessionService.instance.currentUserId!,
@@ -994,7 +994,7 @@ class OrderService extends ChangeNotifier {
     try {
       final response = await http
           .post(
-            Uri.parse('$_baseUrl/promo-codes/apply'),
+            Uri.parse('${ApiConfig.platformBenefitsBaseUrl}/promo-codes/apply'),
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',

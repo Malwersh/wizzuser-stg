@@ -50898,15 +50898,16 @@ function createMapboxRoadRouter(options) {
 function createCoveredDeliveryRouter(options) {
   const resolveCoverage = options.resolveCoverage, router = options.router;
   return Object.freeze({
-    async getDeliveryRoute(branchLocation, customerLocation) {
+    async getDeliveryRoute(branchLocation, customerLocation, destinationPreference) {
       const origin = point(branchLocation), destination = point(customerLocation);
-      const matches = await Promise.all([resolveCoverage(origin), resolveCoverage(destination)]);
+      const resolveEndpoints = /* @__PURE__ */ __name(() => Promise.all([resolveCoverage(origin), resolveCoverage(destination, destinationPreference)]), "resolveEndpoints");
+      const matches = await resolveEndpoints();
       const coverage = matches.map((m4) => {
         if (!m4 || m4.active !== true || m4.hierarchyActive !== true || m4.insidePolygon !== true || typeof m4.regionId !== "string" || !/^[A-Za-z0-9_.:-]{1,150}$/.test(m4.regionId) || typeof m4.referenceVersion !== "string" || !m4.referenceVersion.trim()) throw new RoutingError("OUTSIDE_COVERAGE");
         return Object.freeze({ regionId: m4.regionId, active: true, hierarchyActive: true, insidePolygon: true, referenceVersion: m4.referenceVersion });
       });
       const bound = await router.getRoute(origin, destination);
-      const latest = await Promise.all([resolveCoverage(origin), resolveCoverage(destination)]);
+      const latest = await resolveEndpoints();
       if (latest.some((m4, i4) => !m4 || m4.active !== true || m4.hierarchyActive !== true || m4.insidePolygon !== true || m4.regionId !== coverage[i4].regionId || m4.referenceVersion !== coverage[i4].referenceVersion)) {
         throw new RoutingError("OUTSIDE_COVERAGE");
       }
@@ -50938,9 +50939,85 @@ var init_roadRouting = __esm({
   }
 });
 
+// backend/wallet-service/src/walletBindings.ts
+function isFinancialOrderProduction(env) {
+  const stages = [env.ENVIRONMENT, env.PLATFORM_ENVIRONMENT, env.STAGE].filter(Boolean);
+  const production = stages.some((stage) => stage === "production" || stage === "prod");
+  if (production && stages.some((stage) => stage !== "production" && stage !== "prod")) {
+    throw new Error("WALLET_BINDING_NOT_CONFIGURED: ENVIRONMENT_CONFLICT");
+  }
+  return production;
+}
+var init_walletBindings = __esm({
+  "backend/wallet-service/src/walletBindings.ts"() {
+    "use strict";
+    __name(isFinancialOrderProduction, "isFinancialOrderProduction");
+  }
+});
+
+// backend/wallet-service/src/checkoutTables.ts
+function checkoutTables(env = process.env) {
+  const production = isFinancialOrderProduction(env);
+  if (production && env.AWS_REGION !== "us-east-1") throw Error("CHECKOUT_BINDINGS_NOT_CONFIGURED");
+  return { ...production ? productionTables : stagingTables };
+}
+var productionTables, stagingTables;
+var init_checkoutTables = __esm({
+  "backend/wallet-service/src/checkoutTables.ts"() {
+    "use strict";
+    init_walletBindings();
+    productionTables = {
+      quotes: "wizz-production-DeliveryQuotes",
+      customers: "wizz-production-Customers",
+      orders: "wizz-production-Orders",
+      branches: "wizz-production-Merchants",
+      addresses: "wizz-production-Addresses",
+      policy: "wizz-production-PlatformStaff",
+      platform: "wizz-production-MerchantPlatform",
+      deletion: "wizz-production-AccountDeletion",
+      regions: "wizz-production-Regions",
+      derived: "wizz-production-RegionsDerived",
+      neighbors: "wizz-production-RegionNeighbors",
+      index: "wizz-production-RegionIndex",
+      lifecycle: "wizz-production-WalletLifecycle",
+      holds: "wizz-production-Holds",
+      ledger: "wizz-production-LedgerEntries",
+      wallets: "wizz-production-Wallets",
+      audit: "wizz-production-AuditLog",
+      journey: "wizz-production-OfferJourney",
+      products: "wizz-production-Products",
+      categories: "wizz-production-MenuCategories"
+    };
+    stagingTables = {
+      quotes: "staging-DeliveryQuotes",
+      customers: "WizzUser_users_staging",
+      orders: "WizzOrders",
+      branches: "WhizzMerchants_Businesses",
+      addresses: "WizzUser_addresses_staging",
+      policy: "staging-PlatformStaff",
+      platform: "staging-MerchantPlatform",
+      deletion: "staging-AccountDeletion",
+      regions: "WizzCentral_Regions",
+      derived: "WizzCentral_RegionsDerived_staging",
+      neighbors: "WizzCentral_RegionNeighbors_staging",
+      index: "WizzCentral_RegionIndex_staging",
+      lifecycle: "staging-WalletLifecycle",
+      holds: "staging-Holds",
+      ledger: "staging-LedgerEntries",
+      wallets: "staging-Wallets",
+      audit: "staging-AuditLog",
+      journey: "staging-WizzOfferJourney",
+      products: "WhizzMerchants_Products",
+      categories: "WhizzMerchants_Categories"
+    };
+    __name(checkoutTables, "checkoutTables");
+  }
+});
+
 // backend/wallet-service/src/regionCoverage.ts
 var regionCoverage_exports = {};
 __export(regionCoverage_exports, {
+  BoundaryRegionSelectionRequired: () => BoundaryRegionSelectionRequired,
   createDynamoRegionCoverage: () => createDynamoRegionCoverage,
   createStagingDeliveryRouting: () => createStagingDeliveryRouting
 });
@@ -50977,7 +51054,7 @@ function readPoint(p4) {
 function createDynamoRegionCoverage(options) {
   const { db } = options, tables = { ...options.tables };
   for (const table of Object.values(tables)) if (!/^[A-Za-z0-9_.-]{3,255}$/.test(table)) return refError();
-  return async (value) => {
+  return async (value, preference) => {
     const p4 = readPoint(value);
     try {
       const cellId = (0, import_h3_js.latLngToCell)(p4.latitude, p4.longitude, 9);
@@ -51029,6 +51106,7 @@ function createDynamoRegionCoverage(options) {
                 ExpressionAttributeNames: { "#version": "version" }
               }))
             ]);
+            if (!a4.Item && !b4.Item) return null;
             if (!a4.Item || !b4.Item || a4.Item.regionId !== regionId || b4.Item.regionId !== regionId) return refError();
             return { base: a4.Item, derived: b4.Item };
           })();
@@ -51037,21 +51115,25 @@ function createDynamoRegionCoverage(options) {
         return pending;
       }, "get");
       const matches = [];
+      const boundaryMatches = [];
       for (const candidate of [...candidates].sort()) {
         const leaf = await get2(candidate);
+        if (!leaf) continue;
         const level = Number(leaf.base.level);
         if (!Number.isInteger(level) || level < 0 || level > 3) return refError();
         if (level !== 3) continue;
         if (!enabled(leaf.base.is_active) || !enabled(leaf.derived.effective_is_active)) continue;
         const shape = geometry(leaf.base.geometry);
-        if (!booleanPointInPolygon([p4.longitude, p4.latitude], shape, { ignoreBoundary: true })) continue;
+        const coordinates = [p4.longitude, p4.latitude];
+        const inside = booleanPointInPolygon(coordinates, shape, { ignoreBoundary: true });
+        if (!inside && (!preference || !booleanPointInPolygon(coordinates, shape))) continue;
         const chain2 = [leaf];
         let active = true;
         for (let expected = 2; expected >= 0; expected--) {
           const parentId = id(chain2[chain2.length - 1].base.parent_id);
           if (chain2.some((r4) => r4.base.regionId === parentId)) return refError();
           const parent = await get2(parentId);
-          if (Number(parent.base.level) !== expected) return refError();
+          if (!parent || Number(parent.base.level) !== expected) return refError();
           if (!enabled(parent.base.is_active) || !enabled(parent.derived.effective_is_active)) active = false;
           chain2.push(parent);
         }
@@ -51070,7 +51152,7 @@ function createDynamoRegionCoverage(options) {
           derivedVersion: r4.derived.version ?? null
         }));
         const referenceVersion = (0, import_node_crypto5.createHash)("sha256").update(canonical({ schemaVersion: 1, proof, geometry: shape })).digest("hex");
-        matches.push(Object.freeze({
+        (inside ? matches : boundaryMatches).push(Object.freeze({
           regionId: candidate,
           countryId: path[0],
           governorateId: path[1],
@@ -51084,7 +51166,11 @@ function createDynamoRegionCoverage(options) {
         }));
       }
       if (matches.length > 1) throw new RoutingError("AMBIGUOUS_COVERAGE");
-      return matches[0] ?? null;
+      if (matches.length === 1) return matches[0];
+      if (boundaryMatches.length < 2) return null;
+      const preferred = boundaryMatches.find((match) => match.regionId === preference?.preferredRegionId);
+      if (preferred) return preferred;
+      throw new BoundaryRegionSelectionRequired(boundaryMatches.map((match) => match.regionId));
     } catch (error2) {
       if (error2 instanceof RoutingError) throw error2;
       return refError();
@@ -51092,14 +51178,10 @@ function createDynamoRegionCoverage(options) {
   };
 }
 function createStagingDeliveryRouting(options) {
-  const resolveCoverage = createDynamoRegionCoverage({ db: options.db, tables: {
-    regions: "WizzCentral_Regions",
-    derived: "WizzCentral_RegionsDerived_staging",
-    index: "WizzCentral_RegionIndex_staging"
-  } });
+  const resolveCoverage = createDynamoRegionCoverage({ db: options.db, tables: checkoutTables() });
   return createCoveredDeliveryRouter({ resolveCoverage, router: createMapboxRoadRouter(options) });
 }
-var import_lib_dynamodb, import_node_crypto5, import_h3_js, refError, id, enabled;
+var import_lib_dynamodb, import_node_crypto5, import_h3_js, BoundaryRegionSelectionRequired, refError, id, enabled;
 var init_regionCoverage = __esm({
   "backend/wallet-service/src/regionCoverage.ts"() {
     "use strict";
@@ -51108,6 +51190,16 @@ var init_regionCoverage = __esm({
     import_h3_js = __toESM(require_h3_js());
     init_esm3();
     init_roadRouting();
+    init_checkoutTables();
+    BoundaryRegionSelectionRequired = class extends RoutingError {
+      constructor(regionIds) {
+        super("BOUNDARY_REGION_SELECTION_REQUIRED");
+        this.regionIds = regionIds;
+      }
+      static {
+        __name(this, "BoundaryRegionSelectionRequired");
+      }
+    };
     refError = /* @__PURE__ */ __name(() => {
       throw new RoutingError("REGION_REFERENCE_UNAVAILABLE");
     }, "refError");

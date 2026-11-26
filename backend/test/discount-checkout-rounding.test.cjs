@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const engine=require('../src/functions/shared/discount-engine');
 const merchant={discountId:'d1',businessId:'branch',status:'active',type:'percentage',value:12.5,usage_count:0,version:1};
 const normalize=r=>engine.normalizeDiscount(r);
-function resolver(row) {
+function resolver(row, {environment='staging', expectedTable}={}) {
  class GetCommand {constructor(input){this.input=input;}}
  const module={exports:{}};
  const modules={
@@ -11,11 +11,15 @@ function resolver(row) {
   './discount-engine':engine,
   './campaign-version':require('../src/functions/shared/campaign-version'),
   './offer-eligibility':{eligibility:async()=>({})},
+  '../create-order/quote-runtime/checkoutTables':require('../src/functions/create-order/quote-runtime/checkoutTables'),
  };
  vm.runInNewContext(fs.readFileSync(require.resolve('../src/functions/shared/discount-reservation'),'utf8'),{
-  module,Buffer,process:{env:{}},require:n=>{assert.ok(n in modules,n);return modules[n];}
+  module,Buffer,process:{env:{ENVIRONMENT:environment,AWS_REGION:'us-east-1'}},require:n=>{assert.ok(n in modules,n);return modules[n];}
  });
- return options=>module.exports.resolveDiscount({db:{async send(){return {Item:row};}},branchId:'branch',
+ return options=>module.exports.resolveDiscount({db:{async send(command){
+  if(expectedTable) assert.equal(command.input.TableName,expectedTable);
+  return {Item:row};
+ }},branchId:'branch',
   discountId:'d1',subtotal:10007000,items:[{itemId:'p1',price:10007000,quantity:1}],deliveryFee:0,...options});
 }
 
@@ -43,10 +47,15 @@ test('fixed discounts, delivery savings and exact whole amounts use the same qua
   [{type:'freeDelivery',value:0},0,0],
  ])assert.equal(engine.calculateCheckoutDiscountAmount(normalize({...merchant,...patch}),10007000,[],fee),want);
 });
-test('preview and commit reserve identical 250-IQD snapshots and allocate their exact total',async()=>{
- for(const source of ['MERCHANT','PLATFORM']) {
+test('preview and commit reserve identical 250-IQD snapshots in each environment',async()=>{
+ for(const [environment,source,expectedTable] of [
+  ['staging','MERCHANT','WhizzMerchants_Discounts'],
+  ['staging','PLATFORM','WizzCentral_Platform_Discounts'],
+  ['production','MERCHANT','wizz-production-MerchantDiscounts'],
+  ['production','PLATFORM','wizz-production-PlatformDiscounts'],
+ ]) {
   const row=source==='MERCHANT'?merchant:{...merchant,usage:0,currentUsage:0};
-  const resolve=resolver(row),options=source==='PLATFORM'?{discountId:null,platformDiscountId:'d1'}:{};
+  const resolve=resolver(row,{environment,expectedTable}),options=source==='PLATFORM'?{discountId:null,platformDiscountId:'d1'}:{};
   const preview=await resolve({...options,preview:true}),commit=await resolve(options);
   assert.equal(preview.amount,1250000);
   assert.equal(commit.amount,preview.amount);
@@ -55,6 +64,7 @@ test('preview and commit reserve identical 250-IQD snapshots and allocate their 
   assert.equal(commit.amount%250000,0);
   assert.equal(commit.lines.reduce((sum,l)=>sum+l.savingsFils,0),commit.amount);
   assert.equal(commit.lines[0].netFils,8757000);
+  assert.equal(commit.operations[0].Update.TableName,expectedTable);
   assert.equal(commit.operations[0].Update.ExpressionAttributeValues[':next'],1);
  }
 });

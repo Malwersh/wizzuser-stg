@@ -1,3 +1,4 @@
+import '../config/api_config.dart';
 import '../utils/iraqi_phone.dart';
 import '../models/customer_legal_bundle.dart';
 import 'dart:convert';
@@ -17,11 +18,13 @@ class CustomerPhoneAuthService {
   final String? expectedOwner;
   CustomerPhoneAuthService({http.Client? client, this.expectedOwner})
     : _client = client ?? http.Client();
-  static const baseUrl = String.fromEnvironment(
-    'PHONE_AUTH_API_URL',
-    defaultValue:
-        'https://f44z33oz55.execute-api.us-east-1.amazonaws.com/staging',
-  );
+  static const baseUrl = ApiConfig.isProduction
+      ? 'https://41zvbbtw6e.execute-api.us-east-1.amazonaws.com/production'
+      : String.fromEnvironment(
+          'PHONE_AUTH_API_URL',
+          defaultValue:
+              'https://f44z33oz55.execute-api.us-east-1.amazonaws.com/staging',
+        );
   String? _sessionId, _phone;
   CustomerLegalBundle? enrollmentPolicy;
   static String normalizePhone(String input) {

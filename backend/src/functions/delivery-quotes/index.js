@@ -1,5 +1,6 @@
 'use strict';
 const { accountGuard } = require('../create-order/account-guard');
+const { neighboringRequest, readNeighboringBranches } = require('./neighboring-reader');
 const { createStagingStorefrontRoute, createStagingStorefrontPreview, createStagingDeliveryQuoteRateLimiter, createStagingDeliveryQuotes, createStagingSecretDeliveryRouting, DynamoDBClient,
   createFinanceRollout, DynamoDBDocumentClient, GetCommand, SecretsManagerClient, CognitoIdentityProviderClient, GetUserCommand, readDeliveryOperations } = require('./runtime');
 const cognito = new CognitoIdentityProviderClient({});
@@ -11,6 +12,9 @@ const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 const reply = (statusCode, body) => ({ statusCode, headers, body: JSON.stringify(body) });
 exports.handler = async event => {
+  if (neighboringRequest(event)) {
+    return readNeighboringBranches(event.neighboringBranchPreviews, event.sourceIp);
+  }
   if (event.httpMethod === 'OPTIONS') return reply(204, {});
   try {
     const env = process.env;

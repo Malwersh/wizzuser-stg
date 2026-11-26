@@ -1,7 +1,12 @@
 'use strict';
+const { neighboringRequest, readNeighboringBranches, createPreview } = require('./neighboring-reader');
+
 // Deployment preserves the prior exact handler and all its companion files.
 // Only this new, bounded, informational action is dispatched to the public point reader.
 exports.handler=async(event,context)=>{
+ if(neighboringRequest(event)) {
+  return readNeighboringBranches(event.neighboringBranchPreviews, event.sourceIp);
+ }
  let input;
  if(event.httpMethod==='POST'&&!event.isBase64Encoded&&typeof event.body==='string'&&Buffer.byteLength(event.body)<=2048){try{input=JSON.parse(event.body);}catch(_){}}
  if(!['storefront_point_preview','service_fee_preview'].includes(input?.action)){
@@ -20,8 +25,7 @@ exports.handler=async(event,context)=>{
   const operating=await runtime.readDeliveryOperations(db,env);
   await runtime.reservePublicPointPreview317({db,sourceIp:event.requestContext?.identity?.sourceIp||event.requestContext?.http?.sourceIp,maxPerMinute:Math.min(30,operating.values.quoteMaxPerCustomerPerMinute*2)});
   if(action==='service_fee_preview')return reply(200,{success:true,preview:await runtime.serviceFeePreview320(db,selection)});
-  const secrets=new runtime.SecretsManagerClient({});
-  const preview=await runtime.createStagingPointStorefrontPreview317({db,createRouter:guardedDb=>runtime.createStagingSecretDeliveryRouting({db:guardedDb,secrets,secretArn:env.MAPBOX_SECRET_ARN,profile:'driving',ttlSeconds:120,timeoutMs:8000,credentialTimeoutMs:2000})}).preview(selection);
+  const preview=await createPreview(runtime,env,db).preview(selection);
   console.info('STOREFRONT_POINT_PREVIEW_READY',{branchId:preview.branchId,regionId:preview.regionId,feeMinor:preview.customerDeliveryFee.minorAmount,pricingMode:preview.pricingMode,roadDistanceMeters:preview.roadDistanceMeters});
   return reply(200,{success:true,preview});
  }catch(e){

@@ -1080,8 +1080,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final response =
           browsing != null
               ? await RestaurantFetchingService.instance
-                  .fetchRestaurantsByRegion(
-                    regionId: browsing.regionId,
+                  .fetchRestaurantsForBrowsingLocation(
+                    location: browsing,
                     page: 0,
                     limit: 50,
                   )
@@ -1201,7 +1201,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             []; // إفراغ تماماً - نعتمد فقط على _allRealBusinesses
         _isLoadingRealData = false;
         _hasMoreRealData = response.hasMore;
-        _realDataPage = 0;
+        _realDataPage = response.page;
         // 🛡️ تحديث وقت آخر تحديث للبيانات
         _lastDataUpdateTime = DateTime.now();
       });
@@ -1766,8 +1766,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final response =
           browsing != null
               ? await RestaurantFetchingService.instance
-                  .fetchRestaurantsByRegion(
-                    regionId: browsing.regionId,
+                  .fetchRestaurantsForBrowsingLocation(
+                    location: browsing,
                     page: nextPage,
                     limit: 50,
                   )
@@ -1788,7 +1788,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         final ids = _allRealBusinesses.map((b) => b.id).toSet();
         _allRealBusinesses.addAll(items.where((b) => ids.add(b.id)));
-        _realDataPage = nextPage;
+        _realDataPage = response.page;
         _hasMoreRealData = response.hasMore;
         _isLoadingRealData = false;
       });

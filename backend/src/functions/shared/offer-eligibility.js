@@ -1,10 +1,12 @@
 'use strict';
 const {GetCommand,ScanCommand}=require('@aws-sdk/lib-dynamodb');
-const TABLE='staging-WizzOfferJourney';
+const {checkoutTables}=require('../create-order/quote-runtime/checkoutTables');
+const tables=checkoutTables(process.env);
+const TABLE=tables.journey;
 const fail=code=>{throw Object.assign(Error(code),{statusCode:409,status:409});};
 const read=async(db,Key)=>(await db.send(new GetCommand({TableName:TABLE,Key,ConsistentRead:true}))).Item;
 async function history(db,sub,userId){let cursor,count=0,lastAt=0,uses={};for(let n=0;n<100;n++){
- const r=await db.send(new ScanCommand({TableName:'WizzOrders',ConsistentRead:true,Select:'SPECIFIC_ATTRIBUTES',ExclusiveStartKey:cursor,FilterExpression:'userSub = :sub OR userId = :uid',ExpressionAttributeValues:{':sub':sub,':uid':userId||sub},ProjectionExpression:'orderId,createdAt,discountId,promoCode,offerSnapshot,offerUsageRelease'}));
+ const r=await db.send(new ScanCommand({TableName:tables.orders,ConsistentRead:true,Select:'SPECIFIC_ATTRIBUTES',ExclusiveStartKey:cursor,FilterExpression:'userSub = :sub OR userId = :uid',ExpressionAttributeValues:{':sub':sub,':uid':userId||sub},ProjectionExpression:'orderId,createdAt,discountId,promoCode,offerSnapshot,offerUsageRelease'}));
  for(const o of r.Items||[]){if(o.offerUsageRelease?.schemaVersion===1&&o.offerUsageRelease.policy==='BEFORE_MERCHANT_ACCEPTANCE')continue;count++;lastAt=Math.max(lastAt,Date.parse(o.createdAt)||0);for(const key of [o.discountId&&'id:'+o.discountId,o.promoCode&&'code:'+o.promoCode,o.offerSnapshot?.source==='PLATFORM'&&'platform-id:'+o.offerSnapshot.discountId].filter(Boolean))uses[key]=(uses[key]||0)+1;}
  cursor=r.LastEvaluatedKey;if(!cursor)return {count,lastAt,uses};
  }fail('OFFER_HISTORY_UNAVAILABLE');}
@@ -42,6 +44,6 @@ async function eligibility(db,raw,{identity,customer,regionIds=[],branchId,sourc
  }else if(!signedIn&&(limit||firstOrder))fail('OFFER_LOGIN_REQUIRED');
  return {redemption,merchants};
 }
-async function regionAncestors(db,regionId){const list=[];for(let n=0;regionId&&n<8&&!list.includes(regionId);n++){const r=(await db.send(new GetCommand({TableName:'WizzCentral_Regions',Key:{regionId},ConsistentRead:true}))).Item;if(!r)break;list.push(regionId);regionId=r.parent_id;}return list;}
+async function regionAncestors(db,regionId){const list=[];for(let n=0;regionId&&n<8&&!list.includes(regionId);n++){const r=(await db.send(new GetCommand({TableName:tables.regions,Key:{regionId},ConsistentRead:true}))).Item;if(!r)break;list.push(regionId);regionId=r.parent_id;}return list;}
 function catalogItems(catalog){return catalog.lines.map(l=>{const c=catalog.conditions.find(x=>x.ConditionCheck?.Key?.productId===l.productId)?.ConditionCheck;const key=Object.entries(c?.ExpressionAttributeNames||{}).find(([,v])=>v==='categoryId')?.[0];const categoryId=key?c.ExpressionAttributeValues[':'+key.slice(1)]:null;return {itemId:l.productId,...(l.lineId?{lineId:l.lineId}:{}),categoryId,price:l.unitPrice.minorAmount,quantity:l.quantity};});}
 module.exports={TABLE,read,history,customerState,orderOperation,eligibility,regionAncestors,catalogItems,fail};

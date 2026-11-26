@@ -1,15 +1,36 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../config/api_config.dart';
 import 'session_service.dart';
 import 'delivery_quote_checkout.dart';
 
 class AccountDeletionService {
-  static const _base = String.fromEnvironment(
+  static const _stagingBase =
+      'https://77j15qyukg.execute-api.us-east-1.amazonaws.com/staging';
+  static const _productionBase =
+      'https://fc51ih7d74.execute-api.us-east-1.amazonaws.com/production';
+  static const _configuredBase = String.fromEnvironment(
     'ACCOUNT_DELETION_API_URL',
-    defaultValue:
-        'https://77j15qyukg.execute-api.us-east-1.amazonaws.com/staging',
+    defaultValue: ApiConfig.isProduction ? _productionBase : _stagingBase,
   );
+
+  static Uri _endpoint(String path) {
+    if (!ApiConfig.isProduction) {
+      return Uri.parse('$_configuredBase/deletion/$path');
+    }
+    final base = Uri.tryParse(_configuredBase);
+    if (base == null ||
+        base.scheme != 'https' ||
+        base.host.isEmpty ||
+        base.userInfo.isNotEmpty ||
+        base.hasQuery ||
+        base.hasFragment ||
+        !const ['/production', '/production/'].contains(base.path)) {
+      throw StateError('خدمة حذف الحساب في الإنتاج غير متاحة حاليًا.');
+    }
+    return base.replace(path: '/production/deletion/$path');
+  }
   static const _storage = FlutterSecureStorage(
     iOptions: IOSOptions(accountName: 'wizz_account_deletion'),
     aOptions: AndroidOptions(sharedPreferencesName: 'wizz_account_deletion'),
@@ -73,11 +94,11 @@ class AccountDeletionService {
     String? token,
     Map<String, dynamic>? body,
   }) async {
+    final uri = _endpoint(path);
     final headers = {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
     };
-    final uri = Uri.parse('$_base/deletion/$path');
     final response = await (body == null
             ? http.get(uri, headers: headers)
             : http.post(uri, headers: headers, body: jsonEncode(body)))

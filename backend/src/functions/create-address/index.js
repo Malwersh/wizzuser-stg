@@ -156,7 +156,6 @@ exports.handler = async (event) => {
 
         // Extract user ID from path parameters
         const userId = event.pathParameters?.user_id;
-        console.log('👤 Creating address for user ID:', userId);
 
         if (!userId) {
             return {
@@ -214,7 +213,7 @@ exports.handler = async (event) => {
         if(replay)return createdResponse(replay,true);
 
         const regionApi=require('../../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
-        const verifiedRegion=await regionApi.resolve(requestData.latitude,requestData.longitude);
+        const verifiedRegion=await regionApi.resolve(requestData.latitude,requestData.longitude,requestData.region_id);
         if(requestData.save_to_address_book!==undefined&&requestData.region_id&&requestData.region_id!==verifiedRegion.regionId)throw Object.assign(Error('REGION_SELECTION_CHANGED'),{statusCode:400});
         if(requestData.save_to_address_book!==undefined){
           const path=verifiedRegion.path;
@@ -265,7 +264,6 @@ exports.handler = async (event) => {
             updatedAt: now
         };
 
-        console.log('💾 Creating address item:', JSON.stringify(addressItem, null, 2));
 
         // Save to DynamoDB
         const putParams = {
@@ -276,12 +274,11 @@ exports.handler = async (event) => {
         putParams.ConditionExpression='attribute_not_exists(addressId)';
         await commitBook({db:dynamodb,write,operation:{Put:putParams},makeDefault:requestData.is_default===true,regionChecks:regionApi.checks(verifiedRegion.path)});
 
-        console.log('✅ Address created successfully:', addressId);
 
         return createdResponse(addressItem);
 
     } catch (error) {
-        console.error('💥 Error creating address:', error);
+        console.error('Create address failed', {code: error.code || error.name});
 
         return {
             statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),

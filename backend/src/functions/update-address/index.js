@@ -126,7 +126,7 @@ exports.handler = async (event) => {
         expressionAttributeValues[':updatedAt'] = new Date().toISOString();
 
         const regionApi=require('../../utils/customer-regions-313').create({db:dynamodb,sdk:{GetCommand,QueryCommand,ScanCommand},tables:{regions:process.env.REGIONS_TABLE,derived:process.env.REGIONS_DERIVED_TABLE,index:process.env.REGION_INDEX_TABLE}});
-        const verifiedRegion=await regionApi.resolve(updateData.latitude??existingResult.Item.latitude,updateData.longitude??existingResult.Item.longitude);
+        const verifiedRegion=await regionApi.resolve(updateData.latitude??existingResult.Item.latitude,updateData.longitude??existingResult.Item.longitude,updateData.region_id??existingResult.Item.regionId);
         updateData.region_id=verifiedRegion.regionId;updateData.region_name_ar=verifiedRegion.regionNameAr;
         updateData.province=verifiedRegion.path[1].base.name_ar||verifiedRegion.path[1].base.name;updateData.district=verifiedRegion.path[2].base.name_ar||verifiedRegion.path[2].base.name;
         for (const key of ['neighborhood','landmark']) {
@@ -211,7 +211,6 @@ exports.handler = async (event) => {
             ReturnValues: 'ALL_NEW'
         };
 
-        console.log('🔄 DynamoDB Update Parameters:', JSON.stringify(updateParams, null, 2));
 
         updateParams.ConditionExpression='attribute_exists(addressId) AND userId = :owner';
         updateParams.ExpressionAttributeValues[':owner']=userId;
@@ -245,7 +244,6 @@ exports.handler = async (event) => {
             updated_at: updatedAddress.updatedAt
         };
 
-        console.log('✅ Address updated successfully:', addressId);
 
         return {
             statusCode: 200,
@@ -258,7 +256,7 @@ exports.handler = async (event) => {
         };
 
     } catch (error) {
-        console.error('💥 Error updating address:', error);
+        console.error('Update address failed', {code: error.code || error.name});
         
         return {
             statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),

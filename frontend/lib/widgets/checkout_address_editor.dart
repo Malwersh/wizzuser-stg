@@ -152,6 +152,7 @@ class _CheckoutAddressEditorState extends State<CheckoutAddressEditor> {
           .resolvePoint(
             lat: point.latitude,
             lng: point.longitude,
+            preferredRegionId: widget.selection.regionId,
             throwOnFailure: true,
           );
       if (!mounted || generation != _locationGeneration) return;

@@ -3725,13 +3725,17 @@ Resources:
       CodeUri: src/
       Handler: lambdas/get-businesses-by-region.handler
       FunctionName: !Sub "WizzUser-GetBusinessesByRegion-${Environment}"
-      Timeout: 15
+      MemorySize: !If [IsQuoteStaging, 512, 128]
+      Timeout: !If [IsQuoteStaging, 25, 15]
       Environment:
         Variables:
           REGIONS_TABLE: WizzCentral_Regions
           REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
           REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
           REGION_CONSUMERS_VERSION: "313"
+          NEIGHBOR_PRICING_TABLE: !If [IsQuoteStaging, staging-PlatformStaff, ""]
+          REGION_NEIGHBORS_TABLE: !If [IsQuoteStaging, WizzCentral_RegionNeighbors_staging, ""]
+          NEIGHBOR_PREVIEW_FUNCTION: !If [IsQuoteStaging, WizzUser-DeliveryQuotes-staging, ""]
           REGION_LISTINGS_TABLE: WhizzMerchants_RegionListings
           BUSINESSES_TABLE: WhizzMerchants_Businesses
       Policies:
@@ -3756,6 +3760,22 @@ Resources:
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_RegionListings/index/*
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Businesses
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Businesses/index/*
+        - !If
+          - IsQuoteStaging
+          - Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys: ['OPERATIONAL_SETTINGS#DELIVERY_PRICING']
+              - Effect: Allow
+                Action: dynamodb:Query
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionNeighbors_staging/index/source-region-index
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: arn:aws:lambda:us-east-1:699561669180:function:WizzUser-DeliveryQuotes-staging
+          - !Ref 'AWS::NoValue'
       Events:
         GetBusinessesByRegionApi:
           Type: Api
@@ -3770,13 +3790,17 @@ Resources:
       CodeUri: src/
       Handler: lambdas/get-nearby-businesses.handler
       FunctionName: !Sub "WizzUser-GetNearbyBusinesses-${Environment}"
-      Timeout: 15
+      MemorySize: !If [IsQuoteStaging, 512, 128]
+      Timeout: !If [IsQuoteStaging, 25, 15]
       Environment:
         Variables:
           REGIONS_TABLE: WizzCentral_Regions
           REGIONS_DERIVED_TABLE: !Sub "WizzCentral_RegionsDerived_${Environment}"
           REGION_INDEX_TABLE: !Sub "WizzCentral_RegionIndex_${Environment}"
           REGION_CONSUMERS_VERSION: "313"
+          NEIGHBOR_PRICING_TABLE: !If [IsQuoteStaging, staging-PlatformStaff, ""]
+          REGION_NEIGHBORS_TABLE: !If [IsQuoteStaging, WizzCentral_RegionNeighbors_staging, ""]
+          NEIGHBOR_PREVIEW_FUNCTION: !If [IsQuoteStaging, WizzUser-DeliveryQuotes-staging, ""]
           BUSINESSES_TABLE: WhizzMerchants_Businesses
       Policies:
         - Statement:
@@ -3797,6 +3821,22 @@ Resources:
             Resource: 
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Businesses
               - arn:aws:dynamodb:*:*:table/WhizzMerchants_Businesses/index/*
+        - !If
+          - IsQuoteStaging
+          - Statement:
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/staging-PlatformStaff
+                Condition:
+                  ForAllValues:StringEquals:
+                    dynamodb:LeadingKeys: ['OPERATIONAL_SETTINGS#DELIVERY_PRICING']
+              - Effect: Allow
+                Action: dynamodb:Query
+                Resource: arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionNeighbors_staging/index/source-region-index
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: arn:aws:lambda:us-east-1:699561669180:function:WizzUser-DeliveryQuotes-staging
+          - !Ref 'AWS::NoValue'
       Events:
         GetNearbyBusinessesApi:
           Type: Api
@@ -4043,6 +4083,7 @@ Resources:
                   - arn:aws:dynamodb:us-east-1:699561669180:table/staging-AccountDeletion
                   - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions
                   - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging
+                  - arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionNeighbors_staging
               - Sid: CashRoundingPolicyFence
                 Effect: Allow
                 Action: [dynamodb:GetItem, dynamodb:ConditionCheckItem]

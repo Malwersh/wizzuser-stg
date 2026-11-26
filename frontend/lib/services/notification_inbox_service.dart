@@ -160,6 +160,7 @@ class NotificationInboxService {
       final r = await _api.call(
         'notifications',
         query: more && cursor != null ? {'cursor': cursor!} : null,
+        expectedSubject: scope,
       );
       if (_scope != scope) return;
       for (final x in (r['notifications'] as List? ?? [])) {
@@ -203,12 +204,17 @@ class NotificationInboxService {
             .map((x) => x.id)
             .toList();
     if (all) {
-      await _api.call('notifications', body: {'all': true});
+      await _api.call(
+        'notifications',
+        body: {'all': true},
+        expectedSubject: scope,
+      );
     }
     for (var start = 0; !all && start < server.length; start += 50) {
       await _api.call(
         'notifications',
         body: {'eventIds': server.skip(start).take(50).toList()},
+        expectedSubject: scope,
       );
     }
     if (_scope != scope) return;

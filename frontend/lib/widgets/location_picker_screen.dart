@@ -50,6 +50,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   Future<String?>? _addressLookup;
   LatLng? _addressLookupPoint;
   RegionResolveResult? _resolved;
+  List<BoundaryRegionChoice> _boundaryChoices = const [];
   List<PlacePrediction> _predictions = [];
   String? _pointError;
   bool _moving = false,
@@ -108,6 +109,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     _pointGeneration++;
     _checkTimer?.cancel();
     _resolved = null;
+    _boundaryChoices = const [];
     _addressLookup = null;
     _addressLookupPoint = null;
     _pointError = null;
@@ -159,18 +161,20 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     _checkTimer = Timer(const Duration(milliseconds: 250), _checkPoint);
   }
 
-  Future<void> _checkPoint() async {
+  Future<void> _checkPoint({String? preferredRegionId}) async {
     if (!mounted || !_hasSelected || _moving) return;
     final point = _position, generation = ++_pointGeneration;
     setState(() {
       _checking = true;
       _resolved = null;
+      _boundaryChoices = const [];
       _pointError = null;
     });
     try {
       final result = await _resolver.resolvePoint(
         lat: point.latitude,
         lng: point.longitude,
+        preferredRegionId: widget.requiredRegionId ?? preferredRegionId,
         throwOnFailure: true,
       );
       if (!mounted || generation != _pointGeneration || point != _position) {
@@ -201,6 +205,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           message:
               'اختر نقطة داخل المنطقة التي تتصفحها لإكمال الطلب. يمكنك تحريك الخريطة لتصحيح الموقع.',
         );
+      }
+    } on BoundaryRegionSelectionRequired catch (error) {
+      if (mounted && generation == _pointGeneration && point == _position) {
+        setState(() {
+          _checking = false;
+          if (widget.requiredRegionId == null) {
+            _boundaryChoices = error.choices;
+          } else {
+            _pointError = 'حرّك الدبوس إلى داخل المنطقة التي اخترتها.';
+          }
+        });
       }
     } catch (_) {
       if (mounted && generation == _pointGeneration) {
@@ -348,6 +363,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       final region = await _resolver.resolvePoint(
         lat: point.latitude,
         lng: point.longitude,
+        preferredRegionId: _resolved?.region.id,
         throwOnFailure: true,
       );
       if (!mounted || generation != _pointGeneration) return;
@@ -447,6 +463,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ? 'حرّك الخريطة حتى يصبح الدبوس فوق عنوانك'
             : _checking
             ? 'جارٍ التحقق من نقطة التوصيل…'
+            : _boundaryChoices.isNotEmpty
+            ? 'الدبوس على الحد بين مناطق التوصيل'
             : _pointError ??
                 (_valid
                     ? 'نقطة التوصيل متاحة'
@@ -613,6 +631,38 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                         ),
                     ],
                   ),
+                  if (_boundaryChoices.isNotEmpty)
+                    OutlinedButton(
+                      onPressed: () async {
+                        final generation = _pointGeneration;
+                        final choices = _boundaryChoices;
+                        final choice = await showModalBottomSheet<BoundaryRegionChoice>(
+                          context: context,
+                          showDragHandle: true,
+                          builder: (sheetContext) => SafeArea(
+                            child: ListView(
+                              shrinkWrap: true,
+                              children: [
+                                const ListTile(title: Text('اختر منطقة العنوان')),
+                                for (final choice in choices)
+                                  ListTile(
+                                    title: Text(choice.name),
+                                    subtitle: Text([
+                                      choice.district,
+                                      choice.governorate,
+                                    ].where((name) => name.isNotEmpty).join('، ')),
+                                    onTap: () => Navigator.pop(sheetContext, choice),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                        if (choice != null && mounted && generation == _pointGeneration) {
+                          await _checkPoint(preferredRegionId: choice.id);
+                        }
+                      },
+                      child: const Text('اختيار منطقة العنوان'),
+                    ),
                   if (_pointError != null && !_moving)
                     TextButton(
                       onPressed: _hasSelected ? _checkPoint : null,

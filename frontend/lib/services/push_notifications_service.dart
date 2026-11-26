@@ -76,7 +76,7 @@ class PushNotificationsService {
     print(
       'PushNotificationsService: init (env=${ApiConfig.environment}) '
       'loggedIn=${SessionService.instance.isLoggedIn} guest=${SessionService.instance.isGuest} '
-      'central=${ApiConfig.centralPushApiBaseUrl}',
+      'central=${ApiConfig.pushDeviceRegistryBaseUrl}',
     );
 
     final perm = await messaging.requestPermission(
@@ -251,7 +251,7 @@ class PushNotificationsService {
         await http
             .post(
               Uri.parse(
-                '${ApiConfig.centralPushApiBaseUrl}/push/tokens/unregister',
+                '${ApiConfig.pushDeviceRegistryBaseUrl}/push/tokens/unregister',
               ),
               headers: {
                 'Authorization': 'Bearer $jwt',
@@ -278,7 +278,7 @@ class PushNotificationsService {
     }
 
     final uri = Uri.parse(
-      '${ApiConfig.centralPushApiBaseUrl}/push/tokens/register',
+      '${ApiConfig.pushDeviceRegistryBaseUrl}/push/tokens/register',
     );
     final deviceId = await _deviceId();
 

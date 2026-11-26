@@ -31,9 +31,30 @@ function create({db,sdk,tables}){
   const items=[...visible.values()].filter(r=>r.level===3||[...visible.values()].some(c=>c.parentId===r.id)).sort((a,b)=>a.level-b.level||a.labelAr.localeCompare(b.labelAr,'ar'));
   return {schemaVersion:313,items};
  }
- async function resolve(latitude,longitude){
+ async function resolve(latitude,longitude,preferredRegionId){
   if(typeof latitude!=='number'||typeof longitude!=='number'||!Number.isFinite(latitude)||!Number.isFinite(longitude)||Math.abs(latitude)>90||Math.abs(longitude)>180)throw fail('INVALID_LOCATION',400);
-  const resolver=require('./region-coverage-runtime-312').createRegionResolver({db,sdk,tables});let coverage;try{coverage=await resolver({latitude,longitude});}catch(e){throw fail(e.code||'REGION_LOOKUP_UNAVAILABLE',e.code==='AMBIGUOUS_COVERAGE'?409:503);}if(!coverage)throw fail('REGION_NOT_FOUND',404);
+  const resolver=require('./region-coverage-runtime-312').createRegionResolver({db,sdk,tables});
+  const point={latitude,longitude};
+  let coverage;
+  try {
+   coverage=await resolver(point,{preferredRegionId});
+  } catch (error) {
+   if(error.code==='BOUNDARY_REGION_SELECTION_REQUIRED'){
+    const options=await Promise.all(error.regionIds.map(async regionId=>{
+     try {
+      const path=await ancestry(regionId);
+      return {region_id:regionId,region_name_ar:path[3].base.name_ar||path[3].base.name,
+       district:path[2].base.name_ar||path[2].base.name,governorate:path[1].base.name_ar||path[1].base.name};
+     } catch(e) {if(e.status!==404)throw e;return null;}
+    }));
+    const choices=options.filter(Boolean);
+    if(choices.length!==1)throw Object.assign(fail(choices.length?'BOUNDARY_REGION_SELECTION_REQUIRED':'REGION_NOT_FOUND',choices.length?409:404),{choices});
+    coverage=await resolver(point,{preferredRegionId:choices[0].region_id});
+   } else {
+    throw fail(error.code||'REGION_LOOKUP_UNAVAILABLE',error.code==='AMBIGUOUS_COVERAGE'?409:503);
+   }
+  }
+  if(!coverage)throw fail('REGION_NOT_FOUND',404);
   const path=await ancestry(coverage.regionId);return {coverage,path,regionId:coverage.regionId,regionNameAr:path[3].base.name_ar||path[3].base.name,regionNameEn:path[3].base.name||path[3].base.name_ar,city:path[1].base.name_ar||path[1].base.name};
  }
  function checks(path){return path.flatMap(({base,derived})=>[

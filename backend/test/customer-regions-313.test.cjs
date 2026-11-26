@@ -2,10 +2,11 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {create,contains}=require('../src/utils/customer-regions-313');
 const sdk={};for(const name of ['GetCommand','QueryCommand','ScanCommand'])sdk[name]=({[name]:class{constructor(input){this.input=input;}}})[name];
 const shape={type:'Polygon',coordinates:[[[44,31],[45,31],[45,32],[44,32],[44,31]]]};
-function fixture({closed=false,missing=false,delivery=true}={}){
+function fixture({closed=false,missing=false,delivery=true,sharedEdge=false}={}){
  const base=[0,1,2,3].map(level=>({regionId:'r'+level,level,name:level===0?'Iraq':'Area'+level,name_ar:level===0?'العراق':'منطقة'+level,parent_id:level?'r'+(level-1):null,is_active:!(closed&&level===1),geometry:shape,version:1}));
+ if(sharedEdge)base.push({...base[3],regionId:'r4',name:'Neighbor',name_ar:'المنطقة المجاورة',geometry:{type:'Polygon',coordinates:[[[45,31],[46,31],[46,32],[45,32],[45,31]]]}});
  const derived=base.filter(r=>!missing||r.level!==2).map(r=>({regionId:r.regionId,effective_is_active:1,effective_config:{delivery},version:1}));
- const calls=[],db={async send(c){calls.push(c);const q=c.input,rows=q.TableName==='base'?base:derived;if(c instanceof sdk.ScanCommand)return {Items:rows};if(c instanceof sdk.QueryCommand)return {Items:[{regionId:'r3',h3_cell:q.ExpressionAttributeValues[':cell']}]};return {Item:rows.find(r=>r.regionId===q.Key.regionId)};}};
+ const calls=[],db={async send(c){calls.push(c);const q=c.input,rows=q.TableName==='base'?base:derived;if(c instanceof sdk.ScanCommand)return {Items:rows};if(c instanceof sdk.QueryCommand)return {Items:(sharedEdge?['r3','r4']:['r3']).map(regionId=>({regionId,h3_cell:q.ExpressionAttributeValues[':cell']}))};return {Item:rows.find(r=>r.regionId===q.Key.regionId)};}};
  return {db,api:create({db,sdk,tables:{regions:'base',derived:'derived',index:'index'}}),base,calls};
 }
 test('open Iraq hierarchy contains ancestors and bounds, without raw geometry',async()=>{const {api}=fixture();const c=await api.catalog();assert.equal(c.schemaVersion,313);assert.deepEqual(c.items.map(r=>r.level),[0,1,2,3]);assert.equal(c.items[3].bounds.north,32);assert(!('geometry' in c.items[3]));});
@@ -16,10 +17,62 @@ test('business map points exclude outside, holes and exact boundaries',()=>{asse
 function handler(file,options={}) {
  const f=fixture(options),fs=require('fs'),vm=require('vm'),module={exports:{}};
  const extra={};for(const n of ['BatchGetCommand'])extra[n]=({[n]:class{constructor(input){this.input=input;}}})[n];
- const db={async send(command){const q=command.input;if(q.TableName==='businesses')return {Items:[{businessId:'inside',regionId:'old-region',isActive:true,latitude:31.5,longitude:44.5},{businessId:'outside',regionId:'r3',isActive:true,latitude:40,longitude:50}]};return f.db.send(command);}};
- const context={module,exports:module.exports,process:{env:{REGIONS_TABLE:'base',REGIONS_DERIVED_TABLE:'derived',REGION_INDEX_TABLE:'index',BUSINESSES_TABLE:'businesses'}},console:{log(){},error(){}},require:n=>n==='@aws-sdk/client-dynamodb'?{DynamoDBClient:class{}}:n==='@aws-sdk/lib-dynamodb'?{...sdk,...extra,DynamoDBDocumentClient:{from:()=>db}}:n==='h3-js'?require('h3-js'):n.includes('customer-regions-313')?require('../src/utils/customer-regions-313'):n.includes('region-coverage-runtime')?require('../src/utils/region-coverage-runtime-312'):require('../src/utils/haversine')};
- vm.runInNewContext(fs.readFileSync(__dirname+'/../src/lambdas/'+file+'.js','utf8'),context);return params=>module.exports.handler({queryStringParameters:params});
+ const db={async send(command){const q=command.input;if(q.TableName==='businesses')return {Items:options.businesses??[{businessId:'inside',regionId:'old-region',isActive:true,acceptingOrders:true,latitude:31.5,longitude:44.5},{businessId:'outside',regionId:'r3',isActive:true,acceptingOrders:true,latitude:40,longitude:50}]};return f.db.send(command);}};
+ const context={module,exports:module.exports,process:{env:{REGIONS_TABLE:'base',REGIONS_DERIVED_TABLE:'derived',REGION_INDEX_TABLE:'index',BUSINESSES_TABLE:'businesses'}},console:{log(){},error(){},warn(){}},require:n=>n==='@aws-sdk/client-dynamodb'?{DynamoDBClient:class{}}:n==='@aws-sdk/lib-dynamodb'?{...sdk,...extra,DynamoDBDocumentClient:{from:()=>db}}:n==='h3-js'?require('h3-js'):n.includes('customer-regions-313')?require('../src/utils/customer-regions-313'):n.includes('region-coverage-runtime')?require('../src/utils/region-coverage-runtime-312'):n.includes('neighboring-restaurants')?{...require('../src/utils/neighboring-restaurants'),...(options.deliveryCheck?{buildNeighboringRestaurants:()=>options.deliveryCheck}:{})}:require('../src/utils/haversine')};
+ vm.runInNewContext(fs.readFileSync(__dirname+'/../src/lambdas/'+file+'.js','utf8'),context);return params=>module.exports[options.nearby?'nearby':'handler']({queryStringParameters:params});
 }
 test('actual public handler serves current active tree and effective availability',async()=>{const run=handler('find-region-by-coordinates');assert.equal(JSON.parse((await run({view:'active-tree'})).body).data.items.length,4);const r=await run({latitude:'31.5',longitude:'44.5'});assert.equal(r.statusCode,200);assert.equal(JSON.parse(r.body).data.effective.service.delivery,true);});
+test('customer can choose a named area at a shared boundary and use it for restaurant listings',async()=>{
+ const params={latitude:'31.5',longitude:'45'};
+ const find=handler('find-region-by-coordinates',{sharedEdge:true});
+ const pending=await find(params);
+ assert.equal(pending.statusCode,409);
+ assert.deepEqual(JSON.parse(pending.body).details.regions.map(region=>region.region_name_ar),['منطقة3','المنطقة المجاورة']);
+ const invalid=await find({...params,preferred_region_id:'unrelated'});
+ assert.equal(invalid.statusCode,409);
+ const confirmed=await find({...params,preferred_region_id:'r4'});
+ assert.equal(JSON.parse(confirmed.body).data.region_id,'r4');
+ const list=handler('get-businesses-by-region',{sharedEdge:true});
+ const restaurants=await list({...params,region_id:'r3'});
+ assert.equal(restaurants.statusCode,200);
+ assert.deepEqual(JSON.parse(restaurants.body).data.businesses.map(b=>b.businessId),['inside']);
+ const otherSide=await list({...params,region_id:'r4'});
+ assert.equal(otherSide.statusCode,200);
+ assert.deepEqual(JSON.parse(otherSide.body).data.businesses,[]);
+});
 test('actual restaurant listing excludes stale coordinates and closed regions',async()=>{const run=handler('get-businesses-by-region');let r=await run({region_id:'r3'});assert.equal(r.statusCode,200);assert.deepEqual(JSON.parse(r.body).data.businesses.map(b=>b.businessId),['inside']);r=await handler('get-businesses-by-region',{closed:true})({region_id:'r3'});assert.equal(r.statusCode,404);});
+test('nearby listing still filters by radius and supports page numbers',async()=>{
+ const run=handler('get-businesses-by-region',{nearby:true});
+ const query={latitude:'31.5',longitude:'44.5',radius_km:'5'};
+ const result=JSON.parse((await run(query)).body).data;
+ assert.equal(result.search.radius_km,5);
+ assert.deepEqual(result.businesses.map(b=>b.businessId),['inside']);
+ assert.equal(result.businesses[0].distance,0);
+ assert.equal(JSON.parse((await run({...query,page:'1'})).body).data.pagination.page,1);
+});
 test('boundary endpoint returns selected published polygon, bounds and version only while available',async()=>{const good=await handler('find-region-by-coordinates')({view:'boundary',region_id:'r3'});assert.equal(good.statusCode,200);const r=JSON.parse(good.body).data;assert.equal(r.regionId,'r3');assert.equal(r.geometry.type,'Polygon');assert.equal(r.bounds.south,31);assert.equal(r.version,1);const closed=await handler('find-region-by-coordinates',{closed:true})({view:'boundary',region_id:'r3'});assert.equal(closed.statusCode,404);assert.equal((await handler('find-region-by-coordinates')({view:'boundary'})).statusCode,400);});
+test('each catalog endpoint filters local branches through shared road eligibility',async()=>{
+ const branches=['eligible','road-too-long','blocked'].map(businessId=>({businessId,isActive:true,
+  acceptingOrders:true,ordersBlocked:businessId==='blocked',latitude:31.5,longitude:44.5}));
+ const query={region_id:'r3',latitude:'31.5',longitude:'44.5'};
+ for(const nearby of [false,true]){
+  const checked=[];
+  const deliveryCheck={
+   prepare:async()=>({maxKm:10}),
+   qualify:async(_search,candidates)=>{
+    checked.push(...candidates.map(candidate=>candidate.business.businessId));
+    return candidates.filter(candidate=>candidate.business.businessId==='eligible').map(candidate=>candidate.business);
+   }
+  };
+  const run=handler('get-businesses-by-region',{nearby,businesses:branches,deliveryCheck});
+  const response=await run(query);
+  assert.equal(response.statusCode,200);
+  assert.deepEqual(checked,['eligible','road-too-long']);
+  assert.deepEqual(JSON.parse(response.body).data.businesses.map(b=>b.businessId),['eligible']);
+ }
+ const unavailable=handler('get-businesses-by-region',{businesses:branches,deliveryCheck:{
+  prepare:async()=>({maxKm:10}),qualify:async()=>{throw Error('route service unavailable');}
+ }});
+ assert.equal((await unavailable(query)).statusCode,503);
+ assert.equal(JSON.parse((await unavailable({region_id:'r3'})).body).error,'DELIVERY_POINT_REQUIRED');
+});

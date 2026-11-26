@@ -6,8 +6,6 @@ import '../models/browsing_location.dart';
 import '../services/browsing_location_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'dart:async';
 
 import '../constants/app_colors.dart';
@@ -16,7 +14,7 @@ import '../services/delivery_address_manager.dart';
 import '../services/guest_cache_service.dart';
 import '../services/address_service.dart';
 import '../services/region_resolver_service.dart';
-import '../config/google_places_config.dart';
+import '../services/google_places_service.dart';
 import 'home_screen.dart';
 import '../widgets/active_region_tree.dart';
 import '../services/active_region_catalog.dart';
@@ -56,7 +54,10 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
   bool _savingSelection = false;
   bool _choosingPoint = false;
   final TextEditingController _searchController = TextEditingController();
-  List<dynamic> _searchResults = [];
+  final _places = GooglePlacesService();
+  List<PlacePrediction> _searchResults = [];
+  List<ActiveRegion> _areaMatches = [];
+  int _searchGeneration = 0;
   Timer? _debounce;
   List<DeliveryAddress> _savedAddresses = [];
   String? _searchError; // حالة خطأ البحث
@@ -121,127 +122,104 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _places.dispose();
     _debounce?.cancel();
     super.dispose();
   }
 
-  /// البحث عن عنوان باستخدام Google Places API
-  Future<void> _searchAddress(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _searchResults = [];
-        _searchError = null;
-      });
-      return;
-    }
-
-    try {
-      final apiKey = GooglePlacesConfig.httpKey; // المفتاح الصحيح للـ HTTP API
-      print('🔍 بدء البحث عن: $query');
-
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/autocomplete/json'
-        '?input=${Uri.encodeComponent(query)}'
-        '&components=country:iq'
-        '&language=ar'
-        '&key=$apiKey',
-      );
-
-      final response = await http.get(url);
-      print('📥 Response Status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        print('✅ Data: ${data['status']}');
-        print('📋 عدد النتائج: ${data['predictions']?.length ?? 0}');
-
-        setState(() {
-          if (data['status'] == 'REQUEST_DENIED') {
-            _searchError =
-                'خدمة البحث غير متاحة حالياً. الرجاء استخدام زر الموقع الحالي.';
-            _searchResults = [];
-            print(
-              '❌ REQUEST_DENIED: ${data['error_message'] ?? "لا توجد رسالة"}',
-            );
-          } else if (data['status'] == 'ZERO_RESULTS') {
-            _searchError = null;
-            _searchResults = [];
-            print('⚠️ لا توجد نتائج لـ: $query');
-          } else if (data['status'] == 'OK') {
-            _searchError = null;
-            _searchResults = data['predictions'] ?? [];
-          } else {
-            _searchError = 'خطأ غير متوقع في البحث';
-            _searchResults = [];
-            print('⚠️ حالة غير معروفة: ${data['status']}');
-          }
-        });
-      } else {
-        print('❌ خطأ HTTP: ${response.statusCode} - ${response.body}');
-        setState(() {
-          _searchError = 'خطأ في الاتصال بخدمة البحث';
-          _searchResults = [];
-        });
-      }
-    } catch (e) {
-      print('❌ خطأ في البحث: $e');
-      setState(() {
-        _searchError = 'حدث خطأ أثناء البحث';
-        _searchResults = [];
-      });
-    }
+  void _scheduleSearch(String value) {
+    _debounce?.cancel();
+    final generation = ++_searchGeneration;
+    final query = value.trim();
+    setState(() {
+      _searchError = null;
+      _searchResults = [];
+      _areaMatches = [];
+    });
+    if (query.length < 3) return;
+    _debounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _searchAddress(query, generation),
+    );
   }
 
-  /// الحصول على تفاصيل المكان من place_id
-  Future<Map<String, dynamic>?> _getPlaceDetails(String placeId) async {
+  Future<void> _searchAddress(String query, int generation) async {
+    List<PlacePrediction> places = [];
+    List<ActiveRegion> areas = [];
+    var providerFailed = false;
     try {
-      final apiKey = GooglePlacesConfig.httpKey; // المفتاح الصحيح للـ HTTP API
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/details/json'
-        '?place_id=$placeId'
-        '&fields=formatted_address,geometry,name,address_components'
-        '&language=ar'
-        '&key=$apiKey',
-      );
-
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final result = data['result'];
-
-        if (result != null) {
-          return {
-            'formattedAddress': result['formatted_address'] ?? '',
-            'latitude': result['geometry']['location']['lat'],
-            'longitude': result['geometry']['location']['lng'],
-            'name': result['name'] ?? '',
-          };
+      places = await _places.searchPlaces(query: query);
+    } catch (_) {
+      providerFailed = true;
+    }
+    if (!mounted || generation != _searchGeneration) return;
+    if (places.isEmpty) {
+      try {
+        final catalog = widget.regionCatalog ?? ActiveRegionCatalog();
+        final published = await catalog.load();
+        final words = _searchWords(query);
+        if (words.isNotEmpty) {
+          areas =
+              published.where((region) {
+                if (region.level != 3) return false;
+                final labels = _searchWords(
+                  [
+                    region.name,
+                    region.district,
+                    region.city,
+                  ].whereType<String>().join(' '),
+                );
+                return words.every(
+                  (word) => labels.any((label) => label.contains(word)),
+                );
+              }).toList();
         }
+      } catch (_) {
+        // The place result remains usable if the area list cannot be loaded.
       }
-    } catch (e) {
-      print('خطأ في جلب تفاصيل المكان: $e');
     }
-    return null;
+    if (!mounted || generation != _searchGeneration) return;
+    setState(() {
+      _searchResults = places;
+      _areaMatches = areas;
+      _searchError =
+          providerFailed && areas.isEmpty
+              ? 'تعذر البحث عن العنوان. يمكنك اختيار المنطقة أو تحديد موقعك على الخريطة.'
+              : null;
+    });
   }
 
-  /// الحصول على اسم المنطقة من الإحداثيات (Reverse Geocoding)
-  Future<void> _handleSearchResultTap(dynamic result) async {
+  List<String> _searchWords(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
+        .replaceAll(RegExp(r'[ً-ْـ]'), '')
+        .split(RegExp(r'[\s،,]+'))
+        .where(
+          (word) =>
+              word.isNotEmpty &&
+              !const ['حي', 'قضاء', 'ناحية', 'محافظة', 'مركز'].contains(word),
+        )
+        .toList();
+  }
+
+  Future<void> _handleSearchResultTap(PlacePrediction result) async {
+    if (_isLoading) return;
     setState(() => _isLoading = true);
-
     try {
-      final placeDetails = await _getPlaceDetails(result['place_id']);
-
-      if (placeDetails != null) {
-        await _createAddressFromDetails(placeDetails, null);
-      } else {
-        _showErrorSnackBar('فشل تحميل تفاصيل المكان');
-      }
-    } catch (e) {
-      print('خطأ في معالجة اختيار العنوان: $e');
-      _showErrorSnackBar(
-        e is RegionResolutionException ? e.toString() : 'حدث خطأ',
-      );
+      final details = await _places.getPlaceDetails(placeId: result.placeId);
+      if (!mounted) return;
+      await _createAddressFromDetails({
+        'formattedAddress': details.formattedAddress,
+        'latitude': details.latitude,
+        'longitude': details.longitude,
+        'name': details.name,
+      }, null);
+    } catch (_) {
+      if (mounted)
+        _showErrorSnackBar(
+          'تعذر العثور على الموقع. اختر المنطقة أو حدد الموقع على الخريطة.',
+        );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -314,10 +292,12 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
   Future<void> _saveAndProceed(DeliveryAddress address) async {
     if (_savingSelection) return;
     _savingSelection = true;
+    var chooseBoundary = false;
     try {
       final result = await RegionResolverService().resolvePoint(
         lat: address.latitude,
         lng: address.longitude,
+        preferredRegionId: address.regionId,
         throwOnFailure: true,
       );
       if (result == null || !result.effective.isDeliveryAvailable) {
@@ -348,10 +328,15 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
         DeliveryAddressManager.instance.clearActiveSelection();
       }
       _finishSelection();
+    } on BoundaryRegionSelectionRequired {
+      chooseBoundary = true;
     } catch (_) {
       _showErrorSnackBar('تعذر التحقق من المنطقة. أعد المحاولة.');
     } finally {
       _savingSelection = false;
+    }
+    if (chooseBoundary && mounted) {
+      await _choosePoint(address, source: address.source == AddressSource.gps ? 'gps' : 'search');
     }
   }
 
@@ -565,10 +550,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                               icon: Icon(Icons.clear),
                               onPressed: () {
                                 _searchController.clear();
-                                setState(() {
-                                  _searchResults = [];
-                                  _searchError = null; // مسح رسالة الخطأ
-                                });
+                                _scheduleSearch('');
                               },
                             )
                             : null,
@@ -581,17 +563,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                       borderSide: BorderSide(color: AppColors.secondaryDark),
                     ),
                   ),
-                  onChanged: (value) {
-                    // Debounce للبحث
-                    if (_debounce?.isActive ?? false) _debounce!.cancel();
-                    _debounce = Timer(const Duration(milliseconds: 500), () {
-                      if (value.length > 2) {
-                        _searchAddress(value);
-                      } else {
-                        setState(() => _searchResults = []);
-                      }
-                    });
-                  },
+                  onChanged: _scheduleSearch,
                 ),
               ),
 
@@ -682,7 +654,7 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
                             ),
                           ),
                         )
-                        : _searchResults.isNotEmpty
+                        : (_searchResults.isNotEmpty || _areaMatches.isNotEmpty)
                         ? _buildSearchResults()
                         : _buildDefaultContent(),
               ),
@@ -717,20 +689,32 @@ class _AddressGateScreenState extends State<AddressGateScreen> {
   /// بناء نتائج البحث
   Widget _buildSearchResults() {
     return ListView.separated(
-      itemCount: _searchResults.length,
+      itemCount: _searchResults.length + _areaMatches.length,
       separatorBuilder: (context, index) => Divider(height: 1),
       itemBuilder: (context, index) {
+        if (index >= _searchResults.length) {
+          final region = _areaMatches[index - _searchResults.length];
+          return ListTile(
+            leading: const Icon(Icons.map_outlined),
+            title: Text(region.name),
+            subtitle: Text(
+              [
+                region.district,
+                region.city,
+              ].whereType<String>().toSet().join('، '),
+            ),
+            onTap: () => _selectRegion(region),
+          );
+        }
         final result = _searchResults[index];
         return ListTile(
-          leading: Icon(Icons.location_on, color: Colors.grey),
+          leading: const Icon(Icons.location_on_outlined),
           title: Text(
-            result['structured_formatting']['main_text'] ?? '',
-            style: TextStyle(fontWeight: FontWeight.bold),
+            result.mainText,
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          subtitle: Text(
-            result['structured_formatting']['secondary_text'] ?? '',
-            style: TextStyle(fontSize: 12),
-          ),
+          subtitle:
+              result.secondaryText.isEmpty ? null : Text(result.secondaryText),
           onTap: () => _handleSearchResultTap(result),
         );
       },
