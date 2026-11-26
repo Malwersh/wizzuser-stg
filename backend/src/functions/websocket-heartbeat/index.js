@@ -52,4 +52,4 @@ const handler = async (event) => {
     }
 };
 
-module.exports = { handler };
+module.exports = {handler:require('../../realtime-identity-scope-346').guardDefault(require('../../merchant-realtime-scope-345').guardDefault(handler))};

@@ -1,0 +1,5 @@
+
+# Generated Lambda bundles retain upstream SDK string whitespace verbatim.
+backend/src/functions/create-order/point-invoice-runtime-321.js -whitespace
+backend/src/functions/delivery-quotes/point-preview-runtime-317.js -whitespace
+backend/src/utils/region-coverage-runtime-312.js -whitespace

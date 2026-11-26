@@ -1,0 +1,18 @@
+{
+  "part": 402,
+  "build": 358,
+  "rootCause": "AddFavorite cold invocation took 15583 ms, exceeding client 15000 ms timeout, yet committed successfully",
+  "stagingChanges": {
+    "AddFavoriteMemoryMB": 512,
+    "RemoveFavoriteMemoryMB": 512,
+    "codeAndIAMUnchanged": true
+  },
+  "client": "Mutation timeout 25 seconds, existing reconciliation retained",
+  "verification": {
+    "coldAddOptionsMs": 2596,
+    "optionsProbe": "No customer data mutation",
+    "favoriteModelTests": 6,
+    "iosSimulatorBuild": "passed",
+    "realAuthenticatedToggle": "Awaiting user retry"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-04",
+  "build": 383,
+  "changes": [
+    "Empty basket has RTL back-to-home arrow and centered title",
+    "Suggested products use menu-style image and overlaid add action; localized prices through MenuItemPrice",
+    "Suggestions remain same-branch, available, positive-price and exclude basket product identities",
+    "Suggestion action opens canonical dish detail sheet with product data and options instead of inserting unchecked base product"
+  ],
+  "validation": {
+    "widgetTests": 5,
+    "largeText": true
+  },
+  "scope": "Existing category-based suggestion source retained; no new personalization or central slot policy introduced"
+}

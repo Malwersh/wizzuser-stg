@@ -1,0 +1,11 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+function app({blocked=false}={}){
+ const sent=[],classes={};for(const name of ['GetCommand','PutCommand','QueryCommand','TransactWriteCommand'])classes[name]=class{constructor(input){this.input=input;this.name=name;}};
+ const db={send:async c=>{sent.push(c);return {Items:[]};}};
+ const modules={'@aws-sdk/client-dynamodb':{DynamoDBClient:class{}},'@aws-sdk/lib-dynamodb':{...classes,DynamoDBDocumentClient:{from:()=>db}},'uuid':{v4:require('node:crypto').randomUUID},'node:crypto':require('node:crypto'),'../create-order/guarded-write':{writeContext:async()=>{if(blocked)throw Object.assign(Error('ACCOUNT_UNAVAILABLE'),{statusCode:409});return {fence:{ConditionCheck:{TableName:'profiles',Key:{userId:'one'},ConditionExpression:'attribute_not_exists(deletionRequestId)'}}};}}};
+ const exports={};vm.runInNewContext(fs.readFileSync(__dirname+'/index.js','utf8'),{exports,require:n=>modules[n],process:{env:{WALLETS_TABLE:'wallets',TRANSACTIONS_TABLE:'transactions'}},console:{log(){},error(){}}});
+ return {sent,run:()=>exports.handler({body:JSON.stringify({userId:'one'})})};
+}
+test('closing account cannot initialize wallet or add a transaction',async()=>{const f=app({blocked:true});assert.equal((await f.run()).statusCode,409);assert.equal(f.sent.length,0);});
+test('wallet and initialization entry share the lifecycle transaction',async()=>{const f=app();assert.equal((await f.run()).statusCode,201);assert.equal(f.sent.some(c=>c.name==='PutCommand'),false);const tx=f.sent.find(c=>c.name==='TransactWriteCommand').input.TransactItems;assert.equal(tx.length,3);assert.equal(tx[0].ConditionCheck.TableName,'profiles');assert.equal(tx[1].Put.Item.balance,0);assert.equal(tx[2].Put.Item.type,'INIT');});
+test('concurrent initialization attempts use one conditionally created wallet identity',async()=>{const a=app(),b=app();await Promise.all([a.run(),b.run()]);const first=a.sent.find(c=>c.name==='TransactWriteCommand').input.TransactItems[1].Put,second=b.sent.find(c=>c.name==='TransactWriteCommand').input.TransactItems[1].Put;assert.equal(first.Item.walletId,second.Item.walletId);assert.equal(first.ConditionExpression,'attribute_not_exists(walletId)');});

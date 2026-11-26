@@ -1,0 +1,40 @@
+{
+  "status": "IMPLEMENTED_TESTED_SIMULATOR",
+  "customerBuild": 302,
+  "design": "White/navy/gold, compact address and account actions, prominent headline and search, pictured business-type categories",
+  "behavior": [
+    "Search real region-loaded business names inline",
+    "Categories built from actual loaded business types",
+    "Published managed sections and campaign feed retained",
+    "All-restaurants wide-photo listing retained",
+    "Wallet, notifications, cart, account and map actions preserved"
+  ],
+  "validation": {
+    "rtl320": true,
+    "searchInputAndWalletMapActions": true,
+    "categorySelection": true,
+    "feedFavoriteAndNavigation": true,
+    "analyzerErrors": 0,
+    "simulatorVisualReview": true
+  },
+  "limits": [
+    "Search currently targets names of loaded restaurants/stores, not product catalog search",
+    "Type categories reflect current businessType, not inferred cuisines"
+  ],
+  "backendChanges": false,
+  "carouselRefinement": {
+    "viewportFraction": 1,
+    "transition": "page-linked fade",
+    "manualSwipe": true,
+    "pauseDuringUserDrag": true,
+    "pauseAfterSwipeSeconds": 6,
+    "reducedMotion": "no fade or automatic advancement",
+    "sidePreviews": false
+  },
+  "typeCategoryRefinement": {
+    "width": 66,
+    "circle": 54,
+    "imageClip": "oval, cover even for square source",
+    "pillRadius": 36
+  }
+}

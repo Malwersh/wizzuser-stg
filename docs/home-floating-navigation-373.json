@@ -1,0 +1,37 @@
+{
+  "status": "IMPLEMENTED_TESTED_SIMULATOR",
+  "customerBuild": 312,
+  "header": [
+    "Centered delivery address",
+    "Account, notifications and cart actions",
+    "White-at-top to transparent-at-bottom overlay"
+  ],
+  "bottom": {
+    "style": "Floating white circles and centered search pill, subtle shadows, reference proportions adapted to available width",
+    "circleSize": 48,
+    "orderLeftToRight": [
+      "Home",
+      "Search",
+      "Explore restaurants"
+    ],
+    "backdrop": "Opaque white"
+  },
+  "routing": [
+    "Real region-loaded restaurant name search via SearchDelegate",
+    "Map uses region-loaded businesses",
+    "Cart route retains current cart and scoped stores",
+    "Account retains favorites and wallet; Orders entry added"
+  ],
+  "removed": [
+    "Header account/cart/search/map/filter controls",
+    "Previous bottom tab panels",
+    "Duplicate animated cart bar"
+  ],
+  "invariants": [
+    "Existing order push route index retained",
+    "No merchant or financial records changed"
+  ],
+  "tests": 6,
+  "topHeaderAdvertising": "Cancelled by user; header is navigation only",
+  "greetingAlignment": "right"
+}

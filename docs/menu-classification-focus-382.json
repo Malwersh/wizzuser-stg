@@ -1,0 +1,21 @@
+{
+  "part": 382,
+  "status": "SIMULATOR_BUILD_VERIFIED",
+  "customerBuild": 327,
+  "backendChanged": false,
+  "behavior": [
+    "Cuisine context from visible active home topic transfers to published sections and main restaurant-list store openings.",
+    "Brand and activity selections do not become product filters; direct banner targets and global search retain their existing navigation.",
+    "Store shows a contextual horizontal section from exact published product classification IDs, isolated to the current branch and deduplicated.",
+    "Full menu, normal product availability, add-on flow and pricing remain in place.",
+    "Initial navigation scrolls once to the contextual section; later refreshes do not repeatedly reposition the customer.",
+    "Branch-only assignments with no classified menu products show an honest empty state and allow full menu browsing."
+  ],
+  "automatedTestsPassed": 8,
+  "analyzerErrors": 0,
+  "humanTestsPending": [
+    "Link a cuisine to products or a menu category and publish menu.",
+    "Select matching topic on home, open restaurant and verify exact products and normal add-to-cart behavior.",
+    "Check branch-only assignment, all-topics reset, brand filter and returning to the home selection."
+  ]
+}

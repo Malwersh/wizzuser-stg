@@ -3,6 +3,7 @@ import '../services/version_check_service.dart';
 import '../services/polling_manager.dart';
 import '../services/restaurant_fetching_service.dart';
 import '../services/delivery_address_manager.dart';
+import '../services/browsing_location_service.dart';
 
 /// Provider with version checking and polling support
 /// مثال على Provider مع دعم فحص النسخ وpolling
@@ -144,6 +145,7 @@ class MenuProviderWithVersioning with ChangeNotifier, PollingMixin {
 class RestaurantListProviderWithVersioning with ChangeNotifier, PollingMixin {
   // Version tracking
   int? _listingVersion;
+  int _requestGeneration = 0;
   
   // Data
   List<dynamic>? _restaurants;
@@ -184,11 +186,16 @@ class RestaurantListProviderWithVersioning with ChangeNotifier, PollingMixin {
   /// إيقاف polling
   void stopPolling() {
     pollingManager.stopListingPolling();
+    _requestGeneration++;
+    _listingVersion = null;
+    _restaurants = null;
+    _isLoading = false;
   }
 
   /// Fetch fresh restaurant list
   /// جلب قائمة المطاعم الجديدة
   Future<void> fetchRestaurants(String regionId) async {
+    final generation = ++_requestGeneration;
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -196,43 +203,25 @@ class RestaurantListProviderWithVersioning with ChangeNotifier, PollingMixin {
     try {
       debugPrint('🔄 RestaurantListProvider: fetching restaurants for region $regionId');
       
-      // Get active address to pass to service
-      final deliveryManager = DeliveryAddressManager.instance;
-      final activeAddress = await deliveryManager.getActiveAddress();
-      
-      debugPrint('📍 RestaurantListProvider: activeAddress=$activeAddress');
-      debugPrint('📍 RestaurantListProvider: activeAddress.regionId=${activeAddress?.regionId}');
-      debugPrint('📍 RestaurantListProvider: requested regionId=$regionId');
-      
-      // ⚠️ إذا لم يكن هناك عنوان نشط، لا نستطيع الجلب
-      if (activeAddress == null) {
-        debugPrint('⚠️ RestaurantListProvider: No active address');
+      final browsing = BrowsingLocationService.instance.selection;
+      final activeAddress = browsing == null
+          ? await DeliveryAddressManager.instance.getActiveAddress()
+          : null;
+      if (generation != _requestGeneration) return;
+
+      if ((browsing != null && (browsing.regionId != regionId || !browsing.hasPoint)) ||
+          (browsing == null && (activeAddress == null || activeAddress.regionId != regionId))) {
         _restaurants = [];
-        _listingVersion = DateTime.now().millisecondsSinceEpoch;
         _isLoading = false;
         notifyListeners();
         return;
       }
-      
-      // ✅ إذا كان regionId مختلف، نقوم بجلب المطاعم للمنطقة المطلوبة مباشرة
-      // (هذا يحدث عندما يكتشف polling تحديث لمنطقة مختلفة)
-      if (activeAddress.regionId != regionId) {
-        debugPrint('⚠️ RestaurantListProvider: Region mismatch - fetching anyway');
-        debugPrint('   activeAddress.regionId=${activeAddress.regionId} != requested=$regionId');
-        debugPrint('   سيتم جلب المطاعم للمنطقة المطلوبة مباشرة');
-        // لا نعود - نكمل لجلب المطاعم
-      }
-      
-      debugPrint('✅ RestaurantListProvider: calling RestaurantFetchingService...');
-      
-      // Fetch from actual service using regionId directly
-      // (polling may request a different region than the active address)
-      final response = await RestaurantFetchingService.instance.fetchRestaurantsByRegion(
-        regionId: regionId,
-        page: 0,
-        limit: 20,
-      );
-      
+
+      final response = browsing != null
+          ? await RestaurantFetchingService.instance.fetchRestaurantsForBrowsingLocation(location: browsing)
+          : await RestaurantFetchingService.instance.fetchRestaurantsByDeliveryAddress(deliveryAddress: activeAddress!);
+      if (generation != _requestGeneration) return;
+
       debugPrint('📦 RestaurantListProvider: received ${response.businesses.length} raw businesses');
       // 🧪 DIAG: Extract raw IDs before any sanitization to detect backend vs UI divergence
       final List<String> rawIds = response.businesses.map((item) {
@@ -282,6 +271,7 @@ class RestaurantListProviderWithVersioning with ChangeNotifier, PollingMixin {
       
       notifyListeners();
     } catch (e) {
+      if (generation != _requestGeneration) return;
       _error = e.toString();
       _isLoading = false;
       debugPrint('❌ Error fetching restaurants: $e');

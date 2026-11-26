@@ -1,0 +1,5 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:foodapp_user/models/order_model.dart';
+import 'package:foodapp_user/widgets/tracking_progress_card.dart';
+void main(){for(final scale in [1.0,2.0]){testWidgets('compact tracking fits narrow screens at text scale $scale without invented ETA',(t)async{await t.binding.setSurfaceSize(const Size(320,700));addTearDown(()=>t.binding.setSurfaceSize(null));final order=OrderModel.fromJson({'orderId':'o','status':'heading_to_customer','createdAt':DateTime.now().toIso8601String(),'items':[],'deliveryAddress':<String,dynamic>{}});await t.pumpWidget(MaterialApp(home:Scaffold(body:MediaQuery(data:MediaQueryData(textScaler:TextScaler.linear(scale)),child:Directionality(textDirection:TextDirection.rtl,child:SingleChildScrollView(child:TrackingProgressCard(order:order)))))));expect(find.text('سنحدّث وقت الوصول حسب تقدم طلبك'),findsOneWidget);expect(find.text('في الطريق'),findsOneWidget);expect(t.takeException(),isNull);});}}

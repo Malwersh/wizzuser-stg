@@ -1,3 +1,5 @@
+const {connectionScopedClient}=require('./subscription-lifecycle');
+const {driverStateUpdate}=require('../../websocket-driver-state');
 const { 
   ApiGatewayManagementApiClient, 
   PostToConnectionCommand 
@@ -15,7 +17,7 @@ function requireEnv(name) {
 
 exports.handler = async (event) => {
   console.log('WebSocket Default Handler started');
-  console.log('Full event received:', JSON.stringify(event, null, 2));
+  console.log('WebSocket route received', {routeKey:event.requestContext?.routeKey});
   
   try {
     // Defensive access to event properties
@@ -34,7 +36,7 @@ exports.handler = async (event) => {
       };
     }
     
-    console.log(`WebSocket message: ${connectionId}, route: ${routeKey}, body: ${body}`);
+    console.log(`WebSocket message: ${connectionId}, route: ${routeKey}`);
 
     // Initialize API Gateway Management API client
     const region = process.env.AWS_REGION || 'us-east-1';
@@ -54,7 +56,7 @@ exports.handler = async (event) => {
 
     // Initialize DynamoDB client
     const dynamoClient = new DynamoDBClient({ region: 'us-east-1' });
-    const docClient = DynamoDBDocumentClient.from(dynamoClient);
+    const docClient = require('../../merchant-realtime-scope-345').scopedClient(connectionScopedClient(DynamoDBDocumentClient.from(dynamoClient),{connectionId}));
     const SUBSCRIPTIONS_TABLE = requireEnv('WEBSOCKET_SUBSCRIPTIONS_TABLE');
 
     // Parse the message if it exists
@@ -62,7 +64,7 @@ exports.handler = async (event) => {
     if (body) {
       try {
         message = JSON.parse(body);
-        console.log('Parsed message:', JSON.stringify(message));
+        console.log('Parsed WebSocket action', {type:message.type||message.action});
       } catch (e) {
         console.log('Failed to parse message body:', body);
         message = { type: 'unknown', body };
@@ -257,7 +259,7 @@ case 'driverOnline':
                 updateParams.ExpressionAttributeValues[':locTime'] = new Date().toISOString();
               }
               
-              await docClient.send(new DDBUpdateCommand(updateParams));
+              await driverStateUpdate(docClient, connectionId, driverId, updateParams);
               console.log(`✅ Driver ${driverId} started searching - WizzDriverLiveState updated`);
               
               // Send confirmation
@@ -295,7 +297,7 @@ case 'driverOnline':
               // Update WizzDriverLiveState table
               const envName = process.env.WEBSOCKET_STAGE || process.env.ENVIRONMENT || process.env.Environment || 'dev';
               const DRIVER_LIVE_STATE_TABLE = process.env.DRIVER_LIVE_STATE_TABLE || `WizzDriverLiveState_${envName}`;
-              await docClient.send(new DDBUpdateCommand({
+              await driverStateUpdate(docClient, connectionId, driverId, {
                 TableName: DRIVER_LIVE_STATE_TABLE,
                 Key: { driverId: driverId },
                 UpdateExpression: 'SET #status = :offline, isSearching = :searching, searchStoppedAt = :stopTime, lastUpdated = :updated',
@@ -308,7 +310,7 @@ case 'driverOnline':
                   ':stopTime': new Date().toISOString(),
                   ':updated': new Date().toISOString()
                 }
-              }));
+              });
               console.log(`✅ Driver ${driverId} stopped searching - WizzDriverLiveState updated`);
               
               // Send confirmation
@@ -1485,3 +1487,6 @@ case 'driverOnline':
     };
   }
 };
+exports.handler = require('../../merchant-realtime-scope-345').guardDefault(exports.handler);
+
+exports.handler=require('../../realtime-identity-scope-346').guardDefault(exports.handler);

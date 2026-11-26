@@ -7,9 +7,10 @@ plugins {
 
 android {
     namespace = "com.wiz.userapp"
-    compileSdk = 35
+    compileSdk = 36
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -20,10 +21,10 @@ android {
 
     defaultConfig {
         applicationId = "com.wiz.userapp"
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
@@ -36,3 +37,5 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") }

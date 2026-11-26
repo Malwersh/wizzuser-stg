@@ -1,0 +1,23 @@
+{
+  "part": 326,
+  "status": "IMPLEMENTED_SIMULATOR_INSTALLED",
+  "changes": [
+    "Cart label unified to رسوم التوصيل",
+    "Explicit animated loading with جارٍ حساب الرسوم… and bounded layout instead of ambiguous pending fee",
+    "Removed forced storefront preview request in restaurant initState; existing scoped/shared widgets reuse fresh cache and coalesce in-flight requests"
+  ],
+  "behavior": "Same account/address/revision/region/branch/basket and unexpired preview reuse server value. Basket or destination changes and expiry require a fresh server preview. Existing250ms cart debounce preserves eligibility checks. Route cache never supplies a price. Checkout still validates final pricing.",
+  "backend": "No pricing/route endpoint, tariff, funding or TTL changes. A fresh server storefront preview still fetches the road route; no server route cache introduced.",
+  "testsPassed": 20,
+  "analyzer": "No errors/warnings;7 brace-style informational findings",
+  "native": {
+    "buildNumber": 235,
+    "mode": "debug simulator",
+    "installedOn": "iPhone16Pro iOS26.2 09DA4C20-FD4B-446E-8C2F-9D04E5CFC206",
+    "previousBuild": 233,
+    "launched": true,
+    "dataPreserved": true
+  },
+  "financialWrites": 0,
+  "manualAgreementWorkflow": "User exclusively operates Farouj agreement creation/acceptance. Human screenshots show AG-000003 approved25% GOODS_GROSS, service300 for1year; do not modify these terms."
+}

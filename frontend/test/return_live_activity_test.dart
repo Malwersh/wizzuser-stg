@@ -1,0 +1,13 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:foodapp_user/models/order_model.dart';
+import 'package:foodapp_user/services/live_activity_service.dart';
+import 'package:foodapp_user/services/order_service_v2.dart';
+import 'package:foodapp_user/widgets/order_arrival_card.dart';
+void main(){
+ OrderModel order(String status,{String? review})=>OrderModel.fromJson({'orderId':'order','status':status,'returnStatus':review,'items':[],'deliveryAddress':<String,dynamic>{},'deliveryEstimate':{'earliestAt':'2030-01-01T12:00:00Z','latestAt':'2030-01-01T12:30:00Z'},'estimatedPreparationTime':20});
+ test('return states survive JSON/cache and do not regress to pending; only confirmed return is terminal',(){for(final status in ['returning','return_arrived','returned']){final o=order(status);expect(o.status.value,status);expect(LiveActivityService.isTerminal(o.status),status=='returned');expect(OrderModel.fromJson(o.toJson()).status,o.status);expect(LiveActivityService.etaText(o),isNot(contains('وصول تقديري')));}final review=order('return_arrived',review:'REVIEW_REQUIRED');expect(review.copyWith(status:OrderStatus.returnArrived).returnStatus,'REVIEW_REQUIRED');expect(OrderModel.fromJson(review.toJson()).returnStatus,'REVIEW_REQUIRED');expect(LiveActivityService.etaText(review),contains('قيد المراجعة'));expect(OrderServiceV2.terminalStatuses,contains('returned'));});
+ testWidgets('return card suppresses delivery estimate and preparation until merchant receipt',(tester)async{for(final status in ['returning','return_arrived']){await tester.pumpWidget(MaterialApp(home:Scaffold(body:OrderArrivalCard(order:order(status),now:()=>DateTime.utc(2026)))));expect(find.text('الوصول المتوقع'),findsNothing);expect(find.textContaining('دقيقة'),findsNothing);expect(find.text('متابعة إرجاع الطلب'),findsOneWidget);await tester.pumpWidget(const SizedBox.shrink());}await tester.pumpWidget(MaterialApp(home:Scaffold(body:OrderArrivalCard(order:order('return_arrived',review:'REVIEW_REQUIRED')))));expect(find.text('استلام المرتجع قيد المراجعة'),findsOneWidget);await tester.pumpWidget(const SizedBox.shrink());});
+ test('report awaiting authorization never shows physical return instructions or an arrival estimate',(){final o=order('returning',review:'REQUESTED');expect(LiveActivityService.statusLabel(o),'تعذر التسليم؛ نراجع معالجة طلبك');expect(LiveActivityService.etaText(o),'بانتظار تعليمات معالجة الطلب');});
+ testWidgets('confirmed return does not display a successful delivery arrival card',(tester)async{await tester.pumpWidget(MaterialApp(home:Scaffold(body:OrderArrivalCard(order:order('returned')))));expect(find.byType(Card),findsNothing);await tester.pumpWidget(const SizedBox.shrink());});
+}

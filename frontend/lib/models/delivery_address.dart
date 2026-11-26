@@ -1,3 +1,4 @@
+import 'address_model.dart';
 /// Enum representing the source of a delivery address
 /// مصدر عنوان التوصيل
 enum AddressSource {
@@ -167,6 +168,14 @@ class DeliveryAddress {
       'timestamp': timestamp.toIso8601String(),
       'expiryTimestamp': expiryTimestamp?.toIso8601String(),
     };
+  }
+
+  factory DeliveryAddress.fromSavedAddress(DetailedAddress address) {
+    final lat=address.latitude,lng=address.longitude;
+    if(address.id.isEmpty||lat==null||lng==null||!lat.isFinite||!lng.isFinite||lat.abs()>90||lng.abs()>180)throw const FormatException('Invalid saved delivery address');
+    return DeliveryAddress(addressId:address.id,userId:address.userId,label:address.name,formattedAddress:address.fullAddress,
+      latitude:lat,longitude:lng,regionId:address.regionId,regionNameAr:address.regionNameAr,neighborhood:address.neighborhood,
+      city:address.province,source:AddressSource.saved,isDefault:address.isDefault,timestamp:address.updatedAt);
   }
 
   /// Create from JSON

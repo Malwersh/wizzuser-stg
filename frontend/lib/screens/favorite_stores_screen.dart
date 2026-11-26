@@ -15,127 +15,198 @@ class FavoriteStoresScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final favoriteStoreIds = favoritesModel.favoriteStoreIds;
-    final favoriteRestaurants = allStores
-        .where((store) => favoriteStoreIds.contains(store.id))
-        .toList();
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: favoritesModel,
+    builder: (context, _) => _buildContent(context),
+  );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('المفضلة'),
-        centerTitle: true,
-      ),
-      body: favoriteRestaurants.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.favorite_border, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('لا توجد مطاعم مفضلة',
-                      style: TextStyle(fontSize: 18, color: Colors.grey)),
-                  SizedBox(height: 8),
-                  Text('اضغط على القلب لإضافة المطاعم المفضلة',
-                      style: TextStyle(fontSize: 14, color: Colors.grey)),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: favoriteRestaurants.length,
-              itemBuilder: (context, index) {
-                final store = favoriteRestaurants[index];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    leading: Stack(
+  Widget _buildContent(BuildContext context) {
+    final favoriteStoreIds = favoritesModel.favoriteStoreIds;
+    final favoriteRestaurants =
+        allStores
+            .where((store) => favoriteStoreIds.contains(store.id))
+            .toList();
+
+    const navy = Color(0xFF00296B);
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F6FA),
+        appBar: AppBar(
+          title: const Text(
+            'المفضلة',
+            style: TextStyle(color: navy, fontWeight: FontWeight.w700),
+          ),
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: navy),
+        ),
+        body:
+            favoriteRestaurants.isEmpty
+                ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: SizedBox(
-                            width: 60,
-                            height: 60,
-                            child: store.image.isNotEmpty
-                                ? RobustNetworkImage(
-                                    imageUrl: store.image,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Container(
-                                    color: Colors.grey[300],
-                                    child: const Icon(Icons.restaurant, color: Colors.grey),
-                                  ),
+                        CircleAvatar(
+                          radius: 44,
+                          backgroundColor: Color(0xFFE9EEF7),
+                          child: Icon(
+                            Icons.favorite_border_rounded,
+                            size: 42,
+                            color: navy,
                           ),
                         ),
-                        // Restaurant status indicator
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: _getRestaurantStatusColor(store),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 1),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    title: Text(store.name,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(store.category ?? 'مطعم',
-                            style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-                        const SizedBox(height: 2),
+                        SizedBox(height: 24),
                         Text(
-                          _getRestaurantStatusText(store),
+                          'احتفظ بأماكنك المفضلة',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: _getRestaurantStatusColor(store),
-                            fontWeight: FontWeight.w500,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w700,
+                            color: navy,
+                          ),
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'اضغط على القلب بجانب أي مطعم أو متجر لتجده هنا.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFF748198),
+                            height: 1.6,
                           ),
                         ),
                       ],
                     ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.favorite, color: Colors.red),
-                      onPressed: () async {
-                        await favoritesModel.toggleStoreFavorite(
-                          store.id,
-                          store.name,
-                          storeImage: store.image,
-                          storeCategory: store.category,
-                        );
-                      },
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => StoreDetailScreen(
-                            store: store,
+                  ),
+                )
+                : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  itemCount: favoriteRestaurants.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final store = favoriteRestaurants[index];
+                    final category = switch (store.category?.toLowerCase()) {
+                      'restaurant' => 'مطعم',
+                      'store' || 'grocery' || 'market' => 'متجر',
+                      'cafe' || 'coffee' => 'مقهى',
+                      _ => store.category ?? 'مطعم',
+                    };
+                    return Material(
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        side: const BorderSide(color: Color(0xFFE5EAF2)),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap:
+                            () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => StoreDetailScreen(store: store),
+                              ),
+                            ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(17),
+                                child: SizedBox(
+                                  width: 88,
+                                  height: 88,
+                                  child:
+                                      store.image.isNotEmpty
+                                          ? RobustNetworkImage(
+                                            imageUrl: store.image,
+                                            fit: BoxFit.cover,
+                                          )
+                                          : const ColoredBox(
+                                            color: Color(0xFFE9EEF7),
+                                            child: Icon(
+                                              Icons.storefront_outlined,
+                                              color: navy,
+                                              size: 32,
+                                            ),
+                                          ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      store.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w700,
+                                        color: navy,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      category,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF748198),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _getRestaurantStatusText(store),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: _getRestaurantStatusColor(store),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                tooltip: 'إزالة من المفضلة',
+                                style: IconButton.styleFrom(
+                                  backgroundColor: const Color(0xFFF0F3F8),
+                                ),
+                                icon: const Icon(
+                                  Icons.favorite_rounded,
+                                  color: navy,
+                                  size: 24,
+                                ),
+                                onPressed: () async {
+                                  await favoritesModel.toggleStoreFavorite(
+                                    store.id,
+                                    store.name,
+                                    storeImage: store.image,
+                                    storeCategory: store.category,
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+                      ),
+                    );
+                  },
+                ),
+      ),
     );
   }
 
   Color _getRestaurantStatusColor(Store store) {
     // Check comprehensive restaurant availability status
-    if (store.isOpen && store.acceptingOrders && store.isOnline && !store.isBusy) {
+    if (store.isOpen &&
+        store.acceptingOrders &&
+        store.isOnline &&
+        !store.isBusy) {
       return Colors.green; // Available for orders
     } else if (!store.acceptingOrders) {
       return Colors.orange; // Not accepting orders
@@ -152,7 +223,10 @@ class FavoriteStoresScreen extends StatelessWidget {
 
   String _getRestaurantStatusText(Store store) {
     // Check comprehensive restaurant availability status
-    if (store.isOpen && store.acceptingOrders && store.isOnline && !store.isBusy) {
+    if (store.isOpen &&
+        store.acceptingOrders &&
+        store.isOnline &&
+        !store.isBusy) {
       return 'متاح للطلب';
     } else if (!store.acceptingOrders) {
       return 'لا يقبل طلبات';

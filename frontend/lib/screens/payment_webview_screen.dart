@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -30,63 +31,66 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   @override
   void initState() {
     super.initState();
-    
+
     // Check if running on web platform - WebView is not fully supported on Flutter web
     if (kIsWeb) {
       setState(() {
         _hasError = true;
-        _errorMessage = 'عذراً، لا يمكن استخدام هذه الطريقة في المتصفح. يرجى استخدام التطبيق على الهاتف المحمول.';
+        _errorMessage =
+            'عذراً، لا يمكن استخدام هذه الطريقة في المتصفح. يرجى استخدام التطبيق على الهاتف المحمول.';
       });
       return;
     }
-    
+
     _initializeWebView();
   }
 
   void _initializeWebView() {
     try {
-      _controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(const Color(0x00000000))
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onProgress: (int progress) {
-              // Update loading progress if needed
-            },
-            onPageStarted: (String url) {
-              setState(() {
-                _isLoading = true;
-                _hasError = false;
-              });
-            },
-            onPageFinished: (String url) {
-              setState(() {
-                _isLoading = false;
-              });
-              
-              // Check if payment was completed based on URL
-              if (url.contains('payment/success') || url.contains('payment/return')) {
-                _handlePaymentCompletion(url);
-              }
-            },
-            onWebResourceError: (WebResourceError error) {
-              setState(() {
-                _isLoading = false;
-                _hasError = true;
-                _errorMessage = 'خطأ في تحميل الصفحة: ${error.description}';
-              });
-            },
-            onNavigationRequest: (NavigationRequest request) {
-              // Allow all navigation within PayTabs domain
-              if (request.url.contains('paytabs.com') || 
-                  request.url.contains('secure-iraq.paytabs.com')) {
-                return NavigationDecision.navigate;
-              }
-              return NavigationDecision.prevent;
-            },
-          ),
-        )
-        ..loadRequest(Uri.parse(widget.paymentUrl));
+      _controller =
+          WebViewController()
+            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            ..setBackgroundColor(const Color(0x00000000))
+            ..setNavigationDelegate(
+              NavigationDelegate(
+                onProgress: (int progress) {
+                  // Update loading progress if needed
+                },
+                onPageStarted: (String url) {
+                  setState(() {
+                    _isLoading = true;
+                    _hasError = false;
+                  });
+                },
+                onPageFinished: (String url) {
+                  setState(() {
+                    _isLoading = false;
+                  });
+
+                  // Check if payment was completed based on URL
+                  if (url.contains('payment/success') ||
+                      url.contains('payment/return')) {
+                    _handlePaymentCompletion(url);
+                  }
+                },
+                onWebResourceError: (WebResourceError error) {
+                  setState(() {
+                    _isLoading = false;
+                    _hasError = true;
+                    _errorMessage = 'خطأ في تحميل الصفحة: ${error.description}';
+                  });
+                },
+                onNavigationRequest: (NavigationRequest request) {
+                  // Allow all navigation within PayTabs domain
+                  if (request.url.contains('paytabs.com') ||
+                      request.url.contains('secure-iraq.paytabs.com')) {
+                    return NavigationDecision.navigate;
+                  }
+                  return NavigationDecision.prevent;
+                },
+              ),
+            )
+            ..loadRequest(Uri.parse(widget.paymentUrl));
     } catch (e) {
       setState(() {
         _hasError = true;
@@ -98,36 +102,40 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   void _handlePaymentCompletion(String url) {
     // Extract payment result from URL if possible
     bool isSuccess = url.contains('success') || url.contains('approved');
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(
-              isSuccess ? Icons.check_circle : Icons.info,
-              color: isSuccess ? Colors.green : AppColors.primary,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(
+                  isSuccess ? Icons.check_circle : Icons.info,
+                  color: isSuccess ? Colors.green : AppColors.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(isSuccess ? 'تم الدفع' : 'انتهاء العملية'),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(isSuccess ? 'تم الدفع' : 'انتهاء العملية'),
-          ],
-        ),
-        content: Text(
-          isSuccess 
-            ? 'تم إكمال عملية الدفع. سيتم تحديث رصيدك خلال دقائق.'
-            : 'تم الانتهاء من عملية الدفع. يرجى التحقق من حالة المعاملة.',
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context, isSuccess); // Return to previous screen with result
-            },
-            child: const Text('موافق'),
+            content: Text(
+              isSuccess
+                  ? 'تم إكمال عملية الدفع. سيتم تحديث رصيدك خلال دقائق.'
+                  : 'تم الانتهاء من عملية الدفع. يرجى التحقق من حالة المعاملة.',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(
+                    context,
+                    isSuccess,
+                  ); // Return to previous screen with result
+                },
+                child: const Text('موافق'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -140,7 +148,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           'إتمام الدفع الآمن',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: const Color(0xFF00296B),
           ),
         ),
         backgroundColor: AppColors.primary,
@@ -178,7 +186,9 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.1),
               border: Border(
-                bottom: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                bottom: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                ),
               ),
             ),
             child: Row(
@@ -211,35 +221,38 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           ),
           // WebView or Error display
           Expanded(
-            child: _hasError
-                ? _buildErrorWidget()
-                : Stack(
-                    children: [
-                      WebViewWidget(controller: _controller),
-                      if (_isLoading)
-                        Container(
-                          color: Colors.white,
-                          child: const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'جاري تحميل صفحة الدفع الآمنة...',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey,
+            child:
+                _hasError
+                    ? _buildErrorWidget()
+                    : Stack(
+                      children: [
+                        WebViewWidget(controller: _controller),
+                        if (_isLoading)
+                          Container(
+                            color: Colors.white,
+                            child: const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppColors.primary,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'جاري تحميل صفحة الدفع الآمنة...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
+                      ],
+                    ),
           ),
         ],
       ),
@@ -253,26 +266,17 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red,
-            ),
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
             const Text(
               'خطأ في تحميل صفحة الدفع',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               _errorMessage,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.grey,
-              ),
+              style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 24),
             ElevatedButton(
@@ -303,29 +307,30 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   void _showExitConfirmation() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إلغاء عملية الدفع؟'),
-        content: const Text(
-          'هل أنت متأكد من إلغاء عملية الدفع؟ سيتم إلغاء المعاملة وعدم إضافة أي مبلغ لرصيدك.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('متابعة الدفع'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context, false); // Exit payment with failure
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: AppColors.secondary,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('إلغاء عملية الدفع؟'),
+            content: const Text(
+              'هل أنت متأكد من إلغاء عملية الدفع؟ سيتم إلغاء المعاملة وعدم إضافة أي مبلغ لرصيدك.',
             ),
-            child: const Text('إلغاء الدفع'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('متابعة الدفع'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context, false); // Exit payment with failure
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: readableForeground(Colors.red),
+                ),
+                child: const Text('إلغاء الدفع'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 }

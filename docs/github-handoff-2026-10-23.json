@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-23",
+  "timezone": "America/Chicago",
+  "branch": "feature/malwersh/bootstrap",
+  "purpose": "تسليم جميع تحديثات الجلسة للزميل عبر GitHub",
+  "scope": "Staging work only; legacy non-staging worktrees excluded",
+  "repositories": [
+    "whizzDrivers-stg",
+    "whizzMerchants-stg",
+    "wizzuser-stg",
+    "whizzCentralPlatform-stg"
+  ],
+  "pull": [
+    "git fetch origin",
+    "git switch feature/malwersh/bootstrap",
+    "git pull --ff-only origin feature/malwersh/bootstrap"
+  ],
+  "latestNativeDriverBuild": 258,
+  "latestDemandPalette": "Secondary navy and shades; supersedes temporary yellow palette",
+  "notes": [
+    "لا يجرى دمج تلقائي في staging-main أو integration؛ يسحب الزميل فرع التسليم ويدمج وفق عمله.",
+    "الرفع إلى GitHub لا يعيد تنفيذ الطلبات أو التسويات أو نشر الخدمات.",
+    "نقاط الاستئناف والتقارير توثّق النشر السابق على staging؛ ليست إعلان اكتمال الخطة المالية كلها."
+  ],
+  "repository": "wizzuser-stg",
+  "sections": [
+    {
+      "area": "عرض عروض المطعم في الدفع294",
+      "changes": [
+        "اختيار العروض في قائمة سفلية قابلة للبحث بدلاً من إطالة صفحة الدفع بخيارات كثيرة.",
+        "عرض عدد العروض والعرض المختار والحد الأدنى مع تخطيط بطاقات متناسق.",
+        "الاختيار يعيد استخدام التحقق من الخادم، وإغلاق القائمة لا يغير العرض المختار.",
+        "الحفاظ على الموافقة النهائية المرتبطة باتفاق التوصيل والمنفعة في الالتزام السابق2d9981e."
+      ]
+    }
+  ],
+  "validation": {
+    "flutterPassed": 2,
+    "test": "merchant_offer_picker_test.dart",
+    "secretPatternScan": "No credential patterns found in changed/new files",
+    "whitespaceCheck": "PASS"
+  }
+}

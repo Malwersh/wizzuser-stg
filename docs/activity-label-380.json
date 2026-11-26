@@ -1,0 +1,6 @@
+{
+  "status": "SIMULATOR_BUILD_VERIFIED",
+  "build": 325,
+  "behavior": "Activity captions use 10px text, one line, ellipsis, horizontal padding and full-label tooltip; tile width, images and strip height unchanged.",
+  "testsPassed": 6
+}

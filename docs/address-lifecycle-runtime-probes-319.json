@@ -1,0 +1,32 @@
+[
+  {
+    "name": "WizzUser-CreateAddress-staging",
+    "status": 401,
+    "report": "REPORT RequestId: 03e5f4cf-b042-4724-be30-31e4ae3c79d4\tDuration: 75.05 ms\tBilled Duration: 76 ms\tMemory Size: 512 MB\tMax Memory Used: 91 MB\t"
+  },
+  {
+    "name": "WizzUser-UpdateAddress-staging",
+    "status": 401,
+    "report": "REPORT RequestId: c34112e0-bbb8-4797-b08f-097b809a8e53\tDuration: 79.67 ms\tBilled Duration: 80 ms\tMemory Size: 512 MB\tMax Memory Used: 91 MB\t"
+  },
+  {
+    "name": "WizzUser-DeleteAddress-staging",
+    "status": 401,
+    "report": "REPORT RequestId: a01e919e-9393-419a-8217-34d0d36d6ddb\tDuration: 89.90 ms\tBilled Duration: 90 ms\tMemory Size: 512 MB\tMax Memory Used: 85 MB\t"
+  },
+  {
+    "name": "WizzUser-SetDefaultAddress-staging",
+    "status": 401,
+    "report": "REPORT RequestId: 929e7d79-cae9-41d7-967a-5b653d6ca934\tDuration: 64.15 ms\tBilled Duration: 65 ms\tMemory Size: 512 MB\tMax Memory Used: 91 MB\t"
+  },
+  {
+    "name": "WizzUser-GetUserAddresses-staging",
+    "status": 401,
+    "report": "REPORT RequestId: 9574a5d9-1398-43bc-99be-cd4b03b626e8\tDuration: 81.39 ms\tBilled Duration: 82 ms\tMemory Size: 512 MB\tMax Memory Used: 85 MB\t"
+  },
+  {
+    "name": "WizzUser-GetAddress-staging",
+    "status": 401,
+    "report": "REPORT RequestId: da6cedbd-1c46-4ca4-97d0-2e9859dfa22e\tDuration: 36.91 ms\tBilled Duration: 37 ms\tMemory Size: 512 MB\tMax Memory Used: 83 MB\t"
+  }
+]

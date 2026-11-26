@@ -14,7 +14,7 @@ class RegionLookupService {
 
   // Cache for region lookups
   final Map<String, RegionInfo> _cache = {};
-  static const int _cacheDurationMinutes = 60;
+  static const int _cacheDurationMinutes = 0;
 
   /// Find region by coordinates
   /// إيجاد المنطقة من الإحداثيات

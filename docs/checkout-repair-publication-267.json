@@ -1,0 +1,29 @@
+{
+  "part": 267,
+  "status": "PUBLISHED_VERIFIED",
+  "scope": "staging",
+  "function": "WizzUser-CreateOrder-staging",
+  "changedFile": "_discount_review/user-create-order/index.js",
+  "allDeployedBytesVerified": true,
+  "unrelatedEntriesPreserved": true,
+  "codeSha256": "+DA8UjkPZpLSTyyo3WKwMpMTf4CI94qIo90N1DPOqdc=",
+  "configurationAndIamUnchanged": true,
+  "negativeSmokeStatus": 401,
+  "candidateReaderTests": 9,
+  "realPolicyPreflight": {
+    "status": "PASS",
+    "reads": 5,
+    "conditionChecks": 2,
+    "elapsedMs": 747,
+    "policyVerified": true,
+    "finalOrderGuardsRetained": true,
+    "noMutations": true
+  },
+  "realOrdersOrFinancialAttestationsCreated": false,
+  "humanCheckoutRetry": "PENDING",
+  "customerSimulatorBuild": 217,
+  "customerSimulatorInstalledAndLaunched": true,
+  "flutterPricingAndConfirmationTests": 33,
+  "flutterDeliveryQuoteOnlyTests": 22,
+  "endToEndLatencyMeasurement": "PENDING_HUMAN_RETRY"
+}

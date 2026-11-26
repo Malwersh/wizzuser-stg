@@ -1,0 +1,15 @@
+{
+  "part": 321,
+  "status": "IMPLEMENTED_BACKEND_ACTIVE_NATIVE_BUILT",
+  "sourceIntegration": "35c5a99",
+  "backendPolicyVersion": 2,
+  "routeFallbackConnected": true,
+  "priceMissingNeverBecomesZero": true,
+  "savedLineIdentityAndOptionsFixed": true,
+  "testsPassed": 13,
+  "nativeBuild": 234,
+  "nativeInstalled": false,
+  "nativeInstallBlocker": "All paired physical iPhones unavailable",
+  "sharedReport": "../whizzCentralPlatform-stg/docs/general-pricing-implementation-321.json",
+  "financialWrites": 0
+}

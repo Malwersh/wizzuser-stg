@@ -1,0 +1,20 @@
+{
+  "status": "IMPLEMENTED_TESTED",
+  "customerBuild": 298,
+  "scope": "Home all-restaurants list only; existing horizontal/editorial sections unchanged",
+  "presentation": [
+    "Wide 1.55 ratio real cover image",
+    "Store name and independent favorite action below image",
+    "Real rating/count, canonical arrival preview and category",
+    "Canonical delivery fee and existing availability badge"
+  ],
+  "dataInvariants": [
+    "No fabricated promotion, review count, carousel indicators or free delivery",
+    "Existing store navigation, favorites and availability subscription retained"
+  ],
+  "validation": {
+    "narrowRtlLayout": true,
+    "favoriteAndNavigationActions": true,
+    "analyzerErrors": 0
+  }
+}

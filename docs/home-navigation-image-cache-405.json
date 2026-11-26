@@ -1,0 +1,18 @@
+{
+  "part": 405,
+  "status": "implemented",
+  "build": 360,
+  "rootCause": "60-second feed refresh regenerates signed S3 URLs; Image.network keyed by URL reloads unchanged topic images",
+  "fix": [
+    "Propagate immutable uploaded imageKey from feed",
+    "Use decoded/disk cache identity based on file key for activity/topic images",
+    "Retain current frame during URL renewal and remove fade animation",
+    "Stable topic row widget keys"
+  ],
+  "verification": {
+    "tests": 7,
+    "sameFileNewSignature": "same image provider and hash",
+    "newUpload": "new image provider",
+    "simulatorBuild": "passed"
+  }
+}

@@ -219,4 +219,5 @@ class StatusPollingService {
 
   /// واجهة عامة لاستدعاء جلب فوري من خارج الخدمة
   void forceImmediateFetch() => _forceImmediateFetch();
+  Future<void> refreshForFilters() async { _timer?.cancel(); await _tick(); }
 }

@@ -6,6 +6,7 @@ import 'dart:ui';
 
 class ModernCartIcon extends StatelessWidget {
   final Color color;
+  final Color badgeColor, badgeTextColor;
   final double size;
   final bool hasGlowEffect;
   final VoidCallback? onPressed;
@@ -15,6 +16,8 @@ class ModernCartIcon extends StatelessWidget {
   const ModernCartIcon({
     super.key,
     this.color = Colors.white,
+    this.badgeColor = AppColors.primary,
+    this.badgeTextColor = AppColors.textOnPrimary,
     this.size = 24,
     this.hasGlowEffect = false,
     this.onPressed,
@@ -29,40 +32,46 @@ class ModernCartIcon extends StatelessWidget {
       height: size + 8,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: isGlassmorphic ? color.withValues(alpha: 0.15) : color.withValues(alpha: 0.1),
-        border: isGlassmorphic ? Border.all(
-          color: color.withValues(alpha: 0.3),
-          width: 1,
-        ) : null,
-        boxShadow: hasGlowEffect ? [
-          BoxShadow(
-            color: color.withValues(alpha: 0.3),
-            blurRadius: 12,
-            spreadRadius: 2,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.1),
-            blurRadius: 8,
-            spreadRadius: -2,
-            offset: const Offset(0, -2),
-          ),
-        ] : [],
+        color:
+            isGlassmorphic
+                ? color.withValues(alpha: 0.15)
+                : color.withValues(alpha: 0.1),
+        border:
+            isGlassmorphic
+                ? Border.all(color: color.withValues(alpha: 0.3), width: 1)
+                : null,
+        boxShadow:
+            hasGlowEffect
+                ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    spreadRadius: -2,
+                    offset: const Offset(0, -2),
+                  ),
+                ]
+                : [],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: BackdropFilter(
-          filter: isGlassmorphic ? ImageFilter.blur(sigmaX: 10, sigmaY: 10) : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+          filter:
+              isGlassmorphic
+                  ? ImageFilter.blur(sigmaX: 10, sigmaY: 10)
+                  : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
           child: Container(
             decoration: BoxDecoration(
-              color: isGlassmorphic ? Colors.white.withValues(alpha: 0.1) : null,
+              color:
+                  isGlassmorphic ? Colors.white.withValues(alpha: 0.1) : null,
             ),
             child: Center(
-              child: Icon(
-                Icons.shopping_bag_rounded,
-                size: size,
-                color: color,
-              ),
+              child: Icon(Icons.shopping_bag_rounded, size: size, color: color),
             ),
           ),
         ),
@@ -79,25 +88,26 @@ class ModernCartIcon extends StatelessWidget {
             right: -2,
             top: -2,
             child: Container(
-              padding: const EdgeInsets.all(4),        decoration: BoxDecoration(
-          color: AppColors.primary,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.4),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Text(
-          badgeCount! > 99 ? '99+' : '$badgeCount',
-          style: const TextStyle(
-            color: AppColors.textOnPrimary, // أسود على خلفية ذهبية
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: badgeColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: badgeColor.withValues(alpha: 0.4),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                badgeCount! > 99 ? '99+' : '$badgeCount',
+                style: TextStyle(
+                  color: badgeTextColor, // أسود على خلفية ذهبية
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -107,10 +117,7 @@ class ModernCartIcon extends StatelessWidget {
 
     // إضافة GestureDetector إذا كان مطلوب
     if (onPressed != null) {
-      return GestureDetector(
-        onTap: onPressed,
-        child: iconWidget,
-      );
+      return GestureDetector(onTap: onPressed, child: iconWidget);
     }
 
     return iconWidget;
@@ -221,10 +228,7 @@ class ModernCartCircleIcon extends StatelessWidget {
 
     // إضافة GestureDetector إذا كان مطلوب
     if (onPressed != null) {
-      return GestureDetector(
-        onTap: onPressed,
-        child: iconWidget,
-      );
+      return GestureDetector(onTap: onPressed, child: iconWidget);
     }
 
     return iconWidget;

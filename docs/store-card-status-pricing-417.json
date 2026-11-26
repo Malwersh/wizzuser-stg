@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-04",
+  "build": 380,
+  "changes": [
+    "Closed badge opposite restaurant name in horizontal and feed cards; no open badge",
+    "No visible periodic status spinner",
+    "Display-only same-key pricing grace of five minutes during revalidation; checkout freshness unchanged"
+  ],
+  "validation": {
+    "pricingTests": 13,
+    "iosSimulatorBuild": true
+  }
+}

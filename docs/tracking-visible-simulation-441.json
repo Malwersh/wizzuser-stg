@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-05",
+  "authorization": "User requested visible simulated coordinates for current test order",
+  "orderId": "f19346e1-5961-571a-8a0f-52846908796e",
+  "driverId": "34d8e408-1021-7076-6055-7325644f97cb",
+  "transport": "Existing PrivateOrderApiClient ownership and lifecycle fenced WebSocket send, scoped to canonical customer",
+  "simulation": "21 sampled points on actual display road route, out and back, every three seconds; simulation flag carried in message",
+  "writes": "No coordinates persisted, no dispatch/order/wallet state changes",
+  "observation": "16 points (steps0..15) acknowledged by one authorized customer connection; following send hit transaction conflict. Resumption correctly blocked because active order changed.",
+  "limits": "Successful sends are transport acknowledgement, not user visual confirmation; simulated movement does not prove native background GPS",
+  "finalOrderStatus": "delivered"
+}

@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-24",
+  "repository": "wizzuser-stg",
+  "branch": "feature/malwersh/bootstrap",
+  "scope": "Four staging repositories only; no legacy non-stg worktree included",
+  "purpose": "جميع تحديثات الجلسة وتسليم ملف المنتجات والاستيراد للزميل",
+  "changes": [
+    "تنظيم Checkout: فصل مزايا المنصة عن عروض المطعم والكود وإزالة المدخل المكرر.",
+    "توضيح غياب عروض المطعم وإضافة تحديثها وتحسين تسميات وتباين العرض مع التنسيق الحالي.",
+    "فحوص الخصومات والمزايا ومراجعة الفاتورة والتحقق من عروض التوصيل.",
+    "إحالة المنتجات والاستيراد للزميل مع حفظ عقد تسعير الخيارات والسلة ولقطة الطلب."
+  ],
+  "delegation": {
+    "status": "DELEGATED_TO_COLLEAGUE",
+    "scope": "منتج منفرد + CSV/Excel/XLSX مع كامل متعلقات القائمة/الصور/الخيارات/المخزون والفروع والطلبات",
+    "fullHandoff": "https://github.com/Malwersh/whizzCentralPlatform-stg/blob/feature/malwersh/bootstrap/docs/merchant-products-import-colleague-handoff-2026-10-24.txt",
+    "masterPlan": "https://github.com/Malwersh/whizzCentralPlatform-stg/blob/feature/malwersh/bootstrap/docs/finance-pricing-settlements-returns-unified-plan.md",
+    "doNotRebuildExistingScopeOrOptionPricing": true,
+    "bulkImportNotClaimedComplete": true
+  },
+  "pull": [
+    "git fetch origin",
+    "git checkout feature/malwersh/bootstrap",
+    "git pull --ff-only origin feature/malwersh/bootstrap"
+  ],
+  "validation": {
+    "whizzCentralPlatform-stg": 368,
+    "merchant-node": 23,
+    "central-wallet": 50,
+    "whizzMerchants-stg-flutter": 17,
+    "whizzDrivers-stg-flutter": 20,
+    "wizzuser-stg-flutter": 25
+  },
+  "operationalNotes": [
+    "GitHub upload does not invoke Lambda deployment, grants, refunds, handovers, or settlements.",
+    "Preserve colleague branches; no force push or automatic merge to integration/staging-main.",
+    "COD-first launch and pending case acceptance remain as recorded in the main plan."
+  ],
+  "excludedLocalChanges": [
+    "frontend/ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved — pre-existing generated-file deletion left untouched and excluded"
+  ]
+}

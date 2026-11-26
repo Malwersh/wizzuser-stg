@@ -16,7 +16,6 @@ const BUSINESSES_TABLE = process.env.BUSINESSES_TABLE || 'WhizzMerchants_Busines
  * Handler function
  */
 exports.handler = async (event) => {
-  console.log('Event:', JSON.stringify(event, null, 2));
   
   try {
     const body = JSON.parse(event.body);

@@ -18,15 +18,21 @@ class PasswordResetConfirmationScreen extends StatefulWidget {
   });
 
   @override
-  State<PasswordResetConfirmationScreen> createState() => _PasswordResetConfirmationScreenState();
+  State<PasswordResetConfirmationScreen> createState() =>
+      _PasswordResetConfirmationScreenState();
 }
 
-class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmationScreen> {
-  final List<TextEditingController> _codeControllers = List.generate(6, (index) => TextEditingController());
+class _PasswordResetConfirmationScreenState
+    extends State<PasswordResetConfirmationScreen> {
+  final List<TextEditingController> _codeControllers = List.generate(
+    6,
+    (index) => TextEditingController(),
+  );
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
-  
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
   bool _isLoading = false;
   String? _message;
   bool _isSuccess = false;
@@ -55,9 +61,9 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
   }
 
   bool _isFormValid() {
-    return _isCodeComplete() && 
-           _newPasswordController.text.isNotEmpty && 
-           _confirmPasswordController.text.isNotEmpty;
+    return _isCodeComplete() &&
+        _newPasswordController.text.isNotEmpty &&
+        _confirmPasswordController.text.isNotEmpty;
   }
 
   void _handlePasswordReset() async {
@@ -168,7 +174,7 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                
+
                 // Header
                 Center(
                   child: Column(
@@ -196,9 +202,9 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        widget.userType == 'email' 
-                          ? 'تم إرسال رمز التحقق إلى بريدك الإلكتروني\n${widget.username}'
-                          : 'تم إرسال رمز التحقق إلى رقم هاتفك\n${widget.username}',
+                        widget.userType == 'email'
+                            ? 'تم إرسال رمز التحقق إلى بريدك الإلكتروني\n${widget.username}'
+                            : 'تم إرسال رمز التحقق إلى رقم هاتفك\n${widget.username}',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 14,
@@ -209,9 +215,9 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: 40),
-                
+
                 // Verification Code Input
                 const Text(
                   'رمز التحقق',
@@ -234,16 +240,23 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                         maxLength: 1,
                         textAlign: TextAlign.center,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         decoration: InputDecoration(
                           counterText: '',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE0E0E0),
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                              width: 2,
+                            ),
                           ),
                           filled: true,
                           fillColor: Colors.grey[50],
@@ -264,9 +277,9 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     );
                   }),
                 ),
-                
+
                 const SizedBox(height: 30),
-                
+
                 // New Password Field
                 const Text(
                   'كلمة المرور الجديدة',
@@ -284,7 +297,11 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     hintText: 'أدخل كلمة المرور الجديدة',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
                       onPressed: () {
                         setState(() {
                           _obscurePassword = !_obscurePassword;
@@ -296,13 +313,16 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     ),
                     focusedBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.primary, width: 2),
+                      borderSide: BorderSide(
+                        color: AppColors.primary,
+                        width: 2,
+                      ),
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Confirm Password Field
                 const Text(
                   'تأكيد كلمة المرور',
@@ -320,7 +340,11 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     hintText: 'أعد إدخال كلمة المرور',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
                       onPressed: () {
                         setState(() {
                           _obscureConfirmPassword = !_obscureConfirmPassword;
@@ -332,60 +356,72 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     ),
                     focusedBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(12)),
-                      borderSide: BorderSide(color: AppColors.primary, width: 2),
+                      borderSide: BorderSide(
+                        color: AppColors.primary,
+                        width: 2,
+                      ),
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 30),
-                
+
                 // Submit Button
                 SizedBox(
                   width: double.infinity,
-                  child: _isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primary,
-                          ),
-                        )
-                      : ElevatedButton(
-                          onPressed: _isFormValid() ? _handlePasswordReset : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: AppColors.secondary,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                  child:
+                      _isLoading
+                          ? const Center(
+                            child: CircularProgressIndicator(
+                              color: const Color(0xFF00296B),
                             ),
-                            elevation: 2,
+                          )
+                          : ElevatedButton(
+                            onPressed:
+                                _isFormValid() ? _handlePasswordReset : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: AppColors.secondary,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                            ),
+                            child: const Text(
+                              'تأكيد إعادة التعيين',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
-                          child: const Text(
-                            'تأكيد إعادة التعيين',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                          ),
-                        ),
                 ),
-                
+
                 // Message Display
                 if (_message != null) ...[
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _isSuccess 
-                          ? Colors.green.withValues(alpha: 0.1)
-                          : Colors.red.withValues(alpha: 0.1),
+                      color:
+                          _isSuccess
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: _isSuccess 
-                            ? Colors.green.withValues(alpha: 0.3)
-                            : Colors.red.withValues(alpha: 0.3),
+                        color:
+                            _isSuccess
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : Colors.red.withValues(alpha: 0.3),
                       ),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          _isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                          _isSuccess
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
                           color: _isSuccess ? Colors.green : Colors.red,
                           size: 20,
                         ),
@@ -404,9 +440,9 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 20),
-                
+
                 // Resend Code Button
                 Center(
                   child: TextButton(
@@ -421,9 +457,9 @@ class _PasswordResetConfirmationScreenState extends State<PasswordResetConfirmat
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 10),
-                
+
                 // Back to Login
                 Center(
                   child: TextButton(

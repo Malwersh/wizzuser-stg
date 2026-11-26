@@ -27,44 +27,7 @@ if (!REGION_INDEX_TABLE) {
  * Find regionId using H3 index
  */
 async function findRegionByH3(latitude, longitude) {
-  try {
-    const h3Cell = h3.latLngToCell(parseFloat(latitude), parseFloat(longitude), H3_RESOLUTION);
-    
-    // Try exact match first
-    const result = await docClient.send(new GetCommand({
-      TableName: REGION_INDEX_TABLE,
-      Key: { index_cell_id: h3Cell }
-    }));
-    
-    if (result.Item) {
-      return {
-        regionId: result.Item.regionId,
-        h3Cell: h3Cell
-      };
-    }
-    
-    // Fallback to parent cells
-    for (let res = H3_RESOLUTION - 1; res >= 6; res--) {
-      const parentCell = h3.cellToParent(h3Cell, res);
-      
-      const parentResult = await docClient.send(new GetCommand({
-        TableName: REGION_INDEX_TABLE,
-        Key: { index_cell_id: parentCell }
-      }));
-      
-      if (parentResult.Item) {
-        return {
-          regionId: parentResult.Item.regionId,
-          h3Cell: parentCell
-        };
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error in findRegionByH3:', error);
-    return null;
-  }
+  return require('../utils/business-metadata-utils').findRegionByH3(docClient,latitude,longitude);
 }
 
 /**

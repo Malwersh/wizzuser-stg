@@ -13,11 +13,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
     margin: const EdgeInsets.symmetric(horizontal: 16),
     decoration: BoxDecoration(
       gradient: const LinearGradient(
-        colors: [
-          _primaryColor,
-          _primaryDark,
-          _primaryDark,
-        ],
+        colors: [_primaryColor, _primaryDark, _primaryDark],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         stops: [0.0, 0.5, 1.0],
@@ -82,7 +78,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                   ),
                   child: const Icon(
                     Icons.card_giftcard,
-                    color: Colors.white,
+                    color: const Color(0xFF00296B),
                     size: 28,
                   ),
                 ),
@@ -108,7 +104,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'اجمع النقاط واحصل على خصومات رائعة',
+                        'استعرض العروض وتحقق من شروطها عند الدفع',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -178,17 +174,16 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [
-                                  AppColors.primary,
-                                  Color(0xFF0099B8),
-                                ],
+                                colors: [AppColors.primary, Color(0xFF0099B8)],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.3),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.3,
+                                  ),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -196,7 +191,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                             ),
                             child: const Icon(
                               Icons.local_offer,
-                              color: Colors.white,
+                              color: const Color(0xFF00296B),
                               size: 32,
                             ),
                           ),
@@ -204,7 +199,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                           const Text(
                             'القسائم',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: const Color(0xFF00296B),
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               shadows: [
@@ -227,7 +222,10 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                           ),
                           const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(20),
@@ -242,7 +240,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                             child: const Text(
                               '0 قسيمة',
                               style: TextStyle(
-                                color: AppColors.primary,
+                                color: const Color(0xFF00296B),
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -301,10 +299,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [
-                                  AppColors.primary,
-                                  Color(0xFF0099B8),
-                                ],
+                                colors: [AppColors.primary, Color(0xFF0099B8)],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
@@ -319,7 +314,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                             ),
                             child: const Icon(
                               Icons.stars,
-                              color: Colors.white,
+                              color: const Color(0xFF00296B),
                               size: 32,
                             ),
                           ),
@@ -327,7 +322,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                           const Text(
                             'المكافآت',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: const Color(0xFF00296B),
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               shadows: [
@@ -341,7 +336,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'اجمع النقاط',
+                            'قريباً',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 13,
@@ -350,7 +345,10 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                           ),
                           const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(20),
@@ -365,7 +363,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                             child: const Text(
                               '0 نقطة',
                               style: TextStyle(
-                                color: AppColors.primary,
+                                color: const Color(0xFF00296B),
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -433,16 +431,16 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                     ),
                     child: const Icon(
                       Icons.info_outline,
-                      color: Colors.white,
+                      color: const Color(0xFF00296B),
                       size: 20,
                     ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'كل طلب يحتوي على نقاط مكافآت - ابدأ التسوق الآن!',
+                      'تُراجع أهلية الخصومات عند إتمام الطلب',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: const Color(0xFF00296B),
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         shadows: [
@@ -456,7 +454,10 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(15),
@@ -471,7 +472,7 @@ Widget buildRewardsAndCouponsSection(BuildContext context) {
                     child: const Text(
                       'ابدأ الآن',
                       style: TextStyle(
-                        color: AppColors.primary,
+                        color: const Color(0xFF00296B),
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                       ),

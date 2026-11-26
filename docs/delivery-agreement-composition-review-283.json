@@ -1,0 +1,59 @@
+{
+  "reviewedAt": "2026-10-22T20:16:47.955709+03:00",
+  "scope": "Coordinated GitHub-only delivery agreement and benefit composition review",
+  "status": "VERIFIED_FOR_INTEGRATION",
+  "branches": {
+    "review": "review/delivery-agreement-composition-283",
+    "target": "integration/discounts-settlements-20261022"
+  },
+  "central": {
+    "sourceFixCommit": "59db2c74f8d98fc2bd9c8183ab547a973ccff7ae",
+    "cherryPickCommit": "61a448568ddd3ff271b4f30c61c452df17952d8a",
+    "integrationBaseline": "7a51b67",
+    "sourceAndGeneratedFilesByteExact": 16
+  },
+  "customer": {
+    "sourceFixCommit": "d955de2c86c657b2d134eab574ba5b97d424cdde",
+    "cherryPickCommit": "dc5bb9c2a4c01a29abde5d29f43baad454a16970",
+    "integrationBaseline": "0d22e99",
+    "sourceAndGeneratedFilesByteExact": 8
+  },
+  "textualConflicts": [],
+  "verification": {
+    "typescript": "PASS",
+    "wallet": {
+      "tests": 1473,
+      "pass": 1473,
+      "fail": 0
+    },
+    "staff": {
+      "tests": 346,
+      "pass": 346,
+      "fail": 0
+    },
+    "customerPortable": {
+      "tests": 100,
+      "pass": 100,
+      "fail": 0
+    },
+    "generatedRuntimeChecks": "PASS: quote-order, delivery-pricing, platform-benefits, local quote package",
+    "protectedSettlementBoundary": "PASS: 156 protected files and 4 lifecycle adapters",
+    "frontendTreesPreserved": true
+  },
+  "historicalCustomerTestsNotAvailable": [
+    {
+      "file": "backend/test/checkout-agreement-compatibility-270.test.cjs",
+      "reason": "Depends on archived /private/tmp/checkout-270 runtime and writer-base.js, unavailable on this workstation"
+    },
+    {
+      "file": "backend/test/order-exception-bundle-274.test.cjs",
+      "reason": "Depends on archived /private/tmp/cash-review-274 deployment artifacts, unavailable on this workstation"
+    }
+  ],
+  "awsDeploymentPerformed": false,
+  "awsConfigurationChanged": false,
+  "businessDataModified": false,
+  "productionAcceptanceTestPerformed": false,
+  "deploymentHandoff": "Colleague owns coordinated AWS publication. Review historical embedded funding readers and reservation bridges across completion/cancellation/returns/dispatch/adjudication before admitting composite orders. The five local bundles are not proof of deployed host compatibility.",
+  "fullReport": "Malwersh/whizzCentralPlatform-stg: docs/delivery-agreement-composition-review-283.json"
+}

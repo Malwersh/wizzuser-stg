@@ -9,7 +9,7 @@ const { DynamoDBDocumentClient } = require("@aws-sdk/lib-dynamodb");
 const { UniversalWebSocketManager } = require('../../universal_websocket_manager');
 
 const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
+const docClient = require('../../realtime-identity-scope-346').scopedClient(require('../../merchant-realtime-scope-345').scopedClient(DynamoDBDocumentClient.from(client)));
 
 // Initialize Universal WebSocket Manager
 const universalManager = new UniversalWebSocketManager();
@@ -43,7 +43,7 @@ const handler = async (event) => {
         }
 
         console.log(`🔌 Universal WebSocket connection request: ${connectionId}`);
-        console.log('📋 Connection params:', queryParams);
+        console.log('Connection type requested', {userType:queryParams.userType,entityType:queryParams.entityType});
 
         // Enhanced connection detection - determine entity type intelligently
         let detectedEntityType = 'customer'; // default
@@ -153,4 +153,4 @@ const handler = async (event) => {
     }
 };
 
-module.exports = { handler };
+module.exports = { handler: require('../../realtime-identity-scope-346').guardConnect(require('../../merchant-realtime-scope-345').guardConnect(handler)) };

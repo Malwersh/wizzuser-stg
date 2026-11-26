@@ -1,0 +1,9 @@
+{
+  "status": "IMPLEMENTED_ANALYZED",
+  "customerBuild": 300,
+  "scope": "Home fixed address/actions/search/map header including safe-area",
+  "background": "white",
+  "foreground": "AppColors.secondaryDark #00296B; dark status bar",
+  "surfaces": "Light neutral address/search/map controls",
+  "otherScreens": "Cart badge defaults preserved; home overrides foreground only"
+}

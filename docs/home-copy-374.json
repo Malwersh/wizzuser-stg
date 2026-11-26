@@ -1,0 +1,24 @@
+{
+  "status": "PUBLISHED_STAGING_VERIFIED",
+  "hostingJob": "241",
+  "customerSimulatorBuild": 314,
+  "adminPage": "pages/home-layout.html",
+  "features": [
+    "Signed-in template with {name}, guest and nameless templates",
+    "Greeting enabled switch and optional Baghdad schedule",
+    "1–8 rotating search hints; 4–15 seconds per hint",
+    "Existing draft/publish/rollback and permission/version guards",
+    "Session welcome rules retained; reduced motion and background pause"
+  ],
+  "tests": {
+    "backend": 14,
+    "flutter": 8,
+    "browserWidths": [
+      390,
+      1280
+    ]
+  },
+  "humanAcceptance": "Change wording and two search examples, save draft, publish, reopen home naturally; confirm guest and signed-in wording.",
+  "searchAnimation": "Grapheme-safe typewriter and gradual erase, blinking caret; icon fixed in separately constrained row; reduced-motion static wording.",
+  "animationTests": 3
+}

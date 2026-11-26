@@ -1,0 +1,12 @@
+const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+function app({blocked=false,failTransaction=false}={}){
+ let saved,writes=0,calls=[];const classes={};for(const n of ['GetCommand','QueryCommand','TransactWriteCommand'])classes[n]=class{constructor(input){this.input=input;this.name=n;}};
+ const db={send:async c=>{calls.push(c);if(c.name==='GetCommand')return c.input.TableName==='orders'?{Item:{userId:'one'}}:{Item:saved};if(c.name==='QueryCommand')return {Items:[{walletId:'wallet',userId:'one',status:'ACTIVE',currency:'IQD',balance:10000}]};if(failTransaction)throw Object.assign(Error(),{name:'TransactionCanceledException'});writes++;saved=c.input.TransactItems[2].Put.Item;return {};}};
+ const modules={'@aws-sdk/client-dynamodb':{DynamoDBClient:class{}},'@aws-sdk/lib-dynamodb':{...classes,DynamoDBDocumentClient:{from:()=>db}},'node:crypto':require('node:crypto'),'../create-order/guarded-write':{writeContext:async()=>{if(blocked)throw Object.assign(Error('ACCOUNT_UNAVAILABLE'),{statusCode:409});return {fence:{ConditionCheck:{TableName:'profiles',Key:{userId:'one'}}}};}}};
+ const exports={};vm.runInNewContext(fs.readFileSync(__dirname+'/index.js','utf8'),{exports,require:n=>modules[n],process:{env:{TRANSACTIONS_TABLE:'transactions',WALLETS_TABLE:'wallets',WIZZORDERS_TABLE:'orders'}}});
+ return {run:(amount=5000)=>exports.handler({body:JSON.stringify({userId:'one',orderId:'order',amount})}),writes:()=>writes,calls};
+}
+test('closing account cannot spend wallet funds',async()=>{const f=app({blocked:true});assert.equal((await f.run()).statusCode,409);assert.equal(f.calls.length,0);});
+test('retrying successful order payment does not deduct twice',async()=>{const f=app();assert.equal((await f.run()).statusCode,200);assert.equal((await f.run()).statusCode,200);assert.equal(f.writes(),1);const tx=f.calls.find(c=>c.name==='TransactWriteCommand').input.TransactItems;assert.equal(tx[0].ConditionCheck.TableName,'profiles');assert.equal(tx[1].Update.Key.walletId,'wallet');assert.match(tx[1].Update.ConditionExpression,/attribute_not_exists\(deletionRequestId\)/);assert.equal(tx[2].Put.Item.walletId,'wallet');});
+test('same order cannot reuse completed payment with a different amount',async()=>{const f=app();await f.run();assert.equal((await f.run(3000)).statusCode,409);assert.equal(f.writes(),1);});
+test('failed transaction cannot claim payment success',async()=>{const f=app({failTransaction:true});assert.equal((await f.run()).statusCode,409);assert.equal(f.writes(),0);});

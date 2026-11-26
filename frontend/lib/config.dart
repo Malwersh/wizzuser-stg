@@ -1,13 +1,11 @@
+import 'config/api_config.dart' as runtime;
+
 /// Configuration file for API endpoints and app settings
 /// Updated for NEW Backend Infrastructure - Account 031857856164
 class ApiConfig {
   // 🔄 NEW Base URL - Updated for new AWS Account
-  static const String baseUrl = String.fromEnvironment(
-    'API_URL',
-    // IMPORTANT: no trailing slash; many endpoints start with '/'
-    defaultValue: 'https://4jut6787c8.execute-api.us-east-1.amazonaws.com/staging',
-  );
-  
+  static const String baseUrl = runtime.ApiConfig.baseUrl;
+
   // 🔄 NEW Cognito Configuration - Updated to match current backend
   static const String cognitoUserPoolId =
     String.fromEnvironment('COGNITO_USER_POOL_ID', defaultValue: 'us-east-1_TpyyrVkEE');
@@ -17,9 +15,8 @@ class ApiConfig {
     String.fromEnvironment('COGNITO_REGION', defaultValue: 'us-east-1');
   
   // 🔄 NEW WebSocket URL
-  static const String webSocketUrl =
-    String.fromEnvironment('WEBSOCKET_URL', defaultValue: 'wss://igcrhwc84c.execute-api.us-east-1.amazonaws.com/staging');
-  
+  static const String webSocketUrl = runtime.ApiConfig.webSocketUrl;
+
   // Authentication endpoints
   static const String registerEndpoint = '/auth/register';
   static const String loginEndpoint = '/auth/login';

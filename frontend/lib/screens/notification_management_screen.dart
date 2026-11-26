@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../services/session_service.dart';
@@ -7,13 +8,15 @@ class NotificationManagementScreen extends StatefulWidget {
   const NotificationManagementScreen({super.key});
 
   @override
-  State<NotificationManagementScreen> createState() => _NotificationManagementScreenState();
+  State<NotificationManagementScreen> createState() =>
+      _NotificationManagementScreenState();
 }
 
-class _NotificationManagementScreenState extends State<NotificationManagementScreen> {
+class _NotificationManagementScreenState
+    extends State<NotificationManagementScreen> {
   bool _isLoading = false;
   bool _notificationsEnabled = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -26,7 +29,8 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
     });
 
     try {
-      _notificationsEnabled = NotificationService.areNotificationsEnabledStatic();
+      _notificationsEnabled =
+          NotificationService.areNotificationsEnabledStatic();
       setState(() {});
     } catch (e) {
       if (mounted) {
@@ -52,10 +56,10 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
     try {
       final sessionData = SessionService.instance.currentUser;
       final userId = sessionData?['userId'] ?? '';
-      
+
       if (userId.isNotEmpty) {
         await NotificationService.sendTestNotificationStatic();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -101,16 +105,22 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
         _notificationsEnabled = false;
       } else {
         await NotificationService.initialize();
-        _notificationsEnabled = NotificationService.areNotificationsEnabledStatic();
+        _notificationsEnabled =
+            NotificationService.areNotificationsEnabledStatic();
       }
-      
+
       setState(() {});
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_notificationsEnabled ? 'تم تفعيل الإشعارات' : 'تم تعطيل الإشعارات'),
-            backgroundColor: _notificationsEnabled ? Colors.green : AppColors.primary,
+            content: Text(
+              _notificationsEnabled
+                  ? 'تم تفعيل الإشعارات'
+                  : 'تم تعطيل الإشعارات',
+            ),
+            backgroundColor:
+                _notificationsEnabled ? Colors.green : AppColors.primary,
           ),
         );
       }
@@ -145,23 +155,24 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
           foregroundColor: AppColors.secondary,
           elevation: 0,
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildStatusCard(),
-                    const SizedBox(height: 20),
-                    _buildControlsCard(),
-                    const SizedBox(height: 20),
-                    _buildTestingCard(),
-                    const SizedBox(height: 20),
-                    _buildInfoCard(),
-                  ],
+        body:
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildStatusCard(),
+                      const SizedBox(height: 20),
+                      _buildControlsCard(),
+                      const SizedBox(height: 20),
+                      _buildTestingCard(),
+                      const SizedBox(height: 20),
+                      _buildInfoCard(),
+                    ],
+                  ),
                 ),
-              ),
       ),
     );
   }
@@ -187,7 +198,9 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
           Row(
             children: [
               Icon(
-                _notificationsEnabled ? Icons.notifications_active : Icons.notifications_off,
+                _notificationsEnabled
+                    ? Icons.notifications_active
+                    : Icons.notifications_off,
                 color: _notificationsEnabled ? Colors.green : Colors.red,
                 size: 24,
               ),
@@ -209,21 +222,30 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
               color: _notificationsEnabled ? Colors.green[50] : Colors.red[50],
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: _notificationsEnabled ? Colors.green[200]! : Colors.red[200]!,
+                color:
+                    _notificationsEnabled
+                        ? Colors.green[200]!
+                        : Colors.red[200]!,
               ),
             ),
             child: Row(
               children: [
                 Icon(
                   _notificationsEnabled ? Icons.check_circle : Icons.error,
-                  color: _notificationsEnabled ? Colors.green[700] : Colors.red[700],
+                  color:
+                      _notificationsEnabled
+                          ? Colors.green[700]
+                          : Colors.red[700],
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   _notificationsEnabled ? 'الإشعارات مفعلة' : 'الإشعارات معطلة',
                   style: TextStyle(
-                    color: _notificationsEnabled ? Colors.green[700] : Colors.red[700],
+                    color:
+                        _notificationsEnabled
+                            ? Colors.green[700]
+                            : Colors.red[700],
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -266,11 +288,20 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _isLoading ? null : _toggleNotifications,
-              icon: Icon(_notificationsEnabled ? Icons.notifications_off : Icons.notifications_active),
-              label: Text(_notificationsEnabled ? 'تعطيل الإشعارات' : 'تفعيل الإشعارات'),
+              icon: Icon(
+                _notificationsEnabled
+                    ? Icons.notifications_off
+                    : Icons.notifications_active,
+              ),
+              label: Text(
+                _notificationsEnabled ? 'تعطيل الإشعارات' : 'تفعيل الإشعارات',
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _notificationsEnabled ? Colors.red : Colors.green,
-                foregroundColor: AppColors.secondary,
+                backgroundColor:
+                    _notificationsEnabled ? Colors.red : Colors.green,
+                foregroundColor: readableForeground(
+                  _notificationsEnabled ? Colors.red : Colors.green,
+                ),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -312,16 +343,16 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
           const SizedBox(height: 12),
           const Text(
             'اختبر عمل الإشعارات عن طريق إرسال إشعار تجريبي',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: (_isLoading || !_notificationsEnabled) ? null : _sendTestNotification,
+              onPressed:
+                  (_isLoading || !_notificationsEnabled)
+                      ? null
+                      : _sendTestNotification,
               icon: const Icon(Icons.send),
               label: const Text('إرسال إشعار تجريبي'),
               style: ElevatedButton.styleFrom(
@@ -356,10 +387,7 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
               const SizedBox(width: 12),
               const Text(
                 'معلومات هامة',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -369,10 +397,7 @@ class _NotificationManagementScreenState extends State<NotificationManagementScr
             '• يمكن تعديل الإعدادات من إعدادات الجهاز\n'
             '• الإشعارات التجريبية تساعد في التأكد من عمل النظام\n'
             '• يتم حفظ تفضيلات الإشعارات تلقائياً',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-            ),
+            style: TextStyle(fontSize: 14, height: 1.5),
           ),
         ],
       ),

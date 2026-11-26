@@ -1,0 +1,25 @@
+{
+  "status": "IMPLEMENTED_SIMULATOR_NATIVE_ACCEPTANCE_PENDING",
+  "build": 318,
+  "reportedIssue": "Region tree opens almost featureless map",
+  "evidence": {
+    "observedNativePoint": [
+      31.881788896004437,
+      44.43538360297679
+    ],
+    "regionBoundsMidpoint": [
+      31.880057164233666,
+      44.43463325500489
+    ],
+    "googleGeocodingDescription": "Unnamed road near Abu Sakhir; administrative region name search returns a different district-scale point and is not used as a trusted delivery point"
+  },
+  "change": "Use current real point verified inside region, then existing confirmed destination/saved point in that region; if no actual point exists, fit region viewport without polygons instead of forcing zoom17 at geometric midpoint. A real point retains zoom17. No automatic GPS recentering from outside a region viewport. A viewport center cannot authorize checkout without explicit user selection and server coverage confirmation.",
+  "tests": {
+    "flutter": 23,
+    "analyzerErrors": 0,
+    "analyzerWarnings": 0
+  },
+  "pricingBackendChanged": false,
+  "businessDataMutated": false,
+  "nativeAcceptance": "User must reopen region selector and verify streets and zoom/pin gestures"
+}

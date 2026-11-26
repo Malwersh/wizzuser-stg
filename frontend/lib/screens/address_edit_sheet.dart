@@ -1,3 +1,4 @@
+import '../utils/readable_colors.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 
@@ -7,7 +8,14 @@ class AddressEditSheet extends StatefulWidget {
   final String district;
   final String landmark;
   final void Function(String, String, String, String) onSave;
-  const AddressEditSheet({super.key, required this.city, required this.area, required this.district, required this.landmark, required this.onSave});
+  const AddressEditSheet({
+    super.key,
+    required this.city,
+    required this.area,
+    required this.district,
+    required this.landmark,
+    required this.onSave,
+  });
 
   @override
   State<AddressEditSheet> createState() => _AddressEditSheetState();
@@ -40,7 +48,9 @@ class _AddressEditSheetState extends State<AddressEditSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -60,11 +70,16 @@ class _AddressEditSheetState extends State<AddressEditSheet> {
             ),
             TextField(
               controller: _landmarkController,
-              decoration: const InputDecoration(labelText: 'أقرب نقطة دالة للسائق'),
+              decoration: const InputDecoration(
+                labelText: 'أقرب نقطة دالة للسائق',
+              ),
             ),
             const SizedBox(height: 12),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              style: ElevatedButton.styleFrom(
+                foregroundColor: readableForeground(AppColors.primary),
+                backgroundColor: AppColors.primary,
+              ),
               onPressed: () {
                 widget.onSave(
                   _cityController.text,
@@ -74,7 +89,13 @@ class _AddressEditSheetState extends State<AddressEditSheet> {
                 );
                 Navigator.pop(context);
               },
-              child: const Text('حفظ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'حفظ',
+                style: TextStyle(
+                  color: const Color(0xFF00296B),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),

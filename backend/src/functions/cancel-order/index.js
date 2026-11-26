@@ -1,3 +1,5 @@
+const {isFinancialOrder}=require('../shared/legacy-order-policy');
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, UpdateCommand, GetCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
@@ -38,7 +40,7 @@ const SERVICE_TOKEN = process.env.SERVICE_TOKEN;
  * - Updating order status
  * - Sending notifications
  */
-async function callOrderService(orderId, reason, userId) {
+async function callOrderService(orderId, reason, userId, authorization, guestToken) {
     if (!ORDER_SERVICE_URL) {
         throw new Error('Missing required environment variable: ORDER_SERVICE_URL');
     }
@@ -48,7 +50,8 @@ async function callOrderService(orderId, reason, userId) {
             orderId: orderId,
             canceledBy: 'customer',
             reason: reason,
-            requestedBy: userId  // Send userId without prefix
+            requestedBy: userId,
+            ...(guestToken ? {guestToken} : {})
         });
 
         const url = new URL('/order/cancel', ORDER_SERVICE_URL);
@@ -62,7 +65,7 @@ async function callOrderService(orderId, reason, userId) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(postData),
-                ...(SERVICE_TOKEN ? { 'x-service-token': SERVICE_TOKEN } : {})
+                ...(authorization ? {Authorization:authorization} : {})
             }
         };
 
@@ -145,7 +148,7 @@ async function sendWebSocketNotification({ userId, orderId, type, order }) {
         const notificationData = {
             type: type,
             orderId: orderId,
-            order: order,
+            order: customerOrderView(order),
             timestamp: new Date().toISOString()
         };
 
@@ -322,7 +325,7 @@ async function sendMerchantWebSocketNotification({ storeId, orderId, type, statu
  * - Returns holdReleased flag in response
  */
 exports.handler = async (event) => {
-    console.log('📥 Cancel order event received:', JSON.stringify(event, null, 2));
+    console.log('Cancel order request:', {method:event.httpMethod,orderId:event.pathParameters?.orderId||event.pathParameters?.id});
     
     const headers = {
         'Content-Type': 'application/json',
@@ -376,7 +379,8 @@ exports.handler = async (event) => {
             Key: {
                 PK: `ORDER#${orderId}`,
                 SK: 'META'
-            }
+            },
+            ConsistentRead: true
         });
 
         const currentOrderResult = await dynamoDb.send(getCommand);
@@ -393,6 +397,7 @@ exports.handler = async (event) => {
         }
 
         const currentOrder = currentOrderResult.Item;
+        const financialOrder = isFinancialOrder(currentOrder);
         const userId = currentOrder.customerId || currentOrder.userId;
 
         // Check if order can be cancelled based on current status
@@ -401,10 +406,11 @@ exports.handler = async (event) => {
         const allowedCancellationStatuses = [
             'pending',      // Order placed, waiting for restaurant
             'confirmed',    // Restaurant confirmed, waiting for driver
-            'accepted'      // Driver accepted - Hold exists, will be released
+            'accepted',     // Driver accepted - Hold exists, will be released
+            'canceled_by_customer' // Exact actor/reason replay is checked by the Order Service.
         ];
         
-        if (!allowedCancellationStatuses.includes(currentOrder.status)) {
+        if (!financialOrder && !allowedCancellationStatuses.includes(currentOrder.status)) {
             return {
                 statusCode: 400,
                 headers: headers,
@@ -421,16 +427,22 @@ exports.handler = async (event) => {
         
         let orderServiceResponse;
         try {
-            orderServiceResponse = await callOrderService(orderId, reason, userId);
+            if (financialOrder) {
+                const result = await require('../shared/financial-pending-cancellation').cancelFinancialPending({db:dynamoDb,event,order:currentOrder,reason});
+                orderServiceResponse = {...result,holdReleased:false};
+            } else {
+                orderServiceResponse = await callOrderService(orderId, reason, userId,event.headers?.Authorization||event.headers?.authorization,body.guestToken);
+            }
         } catch (orderServiceError) {
             console.error('❌ Order Service call failed:', orderServiceError);
             
             return {
-                statusCode: 500,
+                statusCode: financialOrder ? (orderServiceError.statusCode || 503) : 500,
                 headers: headers,
                 body: JSON.stringify({
-                    error: 'Failed to cancel order via Order Service',
-                    message: orderServiceError.message,
+                    error: 'Failed to cancel order',
+                    ...(financialOrder ? {code:orderServiceError.code || 'FINANCIAL_CANCELLATION_UNAVAILABLE'} : {}),
+                    message: financialOrder ? (orderServiceError.code || 'FINANCIAL_CANCELLATION_UNAVAILABLE') : orderServiceError.message,
                     success: false
                 })
             };
@@ -456,7 +468,7 @@ exports.handler = async (event) => {
                 userId: userId,
                 orderId: orderId,
                 type: 'order_cancelled',
-                order: updatedOrder
+                order: customerOrderView(updatedOrder)
             });
             console.log('✅ WebSocket notification sent to user for order cancellation');
         } catch (wsError) {
@@ -472,7 +484,7 @@ exports.handler = async (event) => {
                 type: 'ORDER_STATUS_UPDATE',
                 status: updatedOrder.status,
                 cancelReason: reason,
-                order: updatedOrder
+                order: customerOrderView(updatedOrder)
             });
             console.log('✅ WebSocket notification sent to merchant for order cancellation');
         } catch (merchantWsError) {
@@ -490,7 +502,7 @@ exports.handler = async (event) => {
                 message: orderServiceResponse.holdReleased 
                     ? 'تم إلغاء الطلب وإعادة المبلغ المحجوز إلى محفظة السائق'
                     : 'تم إلغاء الطلب بنجاح',
-                order: updatedOrder,
+                order: customerOrderView(updatedOrder),
                 orderId: orderId,
                 status: updatedOrder.status,
                 holdReleased: orderServiceResponse.holdReleased || false

@@ -1,3 +1,4 @@
+import '../utils/currency_format.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import 'package:provider/provider.dart';
@@ -133,7 +134,7 @@ class PaginatedDishList extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        '${dish.price.toStringAsFixed(2)} ر.س',
+                        '${formatIqd(dish.price)}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

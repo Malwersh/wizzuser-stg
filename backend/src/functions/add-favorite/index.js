@@ -5,6 +5,7 @@
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const {writeContext}=require('../create-order/guarded-write');
 
 const client = new DynamoDBClient({});
 const dynamodb = DynamoDBDocumentClient.from(client);
@@ -56,7 +57,7 @@ async function isAlreadyFavorite(userId, businessId, favoriteType) {
  * Main Lambda handler
  */
 exports.handler = async (event) => {
-    console.log('📥 Incoming event:', JSON.stringify(event, null, 2));
+    console.log('Add favorite request', {requestId:event.requestContext?.requestId});
 
     try {
         // Handle CORS preflight
@@ -84,6 +85,7 @@ exports.handler = async (event) => {
             };
         }
 
+        const write=await writeContext(dynamodb,event,userId);
         // Parse request body
         let requestData;
         try {
@@ -155,7 +157,7 @@ exports.handler = async (event) => {
             }
         };
 
-        await dynamodb.send(new PutCommand(putParams));
+        await write('Put',putParams);
 
         // Format response
         const responseData = {
@@ -186,7 +188,7 @@ exports.handler = async (event) => {
         console.error('💥 Error adding to favorites:', error);
         
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: CORS_HEADERS,
             body: JSON.stringify({
                 success: false,

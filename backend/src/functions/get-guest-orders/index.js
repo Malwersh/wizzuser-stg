@@ -1,3 +1,5 @@
+const {customerStatusFilter}=require('../shared/legacy-order-policy');
+const {customerOrderView} = require('../shared/customer-order-view');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
@@ -87,31 +89,11 @@ exports.handler = async (event) => {
 
         // Add status filtering if requested
         if (statusFilter && statusFilter !== 'all') {
-            if (statusFilter === 'active') {
-                // Active orders: pending, confirmed, preparing, ready, on_the_way, in_kitchen, out_for_delivery
-                queryParameters.FilterExpression = '#status IN (:pending, :confirmed, :preparing, :ready, :on_the_way, :in_kitchen, :out_for_delivery)';
-                queryParameters.ExpressionAttributeNames = { '#status': 'status' };
-                queryParameters.ExpressionAttributeValues = {
-                    ...queryParameters.ExpressionAttributeValues,
-                    ':pending': 'pending',
-                    ':confirmed': 'confirmed',
-                    ':preparing': 'preparing',
-                    ':ready': 'ready',
-                    ':on_the_way': 'on_the_way',
-                    ':in_kitchen': 'in_kitchen',
-                    ':out_for_delivery': 'out_for_delivery'
-                };
-            } else if (statusFilter === 'completed') {
-                // Completed orders: delivered, cancelled, failed, expired
-                queryParameters.FilterExpression = '#status IN (:delivered, :cancelled, :failed, :expired)';
-                queryParameters.ExpressionAttributeNames = { '#status': 'status' };
-                queryParameters.ExpressionAttributeValues = {
-                    ...queryParameters.ExpressionAttributeValues,
-                    ':delivered': 'delivered',
-                    ':cancelled': 'cancelled',
-                    ':failed': 'failed',
-                    ':expired': 'expired'
-                };
+            if (['active','completed'].includes(statusFilter)) {
+                const filter=customerStatusFilter(statusFilter);
+                queryParameters.FilterExpression=filter.expression;
+                queryParameters.ExpressionAttributeNames={...queryParameters.ExpressionAttributeNames,...filter.names};
+                queryParameters.ExpressionAttributeValues={...queryParameters.ExpressionAttributeValues,...filter.values};
             }
         }
 
@@ -153,7 +135,7 @@ exports.handler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 message: `Found ${orders.length} orders for guest`,
-                orders: processedOrders,
+                orders: processedOrders.map(customerOrderView),
                 summary: {
                     total: processedOrders.length,
                     active: activeOrders.length,

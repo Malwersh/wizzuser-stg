@@ -1,0 +1,19 @@
+{
+  "status": "BUILT_INSTALLED_LAUNCHED",
+  "nativeBuild": 245,
+  "behavior": [
+    "Merchant offer below known minimum opens informational bottom sheet before quote/discount requests",
+    "Shows offer title, goods subtotal, required minimum and exact remaining amount",
+    "Clarifies goods minimum excludes delivery/service/tip",
+    "Other merchant/promo rejections use same bottom sheet with supplied message",
+    "Dismissal does not apply/clear offers or submit orders; server validates eligible selection normally"
+  ],
+  "tests": 14,
+  "testedWidths": [
+    320,
+    390
+  ],
+  "noBackendChanges": true,
+  "businessDataWritten": false,
+  "analyzer": "No errors or warnings; existing style info only"
+}

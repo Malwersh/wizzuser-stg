@@ -1,0 +1,12 @@
+{
+  "ENVIRONMENT": "production",
+  "API_URL": "https://z3u67eqlm7.execute-api.us-east-1.amazonaws.com/production",
+  "ORDER_CANCELLATION_URL": "https://5ijjfzcxb8.execute-api.us-east-1.amazonaws.com/production",
+  "COGNITO_USER_POOL_ID": "us-east-1_rNtNKVsVf",
+  "APP_CLIENT_ID": "3e8p0ouglrprpd0a3pc91du0hg",
+  "COGNITO_REGION": "us-east-1",
+  "WEBSOCKET_URL": "wss://9plheg8f1h.execute-api.us-east-1.amazonaws.com/production",
+  "DELIVERY_QUOTES_ENABLED": "true",
+  "COMMERCIAL_PRICING_ENABLED": "true",
+  "ACCOUNT_DELETION_API_URL": "https://fc51ih7d74.execute-api.us-east-1.amazonaws.com/production"
+}

@@ -1,0 +1,16 @@
+{
+  "part": 274,
+  "status": "PUBLISHED_VERIFIED",
+  "function": "WizzUser-CreateOrder-staging",
+  "baseCodeSha256": "93eYb7gxelc8k8jip4ekcp8Aks26PIu0HamMftBPztY=",
+  "candidateCodeSha256": "i8sh9yN++SkzqHbo2Dpm6oCKMlFJX9J5xhkvjPk1fhQ=",
+  "change": "Pin existing exception policy at FULL_CASH order creation",
+  "tests": 48,
+  "existingOrdersModified": false,
+  "realFinancialAttestationsCreated": false,
+  "configurationAndIamUnchanged": true,
+  "allDeployedBytesVerified": true,
+  "unrelatedEntriesPreserved": true,
+  "negativeSmokeStatus": 401,
+  "humanNewOrderTest": "PENDING"
+}

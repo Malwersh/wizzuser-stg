@@ -1,5 +1,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } = require('@aws-sdk/lib-dynamodb');
+const {writeContext}=require('../create-order/guarded-write');
+const {createHash}=require('node:crypto');
 const { v4: uuidv4 } = require('uuid');
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -19,7 +21,7 @@ function generateUUID() {
 }
 
 exports.handler = async (event) => {
-    console.log('Wallet Init Event:', JSON.stringify(event, null, 2));
+    console.log('Wallet initialization request', {requestId:event.requestContext?.requestId});
     
     try {
         // Parse request body
@@ -41,6 +43,7 @@ exports.handler = async (event) => {
             };
         }
         
+        const write=await writeContext(dynamodb,event,userId);
         // Check if wallet already exists using GSI
         const checkParams = {
             TableName: WALLETS_TABLE,
@@ -78,7 +81,9 @@ exports.handler = async (event) => {
         }
 
         // Create new wallet
-        const walletId = uuidv4(); // Generate unique wallet ID
+        // Existing wallets keep their IDs. New initialization uses a stable ID
+        // so two concurrent requests cannot create two wallets for one profile.
+        const walletId = 'wallet_' + createHash('sha256').update(userId).digest('hex').slice(0,32);
         const walletData = {
             walletId: walletId, // Primary key
             userId: userId,     // For GSI lookup
@@ -96,7 +101,6 @@ exports.handler = async (event) => {
             ConditionExpression: 'attribute_not_exists(walletId)'
         };
 
-        await dynamodb.send(new PutCommand(createParams));
 
         // Create initial transaction record
         const transactionId = uuidv4();
@@ -117,7 +121,8 @@ exports.handler = async (event) => {
             Item: initialTransaction
         };
 
-        await dynamodb.send(new PutCommand(transactionParams));
+        transactionParams.ConditionExpression='attribute_not_exists(transactionId)';
+        await dynamodb.send(new TransactWriteCommand({TransactItems:[write.fence,{Put:createParams},{Put:transactionParams}]}));
 
         return {
             statusCode: 201,
@@ -144,7 +149,7 @@ exports.handler = async (event) => {
     } catch (error) {
         console.error('Wallet Init Error:', error);
         return {
-            statusCode: 500,
+            statusCode: error.statusCode || (error.name==='TransactionCanceledException'?409:500),
             headers: {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type,Authorization',

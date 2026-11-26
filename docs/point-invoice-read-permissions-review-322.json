@@ -1,0 +1,92 @@
+{
+  "status": "READ_PERMISSIONS_APPLIED_VERIFIED_HUMAN_INVOICE_RETRY_PENDING",
+  "reportedError": "PRICING_REFERENCE_UNAVAILABLE",
+  "source": "Live CreateOrder point preview log for user retry",
+  "observedCurrentDenials": [
+    {
+      "table": "WizzCentral_RegionsDerived_staging",
+      "keyPrefix": "region_test",
+      "action": "dynamodb:GetItem",
+      "decision": "implicitDeny"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "keyPrefix": "BUSINESS_LIFECYCLE",
+      "action": "dynamodb:GetItem",
+      "decision": "implicitDeny"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "keyPrefix": "ACCOUNT_LIFECYCLE",
+      "action": "dynamodb:GetItem",
+      "decision": "implicitDeny"
+    }
+  ],
+  "candidateReadOnlyPolicy": "backend/infra/point-invoice-322-read-policy.json",
+  "candidatePolicySha256": "568d1bbd234809a440a5742143ee697b085c70c835716badaaf1aac2f5c96c89",
+  "candidatePolicySimulation": [
+    {
+      "table": "WizzCentral_RegionsDerived_staging",
+      "key": "region_test",
+      "action": "dynamodb:GetItem",
+      "decision": "allowed"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "BUSINESS_LIFECYCLE#MERCHANT#business_test",
+      "action": "dynamodb:GetItem",
+      "decision": "allowed"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "ACCOUNT_LIFECYCLE#MERCHANT#owner_test",
+      "action": "dynamodb:GetItem",
+      "decision": "allowed"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "ACCOUNT_LIFECYCLE#CUSTOMER#customer_test",
+      "action": "dynamodb:GetItem",
+      "decision": "implicitDeny"
+    },
+    {
+      "table": "staging-AccountDeletion",
+      "key": "ACCOUNT_LIFECYCLE#MERCHANT#owner_test",
+      "action": "dynamodb:UpdateItem",
+      "decision": "implicitDeny"
+    },
+    {
+      "table": "WizzCentral_RegionsDerived_staging",
+      "key": "region_test",
+      "action": "dynamodb:PutItem",
+      "decision": "implicitDeny"
+    }
+  ],
+  "codeCorrection": {
+    "status": "CODE_CORRECTION_PUBLISHED_NEW_IAM_READS_NOT_APPLIED_AWAITING_APPROVAL",
+    "publication": "docs/point-invoice-code-correction-322.json",
+    "newHash": "qUgVj28VOdSri7QToBoH3b+GxkpmNezE8U4zER0GUcE=",
+    "note": "Real quote engine emits ConditionCheck-only transactions during create/deliver. They now execute checks for real rows without persisting point/quote. No state-changing operations can escape."
+  },
+  "tests": {
+    "realQuoteAndOrderPreparationPlusBoundaries": 5,
+    "financialCompatibility": 50,
+    "iamPositiveNegative": 6
+  },
+  "newIAMApplied": true,
+  "codeOnlyCorrectionPublished": true,
+  "mobileUpdateRequired": false,
+  "approvalNeeded": {
+    "function": "WizzUser-CreateOrder-staging",
+    "action": "dynamodb:GetItem",
+    "tables": [
+      "WizzCentral_RegionsDerived_staging",
+      "staging-AccountDeletion restricted to merchant account/business lifecycle prefixes"
+    ]
+  },
+  "automaticApprovalRejected": "Two permanent IAM reads are outside previous explicit Secret and region-index approval; user confirmation required. No bypass attempted.",
+  "businessWrites": false,
+  "humanPricePreviewAcceptance": "PENDING_USER_RETRY",
+  "userExplicitlyApproved": true,
+  "publicationReceipt": "docs/point-invoice-read-permissions-publication-322.json"
+}

@@ -1,0 +1,27 @@
+{
+  "status": "IMPLEMENTED_TESTED",
+  "customerBuild": 304,
+  "wording": {
+    "signedIn": "أهلًا {isolatedFirstName}، تشعر بالجوع؟",
+    "guest": "أهلًا ضيفنا الكريم، تشعر بالجوع؟",
+    "missingProfileName": "أهلًا! تشعر بالجوع؟"
+  },
+  "nameSource": "Authenticated AppStateProvider.currentUser; given_name/firstName/name/fullName, never username/email/phone",
+  "visibility": [
+    "Once per account browsing session",
+    "Consume on first >48px scroll, search input, category selection or main-store opening",
+    "Retain consumed state through widget rebuilds and short background switch",
+    "New process or return after >=30 minutes background starts a new session",
+    "No timer-driven automatic layout removal; no new greeting while scrolled down"
+  ],
+  "policyNote": "30 minutes is our product default, not an external UX standard",
+  "sources": [
+    "https://www.nngroup.com/articles/113-design-guidelines-homepage-usability/"
+  ],
+  "tests": {
+    "personalizationAndScopeSession": 3,
+    "headerAndCategories": 2
+  },
+  "storage": "In-memory identity/consumed flag only, no stored customer names",
+  "style": "14px muted gray, explicit RTL with FSI/PDI around profile name"
+}

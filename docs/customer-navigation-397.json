@@ -1,0 +1,23 @@
+{
+  "status": "implemented_simulator_build_351",
+  "date": "2026-11-03",
+  "bottomOrderRightToLeft": [
+    "home",
+    "cart",
+    "search",
+    "explore",
+    "account"
+  ],
+  "top": "Centered delivery address and notifications; account and cart removed",
+  "design": "Transparent top edge fading to opaque white at bottom, light circular action/search shadows, responsive action widths",
+  "validation": {
+    "widgetTests": 2,
+    "widths": [
+      320,
+      390
+    ],
+    "analyzer": "no issues",
+    "iosSimulatorBuild": "passed"
+  },
+  "next": "Discuss upper promotional surface after user review"
+}

@@ -1,0 +1,55 @@
+{
+  "status": "STAGING_PUBLISHED_SIMULATOR_321_INSTALLED_HUMAN_ACCEPTANCE_PENDING",
+  "date": "2026-10-27",
+  "behavior": "Complete server-priced point+basket invoice before neighborhood/landmark entry; no basic-fee placeholder. Detail text excluded from pricing key; final order still requires complete saved owned address and current approved invoice.",
+  "backend": "Authenticated existing commercial-preview route only, private per-request read-only point/quote view using canonical quote and commercial calculation. No point/address/quote/financial write escapes view. No returned consent/quote/order authority. Existing live financial bundle preserved byte-for-byte in candidate.",
+  "tests": {
+    "readonlyBoundaryNode": 3,
+    "existingPointHandlerNode": 3,
+    "flutter": 45,
+    "preexistingFlutterSkipped": 1,
+    "targetAnalyzerErrors": 0,
+    "targetAnalyzerWarnings": 0,
+    "iosSimulator321Build": "PASS_INSTALLED_LAUNCHED"
+  },
+  "deploymentCandidateSha256": "216f178ac187d59541495893f8a6f609fc7d148b6a95cdbb789fd5553aae76a5",
+  "autoReviewRejection": "CreateOrder deployment and permanent Secret read/RegionIndex Query require explicit approval beyond preview-fix instruction",
+  "approvalScope": {
+    "environment": "staging",
+    "function": "WizzUser-CreateOrder-staging",
+    "memoryMB": {
+      "before": 128,
+      "after": 512
+    },
+    "newEnvironment": [
+      "POINT_INVOICE_ENABLED=true",
+      "MAPBOX_SECRET_ARN=same existing server routing ARN from DeliveryQuotes configuration"
+    ],
+    "newIAM": [
+      {
+        "action": "secretsmanager:GetSecretValue",
+        "resource": "exact existing routing secret ARN only"
+      },
+      {
+        "action": "dynamodb:Query",
+        "resource": "WizzCentral_RegionIndex_staging/index/h3-index only"
+      }
+    ],
+    "apiAuthorizerUnchanged": true,
+    "legacyFinancialBundleUnchanged": true
+  },
+  "liveCodeAndEnvironmentUnchangedVerified": false,
+  "businessWritesPerformed": false,
+  "nativeInstalled": true,
+  "humanTestsPending": [
+    "Open checkout with confirmed map point and blank neighborhood/landmark; final service and total appear before text entry",
+    "Type/edit explanatory text without another point-price request or disappearance of total",
+    "Change point, basket, discount or tip; corresponding invoice invalidates and refreshes",
+    "Blank required details keep submission disabled; finalized owned address and fresh consent remain mandatory",
+    "At ten saved addresses, price preview does not consume an address slot"
+  ],
+  "privateRollbackArtifacts": "/private/tmp/point-invoice-321",
+  "userExplicitlyApproved": true,
+  "publicationReceipt": "docs/point-invoice-publication-321.json",
+  "historicalOriginalLiveCodeAndEnvironmentUnchangedBeforeApprovalVerified": true
+}

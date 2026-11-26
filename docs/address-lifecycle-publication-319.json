@@ -1,0 +1,260 @@
+{
+  "status": "PUBLISHED_VERIFIED",
+  "publishedAt": "2026-10-27T04:05:10.408494+00:00",
+  "functions": [
+    {
+      "name": "WizzUser-CreateAddress-staging",
+      "beforeHash": "U/COvOinUMxweRq3oPfLY1lnQZXmjuqBJ2qwNle91rY=",
+      "hash": "tphOh4krk1EYeo+VaJI7PygXulMHe41czCPl5vuk3kk=",
+      "memoryMB": 512,
+      "bundleBytes": 426985,
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:Query",
+              "dynamodb:Scan",
+              "dynamodb:PutItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging/index/userId-index"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WizzUser-UpdateAddress-staging",
+      "beforeHash": "b9ZmxTRBp9rqHeBz/0be1ti6w2VMUN/jjJ+JjgEw1rY=",
+      "hash": "NRbxMMDsa79GEQ9Hb/lLCxVnhGa5rFssYOwuwzkVewU=",
+      "memoryMB": 512,
+      "bundleBytes": 426351,
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:Query",
+              "dynamodb:Scan",
+              "dynamodb:PutItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging/index/userId-index"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WizzUser-DeleteAddress-staging",
+      "beforeHash": "LZKaULjQyrpue5JJgutx1Lk0zj99Km5VnIEuDt3cHMA=",
+      "hash": "iJvgc1dmC/mhvBZu0HgGDtCKMePnXu+nhIK9V0pQm1M=",
+      "memoryMB": 512,
+      "bundleBytes": 171752,
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:Query",
+              "dynamodb:Scan",
+              "dynamodb:PutItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging/index/userId-index"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WizzUser-SetDefaultAddress-staging",
+      "beforeHash": "LZKaULjQyrpue5JJgutx1Lk0zj99Km5VnIEuDt3cHMA=",
+      "hash": "GOz1WoYoQpu0y8KlAV9xNqUtgiWuyiM2aq/MOKfn4Ew=",
+      "memoryMB": 512,
+      "bundleBytes": 425048,
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:Query",
+              "dynamodb:Scan",
+              "dynamodb:PutItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:DeleteItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging/index/userId-index"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:ConditionCheckItem"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_Regions",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionsDerived_staging"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:Query"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzCentral_RegionIndex_staging/index/h3-index"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WizzUser-GetUserAddresses-staging",
+      "beforeHash": "f+Gri4g8ovxPftVH72FBtagVt9UJi9IeY3EPeyqoBi0=",
+      "hash": "+LEQ1cmPBN+F84uHBnT121XgAw/k60pNN3yCcppr4GA=",
+      "memoryMB": 512,
+      "bundleBytes": 171615,
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:Query"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging/index/userId-index"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "WizzUser-GetAddress-staging",
+      "beforeHash": "YrNPf7X/2w8mgyrpjN7dsGeX9uhZQN8CtLNbRtKp4mg=",
+      "hash": "JFb8pp7A7rxBv6WTzVrU8nmP77AfsH9vj/JJajWaK/o=",
+      "memoryMB": 512,
+      "bundleBytes": 171655,
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem"
+            ],
+            "Resource": "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_users_staging"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dynamodb:GetItem",
+              "dynamodb:Query"
+            ],
+            "Resource": [
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging",
+              "arn:aws:dynamodb:us-east-1:699561669180:table/WizzUser_addresses_staging/index/userId-index"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "unauthenticatedStatuses": {
+    "GET": 401,
+    "POST": 401,
+    "GET/address-auth-check": 401,
+    "PUT/address-auth-check": 401,
+    "DELETE/address-auth-check": 401,
+    "PUT/address-auth-check/set-default": 401
+  },
+  "savedAddressLimit": 10,
+  "newTable": false,
+  "bookMetadata": "Users.addressBook319; atomic revision/default/ids with account lifecycle fence",
+  "businessDataMutated": false,
+  "existingAddressesDeleted": false,
+  "authenticatedDeviceRetest": "PENDING_USER",
+  "tests": {
+    "node": 23,
+    "flutterLifecycle": 10,
+    "analyzerErrors": 0,
+    "flutterRegression": 70,
+    "flutterSkippedPreexisting": 1
+  },
+  "runtimeProbes": "docs/address-lifecycle-runtime-probes-319.json; unauthenticated direct invocations only, not an authenticated latency benchmark",
+  "simulator": {
+    "model": "iPhone 16 Pro",
+    "build": 319,
+    "launched": true,
+    "dataPreserved": true
+  }
+}
