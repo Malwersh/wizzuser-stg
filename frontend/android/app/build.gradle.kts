@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,7 +7,21 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val uploadSigningFile = rootProject.file("key.properties")
+val uploadSigning = Properties().apply {
+    if (uploadSigningFile.isFile) uploadSigningFile.inputStream().use { load(it) }
+}
+
 android {
+    if (uploadSigningFile.isFile) {
+        signingConfigs.create("upload") {
+            storeFile = rootProject.file(uploadSigning.getProperty("storeFile"))
+            storePassword = uploadSigning.getProperty("storePassword")
+            keyAlias = uploadSigning.getProperty("keyAlias")
+            keyPassword = uploadSigning.getProperty("keyPassword")
+        }
+    }
+
     namespace = "com.wiz.userapp"
     compileSdk = 36
 
@@ -29,7 +45,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload")
         }
     }
 }

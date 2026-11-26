@@ -15,7 +15,7 @@ void main() {
       expect(request.url.queryParameters['layoutVersion'], '3');
       expect(
         request.url.queryParameters['slideActions'],
-        ApiConfig.isProduction ? '2' : null,
+        ApiConfig.isProduction ? '3' : null,
       );
       expect(request.url.queryParameters['regionId'], 'test-region');
       expect(
